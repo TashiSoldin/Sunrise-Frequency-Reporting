@@ -7,7 +7,16 @@ class FrequencyReports:
         self.df = df
         self.output_file_path = output_file_path
 
+    def apply_styles(self, df: pd.DataFrame) -> pd.DataFrame:
+        # for event in LastEventStyles:
+        #     df.loc[df["Last Event"] == event, "Last Event"] = (
+        #         LastEventStyles.get_event_style(event)
+        #     )
+        return df
+
     def generate_report(self) -> None:
+        self.df = self.apply_styles(self.df)
+
         account_list = self.df["Account"].unique()
         for account in tqdm(account_list, desc="Generating frequency reports"):
             # Split the DataFrame by Account
