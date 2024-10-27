@@ -1,5 +1,5 @@
 PYTHON = python
-SCRIPT_DIR = report\ generation
+SCRIPT_DIR = report_generation
 SCRIPT = $(SCRIPT_DIR)/report_generation.py
 DEFAULT_DATA_DIR = ../data
 
