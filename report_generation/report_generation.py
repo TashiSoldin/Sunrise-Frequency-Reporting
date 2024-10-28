@@ -26,9 +26,9 @@ class ReportGeneration:
         return file_path_booking, file_path_frequency
 
     def preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        date_columns = ["Due Date", "Waybill Date", "Last Event Date"]
+        date_columns = ["Waybill Date", "Due Date", "POD Date", "Last Event Date"]
         for col in date_columns:
-            df[col] = df[col].apply(DatetimeHelper.safe_to_datetime)
+            df[col] = df[col].apply(DatetimeHelper.safe_to_date)
         return df
 
     def generate_reports(self) -> None:
