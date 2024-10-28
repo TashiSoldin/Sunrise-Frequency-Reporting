@@ -25,15 +25,21 @@ class FrequencyReports:
                 by=["Last Event", "Waybill Date"], ascending=[True, False]
             )
 
-            # Split the DataFrame by Last Event
-            df_not_pod = df_account[
-                ~df_account["Last Event"].isin(
-                    ["POD Details Captured", "POD Image Scanned"]
+            # Split the DataFrame by POD Date and Last Event
+            completed_deliveries_df = df_account[
+                (df_account["POD Date"].notna())
+                | (
+                    df_account["Last Event"].isin(
+                        ["POD Details Captured", "POD Image Scanned"]
+                    )
                 )
             ]
-            df_pod = df_account[
-                df_account["Last Event"].isin(
-                    ["POD Details Captured", "POD Image Scanned"]
+            current_deliveries_df = df_account[
+                (df_account["POD Date"].isna())
+                & (
+                    ~df_account["Last Event"].isin(
+                        ["POD Details Captured", "POD Image Scanned"]
+                    )
                 )
             ]
 
@@ -42,7 +48,9 @@ class FrequencyReports:
                 f"{self.output_file_path}/{account}.xlsx",
                 engine="openpyxl",
             ) as writer:
-                df_not_pod.to_excel(
+                current_deliveries_df.to_excel(
                     writer, sheet_name="Current deliveries", index=False
                 )
-                df_pod.to_excel(writer, sheet_name="Completed deliveries", index=False)
+                completed_deliveries_df.to_excel(
+                    writer, sheet_name="Completed deliveries", index=False
+                )
