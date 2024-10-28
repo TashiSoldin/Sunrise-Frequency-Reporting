@@ -1,6 +1,6 @@
 import pandas as pd
 
-from report_generation.enums.frequency_report_enums import LastEventStyles
+# from report_generation.enums.frequency_report_enums import LastEventStyles
 
 
 class StyleHelper:

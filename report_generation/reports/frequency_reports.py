@@ -1,5 +1,6 @@
 import pandas as pd
 from tqdm import tqdm
+from report_generation.enums.frequency_report_enums import LastEventStyles, StyleHelper
 
 
 class FrequencyReports:
@@ -7,15 +8,22 @@ class FrequencyReports:
         self.df = df
         self.output_file_path = output_file_path
 
-    def apply_styles(self, df: pd.DataFrame) -> pd.DataFrame:
-        # for event in LastEventStyles:
-        #     df.loc[df["Last Event"] == event, "Last Event"] = (
-        #         LastEventStyles.get_event_style(event)
-        #     )
-        return df
+    def apply_styles(self, df: pd.DataFrame) -> pd.io.formats.style.Styler:
+        """
+        Apply background color styles to the DataFrame rows based on the 'Last Event' value.
+        
+        Args:
+            df: The DataFrame to which styles should be applied.
+        
+        Returns:
+            A styled DataFrame (Styler) with row colors applied.
+        """
+        # Use StyleHelper's color_rows method to apply colors row-wise
+        return df.style.apply(StyleHelper.color_rows, axis=1)
+
 
     def generate_report(self) -> None:
-        self.df = self.apply_styles(self.df)
+        styled_df = self.apply_styles(self.df)
 
         account_list = self.df["Account"].unique()
         for account in tqdm(account_list, desc="Generating frequency reports"):
@@ -48,9 +56,11 @@ class FrequencyReports:
                 f"{self.output_file_path}/{account}.xlsx",
                 engine="openpyxl",
             ) as writer:
-                current_deliveries_df.to_excel(
-                    writer, sheet_name="Current deliveries", index=False
-                )
-                completed_deliveries_df.to_excel(
-                    writer, sheet_name="Completed deliveries", index=False
-                )
+
+                # Style and save each sheet
+                styled_current_deliveries_df = self.apply_styles(current_deliveries_df)
+                styled_completed_deliveries_df = self.apply_styles(completed_deliveries_df)
+
+                # Export styled DataFrames
+                styled_current_deliveries_df.to_excel(writer, sheet_name="Current deliveries", index=False)
+                completed_deliveries_df.to_excel(writer, sheet_name="Completed deliveries", index=False)
