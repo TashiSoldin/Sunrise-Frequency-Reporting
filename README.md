@@ -31,10 +31,10 @@ Examples:
 
 ### Using Python Directly
 
-To run the script directly with Python, navigate to the `report generation` directory and use the following command:
+To run the script directly with Python, use the following command:
 
 ```
-python report_generation.py --file "your_file_name.xlsx" [--path "/path/to/data"]
+python report_generation/report_generation.py --file "your_file_name.xlsx" [--path "/path/to/data"]
 ```
 
 Arguments:
@@ -44,17 +44,17 @@ Arguments:
 Examples:
 1. Using default data directory:
    ```
-   python report_generation.py --file "FR Report 23 Oct 16h00.xlsx"
+   python report_generation/report_generation.py --file "FR Report 23 Oct 16h00.xlsx"
    ```
 
 2. Specifying a custom data directory:
    ```
-   python report_generation.py --file "FR Report 23 Oct 16h00.xlsx" --path "/custom/path/to/data"
+   python report_generation/report_generation.py --file "FR Report 23 Oct 16h00.xlsx" --path "/custom/path/to/data"
    ```
 
 3. Using short flags:
    ```
-   python report_generation.py -f "FR Report 23 Oct 16h00.xlsx" -p "/custom/path/to/data"
+   python report_generation/report_generation.py -f "FR Report 23 Oct 16h00.xlsx" -p "/custom/path/to/data"
    ```
 
 ## Notes
