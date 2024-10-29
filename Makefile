@@ -1,7 +1,7 @@
 PYTHON = python
 SCRIPT_DIR = report_generation
 SCRIPT = $(SCRIPT_DIR)/report_generation.py
-DEFAULT_DATA_DIR = ../data
+DEFAULT_DATA_DIR = data
 
 .PHONY: generate-report
 generate-report:
