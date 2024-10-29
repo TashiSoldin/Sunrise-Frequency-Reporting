@@ -53,7 +53,7 @@ def main() -> None:
     parser.add_argument(
         "--path",
         "-p",
-        default="../data",
+        default="data",
         help="Path to the directory containing the Excel file",
     )
     parser.add_argument(
