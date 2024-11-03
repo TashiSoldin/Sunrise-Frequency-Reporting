@@ -66,23 +66,26 @@ class FrequencyReports:
         # Get the index of the 'Last Event' column dynamically
         last_event_col_index = df.columns.get_loc("Last Event")
 
-
         for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start=start_row):
             for c_idx, value in enumerate(row, 1):
                 cell = worksheet.cell(row=r_idx, column=c_idx, value=value)
+
+                # Apply border to all header cells
                 if r_idx == start_row:  # Header row
                     cell.font = Font(bold=True)
-                    cell.border = border
-                
+                    cell.border = border  # Apply border to all header cells
+
             # After writing the entire row, apply the color to the entire row based on 'Last Event'
-            last_event = row[last_event_col_index]  # Get the last event value
-            for c_idx in range(1, len(row) + 1):  # Apply color to all columns in the row
-                cell_to_style = worksheet.cell(row=r_idx, column=c_idx)
-                cell_to_style.fill = PatternFill(
-                    start_color=color_mapping.get(last_event, "FFFFFF"),  # Default to white if not found
-                    end_color=color_mapping.get(last_event, "FFFFFF"),
-                    fill_type="solid"
-                )
+            if r_idx > start_row:  # Only color data rows
+                last_event = row[last_event_col_index]  # Get the last event value
+                for c_idx in range(1, len(row) + 1):  # Apply color to all columns in the row
+                    cell_to_style = worksheet.cell(row=r_idx, column=c_idx)
+                    cell_to_style.fill = PatternFill(
+                        start_color=color_mapping.get(last_event, "FFFFFF"),  # Default to white if not found
+                        end_color=color_mapping.get(last_event, "FFFFFF"),
+                        fill_type="solid"
+                    )
+
 
     def append_to_template(
         self, current_df: pd.DataFrame, completed_df: pd.DataFrame, account: str
