@@ -7,9 +7,11 @@ class BookingReports:
         self.df = df
         self.output_file_path = output_file_path
 
+    def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        return df.sort_values(by="Booking Date", ascending=True)
+
     def generate_report(self) -> None:
-        # Sort the DataFrame by 'Booking Date' column
-        df_booking_date = self.df.sort_values(by="Booking Date", ascending=True)
+        df = self.sort_df(self.df)
 
         # Create an Excel writer object
         with pd.ExcelWriter(
@@ -19,6 +21,6 @@ class BookingReports:
             # Group the DataFrame by 'Dest Hub' and write each group to a separate sheet
 
             for category, group in tqdm(
-                df_booking_date.groupby("Dest Hub"), desc="Generating booking reports"
+                df.groupby("Dest Hub"), desc="Generating booking reports"
             ):
                 group.to_excel(writer, sheet_name=category, index=False)

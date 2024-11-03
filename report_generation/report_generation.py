@@ -26,6 +26,7 @@ class ReportGeneration:
         return file_path_booking, file_path_frequency
 
     def preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        # TODO: Ensure df.columns match the expected columns
         date_columns = ["Waybill Date", "Due Date", "POD Date", "Last Event Date"]
         for col in date_columns:
             df[col] = df[col].apply(DatetimeHelper.safe_to_date)
