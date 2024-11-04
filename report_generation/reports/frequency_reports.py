@@ -20,9 +20,45 @@ class FrequencyReports:
 
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
         # TODO: Implement categorical sort on Last Event column
-        return df.sort_values(
-            by=["Last Event", "Waybill Date"], ascending=[True, False]
-        )
+
+        # order = {
+        #     "Floor check - Depot collection": 1,
+        #     "Loaded for Delivery": 2,
+        #     "Attempted delivery": 3,
+        #     "Attempted Misroute": 4,
+        #     "Mis-routed": 5,
+        #     "Customer query floor check": 6,
+        #     "Return to Client": 7,
+        #     "Return to Depot": 8,
+        #     "Floor check - Query": 9,
+        #     "Reverse logistics floor check": 10,
+        #     "Received at origin depot": 11,
+        #     "Checked in at Origin Depot": 12,
+        #     "Consignment details captured": 13,
+        #     "Floor check": 14,
+        #     "Swadded": 15,
+        #     "Manifest Transferred": 16,
+        #     "Transfer to manifest/tripsheet": 17,
+        #     "Unload manifest/tripsheet": 18,
+        #     "Inbound Manifest": 19,
+        #     "Remove from manifest/tripsheet": 20,
+        #     "Event Scan Blocked": 21,
+        #     "Preload": 22,
+        #     "Outbound Manifest Load": 23,
+        #     "Floor check - Booking cargo": 24,
+        #     "Chain store floor check": 25,
+        #     "POD Details Captured": 26,
+        #     "POD Image Scanned": 27,
+        # }
+
+        # # Use .copy() to avoid the SettingWithCopyWarning
+        # df = df.copy()
+
+        # # Create a categorical type with the specified order
+        # df['Last Event'] = pd.Categorical(df['Last Event'], categories=order.keys(), ordered=True)
+
+        # Sort the DataFrame
+        return df.sort_values(by=["Last Event", "Waybill Date"], ascending=[True, False])
 
 
     def _append_df_to_sheet(self, worksheet, df: pd.DataFrame, start_row: int) -> None:
