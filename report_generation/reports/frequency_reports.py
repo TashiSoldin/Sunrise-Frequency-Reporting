@@ -39,13 +39,16 @@ class FrequencyReports:
 
         color_mapping = {
             "Attempted delivery": "f7bc00",
+            "Attempted Misroute": "f7bc00",
             "Chain store floor check": "fdf900",
             "Checked in at Origin Depot": "f7bc00",
             "Consignment details captured": "f7bc00",
+            "Customer query floor check": "f7bc00",
             "Event Scan Blocked": "f7bc00",
             "Floor check": "f7bc00",
             "Floor check - Booking cargo": "fdf900",
             "Floor check - Depot collection": "eac7e6",
+            "Floor check - Query": "f7bc00",
             "Inbound Manifest": "f7bc00",
             "Loaded for Delivery": "00aeed",
             "Manifest Transferred": "f7bc00",
@@ -53,12 +56,14 @@ class FrequencyReports:
             "Outbound Manifest Load": "fdf900",
             "POD Details Captured": "d0e833",
             "POD Image Scanned": "d0e833",
+            "Preload": "fdf900",
             "Received at origin depot": "f7bc00",
             "Remove from manifest/tripsheet": "f7bc00",
             "Return to Client": "f7bc00",
             "Return to Depot": "f7bc00",
             "Reverse logistics floor check": "f7bc00",
             "Swadded": "f7bc00",
+            "Transfer to manifest/tripsheet": "f7bc00",
             "Unload manifest/tripsheet": "f7bc00",
             "Other": "FFFFFF",  # Assuming white for "Other"
         }
