@@ -14,7 +14,7 @@ class BookingReports:
         df = self.sort_df(self.df)
 
         # Filter out rows where 'Booking Date' is NaN and restrict to specific Dest Hubs
-        filtered_df = self.df.dropna(subset=['Booking Date'])  # Drop rows where 'Booking Date' is NaN
+        filtered_df = df.dropna(subset=['Booking Date'])  # Drop rows where 'Booking Date' is NaN
         filtered_df = filtered_df[filtered_df['Dest Hub'].isin(['CPT', 'DUR', 'JNB'])]  # Keep only rows with specified 'Dest Hub'
 
         # Sort the DataFrame by 'Booking Date' column
@@ -28,6 +28,6 @@ class BookingReports:
             # Group the DataFrame by 'Dest Hub' and write each group to a separate sheet
 
             for category, group in tqdm(
-                df.groupby("Dest Hub"), desc="Generating booking reports"
+                df_booking_date.groupby("Dest Hub"), desc="Generating booking reports"
             ):
                 group.to_excel(writer, sheet_name=category, index=False)
