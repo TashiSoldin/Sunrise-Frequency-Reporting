@@ -10,15 +10,21 @@ class BookingReports:
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
         return df.sort_values(by="Booking Date", ascending=True)
 
+    def filter_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        # # Filter out rows where 'Booking Date' is NaN and restrict to specific Dest Hubs
+        # filtered_df = df.dropna(
+        #     subset=["Booking Date"]
+        # )  # Drop rows where 'Booking Date' is NaN
+        # filtered_df = filtered_df[
+        #     filtered_df["Dest Hub"].isin(["CPT", "DUR", "JNB"])
+        # ]  # Keep only rows with specified 'Dest Hub'
+        return df.dropna(subset=["Booking Date"]).loc[
+            df["Dest Hub"].isin(["CPT", "DUR", "JNB"])
+        ]
+
     def generate_report(self) -> None:
         df = self.sort_df(self.df)
-
-        # Filter out rows where 'Booking Date' is NaN and restrict to specific Dest Hubs
-        filtered_df = self.df.dropna(subset=['Booking Date'])  # Drop rows where 'Booking Date' is NaN
-        filtered_df = filtered_df[filtered_df['Dest Hub'].isin(['CPT', 'DUR', 'JNB'])]  # Keep only rows with specified 'Dest Hub'
-
-        # Sort the DataFrame by 'Booking Date' column
-        df_booking_date = filtered_df.sort_values(by="Booking Date", ascending=True)
+        df = self.filter_df(df)
 
         # Create an Excel writer object
         with pd.ExcelWriter(
