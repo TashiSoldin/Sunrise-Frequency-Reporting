@@ -141,22 +141,6 @@ class FrequencyReports:
         # Get the current date and time in the format 'YYYY-MM-DD HH:MM:SS'
         current_date_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # # Iterate through all sheets and replace {{client_name}} with the actual client name
-        # for sheet in wb.sheetnames:
-        #     worksheet = wb[sheet]
-        
-        #     # Iterate through all rows and columns to find and replace the placeholder
-        #     for row in worksheet.iter_rows():
-        #         for cell in row:
-        #             if isinstance(cell.value, str):
-        #                 # Replace {{client_name}} with the actual client name
-        #                 if "{{client_name}}" in cell.value:
-        #                     cell.value = cell.value.replace("{{client_name}}", client_name)
-                        
-        #                 # Replace {{date_time}} with the current date and time
-        #                 if "{{date_time}}" in cell.value:
-        #                     cell.value = cell.value.replace("{{date_time}}", current_date_time)
-
         # Loop through all sheets in the workbook
         for sheet in wb.sheetnames:
             ws = wb[sheet]

@@ -16,6 +16,7 @@ class BookingReports:
         # Filter out rows where 'Booking Date' is NaN and restrict to specific Dest Hubs
         filtered_df = df.dropna(subset=['Booking Date'])  # Drop rows where 'Booking Date' is NaN
         filtered_df = filtered_df[filtered_df['Dest Hub'].isin(['CPT', 'DUR', 'JNB'])]  # Keep only rows with specified 'Dest Hub'
+        filtered_df = filtered_df[filtered_df['POD Date'].isna()] # Drop rows where 'POD Date' is not NaN
 
         # Sort the DataFrame by 'Booking Date' column
         df_booking_date = filtered_df.sort_values(by="Booking Date", ascending=True)
