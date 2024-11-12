@@ -3,7 +3,7 @@ import pandas as pd
 from helpers.datetime_helper import DatetimeHelper
 from models.excel_handler import ExcelDataReader
 from helpers.os_helper import OSHelper
-from report_generation.enums.report_type_enums import ReportTypes
+from enums.report_type_enums import ReportTypes
 from reports.booking_reports import BookingReports
 from reports.frequency_reports import FrequencyReports
 from helpers.string_helper import StringHelper

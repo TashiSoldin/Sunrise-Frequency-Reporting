@@ -23,8 +23,9 @@ class BookingReports:
         # ] # Drop rows where 'POD Date' is not NaN
 
         df = df.dropna(subset=["Booking Date"]).loc[
-            df["Dest Hub"].isin(["CPT", "DUR", "JNB"]) & df["POD date"].isna()
+            df["Dest Hub"].isin(["CPT", "DUR", "JNB"]) & df["POD Date"].isna()
         ]
+        return df
 
     def generate_report(self) -> None:
         df = self.sort_df(self.df)
