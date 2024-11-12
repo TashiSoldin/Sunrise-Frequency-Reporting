@@ -8,8 +8,9 @@ from datetime import datetime
 
 
 class FrequencyReports:
-    def __init__(self, df: pd.DataFrame, output_file_path: str) -> None:
-        self.df = df
+    def __init__(self, frequency_df: pd.DataFrame, collection_df: pd.DataFrame, output_file_path: str) -> None:
+        self.frequency_df = frequency_df
+        self.collection_df = collection_df
         self.asset_file_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets"
         )
@@ -140,7 +141,7 @@ class FrequencyReports:
                     )
 
     def append_to_template(
-        self, current_df: pd.DataFrame, completed_df: pd.DataFrame, account: str, client_name: str
+        self, frequency_df: pd.DataFrame, collection_df: pd.DataFrame, account: str, client_name: str
     ) -> None:
         """
         Append DataFrames to the template file while preserving styling and formatting.
@@ -164,45 +165,55 @@ class FrequencyReports:
         # Handle Current deliveries sheet
         self._append_df_to_sheet(
             worksheet=wb["Current deliveries"],
-            df=current_df,
+            df=frequency_df,
             start_row=wb["Current deliveries"].max_row + 2,
         )
 
         # Handle Completed deliveries sheet
         self._append_df_to_sheet(
             worksheet=wb["Completed deliveries"],
-            df=completed_df,
+            df=frequency_df,
             start_row=wb["Completed deliveries"].max_row + 2,
+        )
+
+        # Handle Collections sheet
+        self._append_df_to_sheet(
+            worksheet=wb["Collections"],
+            df=collection_df,
+            start_row=wb["Collections"].max_row + 2,
         )
 
         wb.save(f"{self.output_file_path}/{account}.xlsx")
 
     def generate_report(self) -> None:
-        account_list = self.df["Account"].unique()
+        account_list = self.frequency_df["Account"].unique()
         for account in tqdm(account_list, desc="Generating frequency reports"):
             # Split the DataFrame by Account
-            df_account = self.df[self.df["Account"] == account]
-            df_account = self.sort_df(df_account)
+            frequency_df_account = self.frequency_df[self.frequency_df["Account"] == account]
+            frequency_df_account = self.sort_df(frequency_df_account)
 
-            # Check if df_account is empty before trying to access the client name
-            if df_account.empty:
-                continue  # Skip the rest of the loop if the account DataFrame is empty
+            collection_df_account = self.collection_df[self.collection_df["Account"] == account]
+            collection_df_account = self.sort_df(collection_df_account)
 
-            client_name = df_account["Customer"].iloc[0]
+            # Check if the DataFrames are empty before trying to access the client name
+            if frequency_df_account.empty or collection_df_account.empty:
+                continue  # Skip the rest of the loop if the account DataFrames is empty
+
+            client_name = frequency_df_account["Customer"].iloc[0]
 
             # Split the DataFrame by POD Date and Last Event
-            completed_deliveries_df = df_account[
-                (df_account["POD Date"].notna())
+            completed_deliveries_df = frequency_df_account[
+                (frequency_df_account["POD Date"].notna())
                 | (
-                    df_account["Last Event"].isin(
+                    frequency_df_account["Last Event"].isin(
                         ["POD Details Captured", "POD Image Scanned"]
                     )
                 )
             ]
-            current_deliveries_df = df_account[
-                (df_account["POD Date"].isna())
+            current_deliveries_df = frequency_df_account[
+                (frequency_df_account["POD Date"].isna())
                 & (
-                    ~df_account["Last Event"].isin(
+                    ~frequency_df_account["Last Event"].isin(
                         ["POD Details Captured", "POD Image Scanned"]
                     )
                 )
