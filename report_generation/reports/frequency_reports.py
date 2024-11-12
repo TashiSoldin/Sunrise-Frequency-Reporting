@@ -68,18 +68,127 @@ class FrequencyReports:
             by=["Last Event", "Waybill Date"], ascending=[True, False]
         )
 
-    def _append_df_to_sheet(self, worksheet, df: pd.DataFrame, start_row: int) -> None:
-        """
-        Helper method to append a DataFrame to a worksheet starting at a specific row.
+    # def _append_df_to_sheet(self, worksheet, df: pd.DataFrame, start_row: int) -> None:
+    #     """
+    #     Helper method to append a DataFrame to a worksheet starting at a specific row.
 
-        Args:
-            worksheet: The worksheet to append to
-            df: DataFrame containing the data
-            start_row: Starting row number for the append operation
-        """
-        thin = Side(border_style="thin", color="000000")
-        border = Border(top=thin, left=thin, right=thin, bottom=thin)
+    #     Args:
+    #         worksheet: The worksheet to append to
+    #         df: DataFrame containing the data
+    #         start_row: Starting row number for the append operation
+    #     """
+    #     thin = Side(border_style="thin", color="000000")
+    #     border = Border(top=thin, left=thin, right=thin, bottom=thin)
 
+    #     color_mapping = {
+    #         "Attempted delivery": "f7bc00",
+    #         "Attempted Misroute": "f7bc00",
+    #         "Chain store floor check": "fdf900",
+    #         "Checked in at Origin Depot": "f7bc00",
+    #         "Consignment details captured": "f7bc00",
+    #         "Customer query floor check": "f7bc00",
+    #         "Event Scan Blocked": "f7bc00",
+    #         "Floor check": "f7bc00",
+    #         "Floor check - Booking cargo": "fdf900",
+    #         "Floor check - Depot collection": "eac7e6",
+    #         "Floor check - Query": "f7bc00",
+    #         "Inbound Manifest": "f7bc00",
+    #         "Loaded for Delivery": "00aeed",
+    #         "Manifest Transferred": "f7bc00",
+    #         "Mis-routed": "f7bc00",
+    #         "Outbound Manifest Load": "fdf900",
+    #         "POD Details Captured": "92d050",
+    #         "POD Image Scanned": "92d050",
+    #         "Preload": "fdf900",
+    #         "Received at origin depot": "f7bc00",
+    #         "Remove from manifest/tripsheet": "f7bc00",
+    #         "Return to Client": "f7bc00",
+    #         "Return to Depot": "f7bc00",
+    #         "Reverse logistics floor check": "f7bc00",
+    #         "Swadded": "f7bc00",
+    #         "Transfer to manifest/tripsheet": "f7bc00",
+    #         "Unload manifest/tripsheet": "f7bc00",
+    #         "Other": "FFFFFF",  # Assuming white for "Other"
+    #     }
+
+    #     # Get the index of the 'Last Event' column dynamically
+    #     last_event_col_index = df.columns.get_loc("Last Event")
+
+    #     for r_idx, row in enumerate(
+    #         dataframe_to_rows(df, index=False, header=True), start=start_row
+    #     ):
+    #         for c_idx, value in enumerate(row, 1):
+    #             cell = worksheet.cell(row=r_idx, column=c_idx, value=value)
+
+    #             # Apply border to all header cells
+    #             if r_idx == start_row:  # Header row
+    #                 cell.font = Font(bold=True)
+    #                 cell.border = border  # Apply border to all header cells
+
+    #         # After writing the entire row, apply the color to the entire row based on 'Last Event'
+    #         if r_idx > start_row:  # Only color data rows
+    #             last_event = row[last_event_col_index]  # Get the last event value
+    #             for c_idx in range(
+    #                 1, len(row) + 1
+    #             ):  # Apply color to all columns in the row
+    #                 cell_to_style = worksheet.cell(row=r_idx, column=c_idx)
+    #                 cell_to_style.fill = PatternFill(
+    #                     start_color=color_mapping.get(
+    #                         last_event, "FFFFFF"
+    #                     ),  # Default to white if not found
+    #                     end_color=color_mapping.get(last_event, "FFFFFF"),
+    #                     fill_type="solid",
+    #                 )
+
+    # def append_to_template(
+    #     self, frequency_df: pd.DataFrame, collection_df: pd.DataFrame, account: str, client_name: str
+    # ) -> None:
+    #     """
+    #     Append DataFrames to the template file while preserving styling and formatting.
+    #     """
+    #     template_path = self.load_template()
+    #     wb = load_workbook(template_path)
+
+    #     # Get the current date and time in the format 'YYYY-MM-DD HH:MM:SS'
+    #     current_date_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    #     # Loop through all sheets in the workbook
+    #     for sheet in wb.sheetnames:
+    #         ws = wb[sheet]
+    #         for row in ws.iter_rows():
+    #             for cell in row:
+    #                 if cell.value == "client_name":  # Replace 'client_name' placeholder
+    #                     cell.value = client_name
+    #                 elif cell.value == "date_time":  # Replace 'date_time' placeholder
+    #                     cell.value = current_date_time
+
+    #     # Handle Current deliveries sheet
+    #     self._append_df_to_sheet(
+    #         worksheet=wb["Current deliveries"],
+    #         df=frequency_df,
+    #         start_row=wb["Current deliveries"].max_row + 2,
+    #     )
+
+    #     # Handle Completed deliveries sheet
+    #     self._append_df_to_sheet(
+    #         worksheet=wb["Completed deliveries"],
+    #         df=frequency_df,
+    #         start_row=wb["Completed deliveries"].max_row + 2,
+    #     )
+
+    #     # Handle Collections sheet
+    #     self._append_df_to_sheet(
+    #         worksheet=wb["Collections"],
+    #         df=collection_df,
+    #         start_row=wb["Collections"].max_row + 2,
+    #     )
+
+    #     wb.save(f"{self.output_file_path}/{account}.xlsx")
+
+    def _apply_color_coding(self, worksheet, df: pd.DataFrame, start_row: int) -> None:
+        """
+        Helper method to apply color coding to a worksheet based on Last Event.
+        """
         color_mapping = {
             "Attempted delivery": "f7bc00",
             "Attempted Misroute": "f7bc00",
@@ -114,6 +223,23 @@ class FrequencyReports:
         # Get the index of the 'Last Event' column dynamically
         last_event_col_index = df.columns.get_loc("Last Event")
 
+        for r_idx in range(start_row + 1, worksheet.max_row + 1):  # Skip header row
+            last_event = worksheet.cell(row=r_idx, column=last_event_col_index + 1).value
+            for c_idx in range(1, worksheet.max_column + 1):
+                cell_to_style = worksheet.cell(row=r_idx, column=c_idx)
+                cell_to_style.fill = PatternFill(
+                    start_color=color_mapping.get(last_event, "FFFFFF"),
+                    end_color=color_mapping.get(last_event, "FFFFFF"),
+                    fill_type="solid",
+                )
+
+    def _append_df_to_sheet(self, worksheet, df: pd.DataFrame, start_row: int) -> None:
+        """
+        Helper method to append a DataFrame to a worksheet starting at a specific row.
+        """
+        thin = Side(border_style="thin", color="000000")
+        border = Border(top=thin, left=thin, right=thin, bottom=thin)
+
         for r_idx, row in enumerate(
             dataframe_to_rows(df, index=False, header=True), start=start_row
         ):
@@ -123,25 +249,11 @@ class FrequencyReports:
                 # Apply border to all header cells
                 if r_idx == start_row:  # Header row
                     cell.font = Font(bold=True)
-                    cell.border = border  # Apply border to all header cells
-
-            # After writing the entire row, apply the color to the entire row based on 'Last Event'
-            if r_idx > start_row:  # Only color data rows
-                last_event = row[last_event_col_index]  # Get the last event value
-                for c_idx in range(
-                    1, len(row) + 1
-                ):  # Apply color to all columns in the row
-                    cell_to_style = worksheet.cell(row=r_idx, column=c_idx)
-                    cell_to_style.fill = PatternFill(
-                        start_color=color_mapping.get(
-                            last_event, "FFFFFF"
-                        ),  # Default to white if not found
-                        end_color=color_mapping.get(last_event, "FFFFFF"),
-                        fill_type="solid",
-                    )
+                    cell.border = border
 
     def append_to_template(
-        self, frequency_df: pd.DataFrame, collection_df: pd.DataFrame, account: str, client_name: str
+        self, current_df: pd.DataFrame, completed_df: pd.DataFrame, collection_df: pd.DataFrame, 
+        account: str, client_name: str
     ) -> None:
         """
         Append DataFrames to the template file while preserving styling and formatting.
@@ -149,34 +261,38 @@ class FrequencyReports:
         template_path = self.load_template()
         wb = load_workbook(template_path)
 
-        # Get the current date and time in the format 'YYYY-MM-DD HH:MM:SS'
+        # Get the current date and time
         current_date_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Loop through all sheets in the workbook
+        # Update placeholders in all sheets
         for sheet in wb.sheetnames:
             ws = wb[sheet]
             for row in ws.iter_rows():
                 for cell in row:
-                    if cell.value == "client_name":  # Replace 'client_name' placeholder
+                    if cell.value == "client_name":
                         cell.value = client_name
-                    elif cell.value == "date_time":  # Replace 'date_time' placeholder
+                    elif cell.value == "date_time":
                         cell.value = current_date_time
 
         # Handle Current deliveries sheet
+        ws_current = wb["Current deliveries"]
         self._append_df_to_sheet(
-            worksheet=wb["Current deliveries"],
-            df=frequency_df,
-            start_row=wb["Current deliveries"].max_row + 2,
+            worksheet=ws_current,
+            df=current_df,
+            start_row=ws_current.max_row + 2,
         )
+        self._apply_color_coding(ws_current, current_df, ws_current.max_row - current_df.shape[0])
 
         # Handle Completed deliveries sheet
+        ws_completed = wb["Completed deliveries"]
         self._append_df_to_sheet(
-            worksheet=wb["Completed deliveries"],
-            df=frequency_df,
-            start_row=wb["Completed deliveries"].max_row + 2,
+            worksheet=ws_completed,
+            df=completed_df,
+            start_row=ws_completed.max_row + 2,
         )
+        self._apply_color_coding(ws_completed, completed_df, ws_completed.max_row - completed_df.shape[0])
 
-        # Handle Collections sheet
+        # Handle Collections sheet (no color coding needed)
         self._append_df_to_sheet(
             worksheet=wb["Collections"],
             df=collection_df,
@@ -222,6 +338,7 @@ class FrequencyReports:
             self.append_to_template(
                 current_deliveries_df,
                 completed_deliveries_df,
+                collection_df_account,
                 account,
                 client_name
             )
