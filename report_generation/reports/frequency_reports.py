@@ -31,61 +31,68 @@ class FrequencyReports:
         Args:
             df: DataFrame to sort
             is_collection: Boolean indicating if this is a collection DataFrame
+            
+        Returns:
+            pd.DataFrame: Sorted DataFrame
         """
         if is_collection:
-        # Modify these column names based on your collection DataFrame's actual columns
-            return df.sort_values(
-                by=["Date"], ascending=[False]
-            )
-        else:
-            # Original sorting for frequency DataFrame
-            return df.sort_values(
-                by=["Last Event", "Waybill Date"], ascending=[True, False]
-            )
-
-
-        # TODO: Implement categorical sort on Last Event column
-
-        # order = {
-        #     "Floor check - Depot collection": 1,
-        #     "Loaded for Delivery": 2,
-        #     "Attempted delivery": 3,
-        #     "Attempted Misroute": 4,
-        #     "Mis-routed": 5,
-        #     "Customer query floor check": 6,
-        #     "Return to Client": 7,
-        #     "Return to Depot": 8,
-        #     "Floor check - Query": 9,
-        #     "Reverse logistics floor check": 10,
-        #     "Received at origin depot": 11,
-        #     "Checked in at Origin Depot": 12,
-        #     "Consignment details captured": 13,
-        #     "Floor check": 14,
-        #     "Swadded": 15,
-        #     "Manifest Transferred": 16,
-        #     "Transfer to manifest/tripsheet": 17,
-        #     "Unload manifest/tripsheet": 18,
-        #     "Inbound Manifest": 19,
-        #     "Remove from manifest/tripsheet": 20,
-        #     "Event Scan Blocked": 21,
-        #     "Preload": 22,
-        #     "Outbound Manifest Load": 23,
-        #     "Floor check - Booking cargo": 24,
-        #     "Chain store floor check": 25,
-        #     "POD Details Captured": 26,
-        #     "POD Image Scanned": 27,
-        # }
-
-        # # Use .copy() to avoid the SettingWithCopyWarning
-        # df = df.copy()
-
-        # # Create a categorical type with the specified order
-        # df['Last Event'] = pd.Categorical(df['Last Event'], categories=order.keys(), ordered=True)
-
-        # # Sort the DataFrame
-        # return df.sort_values(
-        #     by=["Last Event", "Waybill Date"], ascending=[True, False]
-        # )
+            return df.sort_values(by=["Date"], ascending=[False])
+        
+        # Define the ordered categories for Last Event
+        categories = [
+            "Floor check - Depot collection",
+            "Loaded for Delivery",
+            "Attempted delivery",
+            "Attempted Misroute",
+            "Mis-routed",
+            "Customer query floor check",
+            "Return to Client",
+            "Return to Depot",
+            "Floor check - Query",
+            "Reverse logistics floor check",
+            "Received at origin depot",
+            "Checked in at Origin Depot",
+            "Consignment details captured",
+            "Floor check",
+            "Swadded",
+            "Manifest Transferred",
+            "Transfer to manifest/tripsheet",
+            "Unload manifest/tripsheet",
+            "Inbound Manifest",
+            "Remove from manifest/tripsheet",
+            "Event Scan Blocked",
+            "Preload",
+            "Outbound Manifest Load",
+            "Floor check - Booking cargo",
+            "Chain store floor check",
+            "POD Details Captured",
+            "POD Image Scanned"
+        ]
+        
+        # Create a copy of the DataFrame
+        result_df = df.copy()
+        
+        # Store the original Last Event values
+        original_values = result_df['Last Event'].values
+        
+        # Convert Last Event to categorical and sort
+        result_df['Last Event'] = pd.Categorical(
+            original_values,
+            categories=categories,
+            ordered=True
+        )
+        
+        # Sort the DataFrame
+        result_df = result_df.sort_values(
+            by=['Last Event', 'Waybill Date'],
+            ascending=[True, False],
+            na_position='last'
+        )
+        
+        # Convert Last Event back to original type (string)
+        result_df['Last Event'] = result_df['Last Event'].astype(str)
+        
+        return result_df
 
     def _apply_color_coding(self, worksheet, df: pd.DataFrame, start_row: int) -> None:
         """

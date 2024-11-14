@@ -22,12 +22,20 @@ class ReportGeneration:
         # E.g. {frequency_report: file_name, collections_report: file_name}
         # Either use string matching or a regex to build this.
         # Use the enum below
+        frequency_file_name = None
+        collection_file_name = None
+        
         files = os.listdir(file_path)
         for file in files:
-            if file.startswith("FR Report") and file.endswith(".xlsx"):
+            if file.startswith("FR Report"):
                 frequency_file_name = file
-            elif file.startswith("Collection") and file.endswith(".xls"):
+            elif file.startswith("Collection"):
                 collection_file_name = file
+
+        if frequency_file_name is None:
+            raise FileNotFoundError(f"Frequency report file not found in directory '{file_path}'")
+        if collection_file_name is None:
+            raise FileNotFoundError(f"Collection report file not found in directory '{file_path}'")
 
         return frequency_file_name, collection_file_name
 
