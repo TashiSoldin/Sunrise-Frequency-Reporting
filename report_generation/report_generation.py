@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import pandas as pd
 from helpers.datetime_helper import DatetimeHelper
 from models.excel_handler import ExcelDataReader
@@ -22,22 +23,51 @@ class ReportGeneration:
         # E.g. {frequency_report: file_name, collections_report: file_name}
         # Either use string matching or a regex to build this.
         # Use the enum below
+        """
+        Maps input files to their respective types using case-insensitive pattern matching.
+        
+        Args:
+            file_path: Directory path containing the input files
+            
+        Returns:
+            tuple[str, str]: Tuple containing (frequency_file_name, collection_file_name)
+            
+        Raises:
+            FileNotFoundError: If either frequency or collection report file is not found
+        """
         frequency_file_name = None
         collection_file_name = None
         
-        files = os.listdir(file_path)
-        for file in files:
-            if file.startswith("FR Report"):
-                frequency_file_name = file
-            elif file.startswith("Collection"):
-                collection_file_name = file
-
-        if frequency_file_name is None:
-            raise FileNotFoundError(f"Frequency report file not found in directory '{file_path}'")
-        if collection_file_name is None:
-            raise FileNotFoundError(f"Collection report file not found in directory '{file_path}'")
-
-        return frequency_file_name, collection_file_name
+        # Define regex patterns for file matching
+        frequency_pattern = re.compile(r'^FR\s*(?:REPORT|FREPORT)', re.IGNORECASE)
+        collection_pattern = re.compile(r'^COLLECTION', re.IGNORECASE)
+        
+        try:
+            files = os.listdir(file_path)
+            
+            # Match files against patterns
+            for file in files:
+                if frequency_pattern.match(file):
+                    frequency_file_name = file
+                elif collection_pattern.match(file):
+                    collection_file_name = file
+            
+            # Check if files were found and raise appropriate errors
+            if frequency_file_name is None:
+                raise FileNotFoundError(
+                    f"Frequency report file (starting with 'FR Report' or 'FR FREPORT') "
+                    f"not found in directory '{file_path}'"
+                )
+            if collection_file_name is None:
+                raise FileNotFoundError(
+                    f"Collection report file (starting with 'Collection') "
+                    f"not found in directory '{file_path}'"
+                )
+            
+            return frequency_file_name, collection_file_name
+            
+        except (OSError, IOError) as e:
+            raise FileNotFoundError(f"Error accessing directory '{file_path}': {str(e)}")
 
     def _get_output_file_path(self, file_path: str) -> tuple[str, str]:
         output_file_path = os.path.join(file_path, os.path.basename(file_path))
