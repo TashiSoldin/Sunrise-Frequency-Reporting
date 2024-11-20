@@ -1,11 +1,12 @@
 import argparse
 import pandas as pd
 from helpers.datetime_helper import DatetimeHelper
-from models.excel_handler import ExcelDataReader
 from helpers.os_helper import OSHelper
+from helpers.string_helper import StringHelper
+from models.excel_handler import ExcelDataReader
 from reports.booking_reports import BookingReports
 from reports.frequency_reports import FrequencyReports
-from helpers.string_helper import StringHelper
+from utils.log_execution_time_decorator import log_execution_time
 
 
 class ReportGeneration:
@@ -32,6 +33,7 @@ class ReportGeneration:
             df[col] = df[col].apply(DatetimeHelper.safe_to_date)
         return df
 
+    @log_execution_time
     def generate_reports(self) -> None:
         df = ExcelDataReader(self.file_path, self.file_name).read_excel_file()
         df = self.preprocess_data(df)
