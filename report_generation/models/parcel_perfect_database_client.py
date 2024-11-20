@@ -2,8 +2,10 @@ import firebirdsql
 import pandas as pd
 
 
-class ParcelPerfectClient:
-    def __init__(self, host, database, user, password, role) -> None:
+class ParcelPerfectDatabaseClient:
+    def __init__(
+        self, host: str, database: str, user: str, password: str, role: str
+    ) -> None:
         self.host = host
         self.database = database
         self.user = user
