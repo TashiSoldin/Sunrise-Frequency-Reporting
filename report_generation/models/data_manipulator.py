@@ -17,7 +17,42 @@ class DataManipulator:
         return df
 
     def _manipulate_waybill_analysis_view(self, df: pd.DataFrame) -> pd.DataFrame:
-        return df
+        """
+        Rename DataFrame columns using a mapping dictionary.
+        
+        Args:
+            df: Input DataFrame
+            column_mapping: Dictionary mapping old column names to new ones
+            
+        Returns:
+            pd.DataFrame: DataFrame with renamed columns
+        """
+        column_mapping = {
+            'WAYDATE': 'Waybill Date',
+            'WAYBILL': 'Waybill',
+            'ACCNUM': 'Account',
+            'REFERENCE': 'Reference',
+            'CUSTNAME': 'Customer',
+            'SERVICE': 'new_name2',
+            'ORIGHUB': 'new_name2',
+            'ORIGTOWN': 'new_name2',
+            'DESTHUB': 'new_name2',
+            'DESTTOWN': 'new_name2',
+            'PIECES': 'new_name2',
+            'CHARGEMASS': 'new_name2',
+            'BOOKDATE': 'new_name2',
+            'PODDATE': 'new_name2',
+            'PODTIME': 'new_name2',
+            'PODRECIPIENT': 'new_name2',
+            'DUEDATE': 'new_name2',
+            'PODIMGPRESENT': 'new_name2',
+            'EVENTNAME': 'new_name2',
+            'LASTEVENTHUB': 'new_name2',
+            'LASTEVENTDATE': 'new_name2'
+        }
+
+        return df.rename(columns=column_mapping)
+
 
     @log_execution_time
     def manipulate_data(self) -> dict[str, pd.DataFrame]:
