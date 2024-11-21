@@ -24,7 +24,9 @@ class FrequencyReports:
         return template_path
 
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
-        return df.sort_values(by=["EVENTNAME", "WAYDATE"], ascending=[True, False])
+        return df.sort_values(
+            by=["Last Event", "Waybill Date"], ascending=[True, False]
+        )
 
     def _append_df_to_sheet(self, worksheet, df: pd.DataFrame, start_row: int) -> None:
         """
@@ -70,7 +72,7 @@ class FrequencyReports:
         }
 
         # Get the index of the 'Last Event' column dynamically
-        last_event_col_index = df.columns.get_loc("EVENTNAME")
+        last_event_col_index = df.columns.get_loc("Last Event")
 
         for r_idx, row in enumerate(
             dataframe_to_rows(df, index=False, header=True), start=start_row
@@ -141,31 +143,31 @@ class FrequencyReports:
         wb.save(f"{self.output_file_path}/{account}.xlsx")
 
     def generate_report(self) -> None:
-        account_list = self.df["ACCNUM"].unique()
+        account_list = self.df["Account"].unique()
         for account in tqdm(account_list, desc="Generating frequency reports"):
             # Split the DataFrame by Account
-            df_account = self.df[self.df["ACCNUM"] == account]
+            df_account = self.df[self.df["Account"] == account]
             df_account = self.sort_df(df_account)
 
             # Check if df_account is empty before trying to access the client name
             if df_account.empty:
                 continue  # Skip the rest of the loop if the account DataFrame is empty
 
-            client_name = df_account["CUSTNAME"].iloc[0]
+            client_name = df_account["Customer"].iloc[0]
 
             # Split the DataFrame by POD Date and Last Event
             completed_deliveries_df = df_account[
-                (df_account["PODDATE"].notna())
+                (df_account["POD Date"].notna())
                 | (
-                    df_account["EVENTNAME"].isin(
+                    df_account["Last Event"].isin(
                         ["POD Details Captured", "POD Image Scanned"]
                     )
                 )
             ]
             current_deliveries_df = df_account[
-                (df_account["PODDATE"].isna())
+                (df_account["POD Date"].isna())
                 & (
-                    ~df_account["EVENTNAME"].isin(
+                    ~df_account["Last Event"].isin(
                         ["POD Details Captured", "POD Image Scanned"]
                     )
                 )
