@@ -1,6 +1,8 @@
 import pandas as pd
 
-from models.parcel_perfect_database_client import ParcelPerfectDatabaseClient
+from clients.parcel_perfect_database_client import (
+    ParcelPerfectDatabaseClient,
+)
 from utils.log_execution_time_decorator import log_execution_time
 
 
