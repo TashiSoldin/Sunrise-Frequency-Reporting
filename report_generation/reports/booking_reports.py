@@ -7,15 +7,15 @@ class BookingReports:
         self.df = df
         self.output_file_path = output_file_path
 
-    def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
-        return df.sort_values(by="Booking Date", ascending=True)
-
     def filter_df(self, df: pd.DataFrame) -> pd.DataFrame:
         return df.loc[
             (df["Booking Date"].notna())
             & (df["Dest Hub"].isin(["CPT", "DUR", "JNB"]))
             & (df["POD Date"].isna())
         ]
+
+    def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        return df.sort_values(by="Booking Date", ascending=True)
 
     def generate_report(self) -> None:
         df = self.filter_df(self.df)
