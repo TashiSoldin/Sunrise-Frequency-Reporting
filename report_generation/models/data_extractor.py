@@ -20,7 +20,9 @@ class DataExtractor:
             LASTEVENTTIME
             FROM VIEW_WBANALYSE wba
             WHERE wba.WAYDATE >= DATEADD(-60 DAY TO CURRENT_DATE)
-            AND wba.WAYDATE <= CURRENT_DATE;
+            AND wba.WAYDATE <= CURRENT_DATE
+            AND wba.WAYBILL NOT LIKE '%~%'
+            AND wba.WAYBILL NOT LIKE 'COL%';
         """
 
     @log_execution_time

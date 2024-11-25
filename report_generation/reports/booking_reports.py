@@ -1,6 +1,8 @@
 import pandas as pd
 from tqdm import tqdm
 
+from helpers.datetime_helper import DatetimeHelper
+
 
 class BookingReports:
     def __init__(self, df: pd.DataFrame, output_file_path: str) -> None:
@@ -23,7 +25,7 @@ class BookingReports:
 
         # Create an Excel writer object
         with pd.ExcelWriter(
-            f'{self.output_file_path}/booking-report-{pd.Timestamp.now().strftime("%Y-%m-%d")}.xlsx',
+            f"{self.output_file_path}/booking-report-{DatetimeHelper.get_current_datetime()}.xlsx",
             engine="openpyxl",
         ) as writer:
             # Group the DataFrame by 'Dest Hub' and write each group to a separate sheet
