@@ -1,5 +1,4 @@
 import argparse
-from helpers.datetime_helper import DatetimeHelper
 from helpers.os_helper import OSHelper
 from models.data_extractor import DataExtractor
 from models.data_manipulator import DataManipulator
@@ -21,9 +20,7 @@ class ReportGeneration:
 
     def _get_output_file_path(self, file_path: str) -> tuple[str, str]:
         file_path_booking = f"{file_path}/booking-reports"
-        file_path_frequency = (
-            f"{file_path}/frequency-reports-{DatetimeHelper.get_current_datetime()}"
-        )
+        file_path_frequency = f"{file_path}/frequency-reports"
 
         OSHelper.create_directories([file_path_booking, file_path_frequency])
         return file_path_booking, file_path_frequency
