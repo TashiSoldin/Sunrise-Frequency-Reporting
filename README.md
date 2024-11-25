@@ -1,6 +1,6 @@
 # Sunrise-Frequency-Reporting
 
-This script generates booking and frequency reports from an Excel file.
+This script generates frequency reports using a database connection.
 
 ## Usage
 
@@ -10,55 +10,44 @@ You can run the report generation script using either the provided Makefile or d
 
 To generate reports using the Makefile:
 
-```
-make generate-report FILE="your_file_name.xlsx" [DATA_DIR="/path/to/data"]
-```
-
 Arguments:
-- `FILE`: (Required) Name of the Excel file to process. If the filename contains spaces, enclose it in quotes.
-- `DATA_DIR`: (Optional) Path to the directory containing the Excel file. Default is "../data".
+- `DATA_DIR`: (Optional) Path to the directory where the reports will be generated. Default is "data".
 
 Examples:
-1. Using default data directory:
+1. Using default output directory:
    ```
-   make generate-report FILE="FR Report 23 Oct 16h00.xlsx"
+   make generate-report
    ```
 
-2. Specifying a custom data directory:
+2. Specifying a custom output directory:
    ```
-   make generate-report FILE="FR Report 23 Oct 16h00.xlsx" DATA_DIR="/custom/path/to/data"
+   make generate-report DATA_DIR="/custom/path/to/output"
    ```
 
 ### Using Python Directly
 
 To run the script directly with Python, use the following command:
 
-```
-python report_generation/report_generation.py --file "your_file_name.xlsx" [--path "/path/to/data"]
-```
-
 Arguments:
-- `--file` or `-f`: (Required) Name of the Excel file to process. If the filename contains spaces, enclose it in quotes.
-- `--path` or `-p`: (Optional) Path to the directory containing the Excel file. Default is "../data".
+- `--output-dir` or `-out-dir`: Path to the directory where the reports will be generated. Default is "data".
 
 Examples:
-1. Using default data directory:
+1. Using default output directory:
    ```
-   python report_generation/report_generation.py --file "FR Report 23 Oct 16h00.xlsx"
-   ```
-
-2. Specifying a custom data directory:
-   ```
-   python report_generation/report_generation.py --file "FR Report 23 Oct 16h00.xlsx" --path "/custom/path/to/data"
+   python report_generation/report_generation.py
    ```
 
-3. Using short flags:
+2. Specifying a custom output directory:
    ```
-   python report_generation/report_generation.py -f "FR Report 23 Oct 16h00.xlsx" -p "/custom/path/to/data"
+   python report_generation/report_generation.py --output-dir "/custom/path/to/output"
+   ```
+
+3. Using short flag:
+   ```
+   python report_generation/report_generation.py -out-dir "/custom/path/to/output"
    ```
 
 ## Notes
 
-- Ensure that the Excel file exists in the specified directory before running the script.
-- The script will automatically create output directories for booking and frequency reports.
+- The script will automatically create output directories for booking and frequency reports within the specified output directory.
 - Make sure you have the required dependencies installed before running the script.

@@ -1,66 +1,32 @@
+from datetime import datetime
 import os
-import pandas as pd
-from tqdm import tqdm
 from openpyxl import load_workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font, Border, Side, PatternFill
-from datetime import datetime
+import pandas as pd
+from tqdm import tqdm
 
 
 class FrequencyReports:
     def __init__(self, df: pd.DataFrame, output_file_path: str) -> None:
         self.df = df
-        self.asset_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
+        self.asset_file_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets"
+        )
         self.output_file_path = output_file_path
 
     def load_template(self) -> pd.DataFrame:
-        template_path = os.path.join(self.asset_file_path, "frequency_report_template.xlsx")
+        template_path = os.path.join(
+            self.asset_file_path, "frequency_report_template.xlsx"
+        )
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Template file not found at {template_path}")
         return template_path
 
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
-        # TODO: Implement categorical sort on Last Event column
-
-        # order = {
-        #     "Floor check - Depot collection": 1,
-        #     "Loaded for Delivery": 2,
-        #     "Attempted delivery": 3,
-        #     "Attempted Misroute": 4,
-        #     "Mis-routed": 5,
-        #     "Customer query floor check": 6,
-        #     "Return to Client": 7,
-        #     "Return to Depot": 8,
-        #     "Floor check - Query": 9,
-        #     "Reverse logistics floor check": 10,
-        #     "Received at origin depot": 11,
-        #     "Checked in at Origin Depot": 12,
-        #     "Consignment details captured": 13,
-        #     "Floor check": 14,
-        #     "Swadded": 15,
-        #     "Manifest Transferred": 16,
-        #     "Transfer to manifest/tripsheet": 17,
-        #     "Unload manifest/tripsheet": 18,
-        #     "Inbound Manifest": 19,
-        #     "Remove from manifest/tripsheet": 20,
-        #     "Event Scan Blocked": 21,
-        #     "Preload": 22,
-        #     "Outbound Manifest Load": 23,
-        #     "Floor check - Booking cargo": 24,
-        #     "Chain store floor check": 25,
-        #     "POD Details Captured": 26,
-        #     "POD Image Scanned": 27,
-        # }
-
-        # # Use .copy() to avoid the SettingWithCopyWarning
-        # df = df.copy()
-
-        # # Create a categorical type with the specified order
-        # df['Last Event'] = pd.Categorical(df['Last Event'], categories=order.keys(), ordered=True)
-
-        # Sort the DataFrame
-        return df.sort_values(by=["Last Event", "Waybill Date"], ascending=[True, False])
-
+        return df.sort_values(
+            by=["Last Event", "Waybill Date"], ascending=[True, False]
+        )
 
     def _append_df_to_sheet(self, worksheet, df: pd.DataFrame, start_row: int) -> None:
         """
@@ -108,7 +74,9 @@ class FrequencyReports:
         # Get the index of the 'Last Event' column dynamically
         last_event_col_index = df.columns.get_loc("Last Event")
 
-        for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start=start_row):
+        for r_idx, row in enumerate(
+            dataframe_to_rows(df, index=False, header=True), start=start_row
+        ):
             for c_idx, value in enumerate(row, 1):
                 cell = worksheet.cell(row=r_idx, column=c_idx, value=value)
 
@@ -120,17 +88,24 @@ class FrequencyReports:
             # After writing the entire row, apply the color to the entire row based on 'Last Event'
             if r_idx > start_row:  # Only color data rows
                 last_event = row[last_event_col_index]  # Get the last event value
-                for c_idx in range(1, len(row) + 1):  # Apply color to all columns in the row
+                for c_idx in range(
+                    1, len(row) + 1
+                ):  # Apply color to all columns in the row
                     cell_to_style = worksheet.cell(row=r_idx, column=c_idx)
                     cell_to_style.fill = PatternFill(
-                        start_color=color_mapping.get(last_event, "FFFFFF"),  # Default to white if not found
+                        start_color=color_mapping.get(
+                            last_event, "FFFFFF"
+                        ),  # Default to white if not found
                         end_color=color_mapping.get(last_event, "FFFFFF"),
-                        fill_type="solid"
+                        fill_type="solid",
                     )
 
-
     def append_to_template(
-        self, current_df: pd.DataFrame, completed_df: pd.DataFrame, account: str, client_name: str
+        self,
+        current_df: pd.DataFrame,
+        completed_df: pd.DataFrame,
+        account: str,
+        client_name: str,
     ) -> None:
         """
         Append DataFrames to the template file while preserving styling and formatting.
@@ -199,8 +174,5 @@ class FrequencyReports:
             ]
 
             self.append_to_template(
-                current_deliveries_df,
-                completed_deliveries_df,
-                account,
-                client_name
+                current_deliveries_df, completed_deliveries_df, account, client_name
             )

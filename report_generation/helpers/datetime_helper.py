@@ -5,8 +5,8 @@ import numpy as np
 
 class DatetimeHelper:
     @staticmethod
-    def get_current_date() -> str:
-        return datetime.now().strftime("%Y-%m-%d")
+    def get_current_datetime() -> str:
+        return datetime.now().strftime("%Y-%m-%d %Hh%M")
 
     @staticmethod
     def safe_to_date(x):
