@@ -5,3 +5,4 @@
 data/
 .venv/
 .env
+.ruff_cache

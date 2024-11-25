@@ -24,7 +24,50 @@ class FrequencyReports:
         return template_path
 
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
-        return df.sort_values(
+        # Define the ordered categories for Last Event
+        categories = [
+            "Floor check - Depot collection",
+            "Loaded for Delivery",
+            "Attempted delivery",
+            "Attempted Misroute",
+            "Mis-routed",
+            "Customer query floor check",
+            "Return to Client",
+            "Return to Depot",
+            "Floor check - Query",
+            "Reverse logistics floor check",
+            "Received at origin depot",
+            "Checked in at Origin Depot",
+            "Consignment details captured",
+            "Floor check",
+            "Swadded",
+            "Manifest Transferred",
+            "Transfer to manifest/tripsheet",
+            "Unload manifest/tripsheet",
+            "Inbound Manifest",
+            "Remove from manifest/tripsheet",
+            "Event Scan Blocked",
+            "Preload",
+            "Outbound Manifest Load",
+            "Floor check - Booking cargo",
+            "Chain store floor check",
+            "POD Details Captured",
+            "POD Image Scanned",
+        ]
+
+        # Create a copy of the DataFrame
+        result_df = df.copy()
+
+        # Store the original Last Event values
+        original_values = result_df["Last Event"].values
+
+        # Convert Last Event to categorical and sort
+        result_df["Last Event"] = pd.Categorical(
+            original_values, categories=categories, ordered=True
+        )
+
+        # Sort the DataFrame
+        return result_df.sort_values(
             by=["Last Event", "Waybill Date"], ascending=[True, False]
         )
 
