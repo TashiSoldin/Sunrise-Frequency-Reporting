@@ -6,8 +6,6 @@ from openpyxl.styles import Font, Border, Side, PatternFill
 import pandas as pd
 from tqdm import tqdm
 
-from helpers.datetime_helper import DatetimeHelper
-
 
 class FrequencyReports:
     def __init__(self, df: pd.DataFrame, output_file_path: str) -> None:
@@ -142,9 +140,7 @@ class FrequencyReports:
             start_row=wb["Completed deliveries"].max_row + 2,
         )
 
-        wb.save(
-            f"{self.output_file_path}-{DatetimeHelper.get_current_datetime()}/{account}.xlsx"
-        )
+        wb.save(f"{self.output_file_path}/{account}.xlsx")
 
     def generate_report(self) -> None:
         account_list = self.df["Account"].unique()

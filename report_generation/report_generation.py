@@ -1,5 +1,6 @@
 import argparse
 from helpers.os_helper import OSHelper
+from helpers.datetime_helper import DatetimeHelper
 from models.data_extractor import DataExtractor
 from models.data_manipulator import DataManipulator
 from reports.booking_reports import BookingReports
@@ -19,8 +20,9 @@ class ReportGeneration:
         self._secrets = OSHelper.get_secrets()
 
     def _get_output_file_path(self, file_path: str) -> tuple[str, str]:
-        file_path_booking = f"{file_path}/booking-reports"
-        file_path_frequency = f"{file_path}/frequency-reports"
+        current_date_time = DatetimeHelper.get_current_datetime()
+        file_path_booking = f"{file_path}/booking-reports-{current_date_time}"
+        file_path_frequency = f"{file_path}/frequency-reports-{current_date_time}"
 
         OSHelper.create_directories([file_path_booking, file_path_frequency])
         return file_path_booking, file_path_frequency
