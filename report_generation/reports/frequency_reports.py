@@ -1,20 +1,15 @@
-from datetime import datetime
-import os
 from openpyxl import load_workbook
 import pandas as pd
 from tqdm import tqdm
 from helpers.excel_helper import ExcelHelper
+from helpers.os_helper import OSHelper
+from helpers.datetime_helper import DatetimeHelper
 
 
 class FrequencyReports:
     def __init__(self, df: pd.DataFrame, output_file_path: str) -> None:
         self.df = df
         self.output_file_path = output_file_path
-        self.excel_helper = ExcelHelper(
-            os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets"
-            )
-        )
 
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
         categories = [
@@ -83,23 +78,24 @@ class FrequencyReports:
                 )
             ]
 
-            template_path = self.excel_helper.load_template(
-                "frequency_report_template.xlsx"
+            template_path = OSHelper.load_template(
+                "assets/", "frequency_report_template.xlsx"
             )
-            wb = load_workbook(template_path)
+            wb = load_workbook(template_path, data_only=False)
 
             replacements = {
                 "client_name": client_name,
-                "date_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "date_time": DatetimeHelper.get_precise_current_datetime(),
             }
-            self.excel_helper.update_template_placeholders(wb, replacements)
 
-            self.excel_helper.append_df_to_sheet(
+            ExcelHelper.update_template_placeholders(wb, replacements)
+
+            ExcelHelper.append_df_to_sheet(
                 wb["Current deliveries"],
                 current_deliveries_df,
                 wb["Current deliveries"].max_row + 2,
             )
-            self.excel_helper.append_df_to_sheet(
+            ExcelHelper.append_df_to_sheet(
                 wb["Completed deliveries"],
                 completed_deliveries_df,
                 wb["Completed deliveries"].max_row + 2,

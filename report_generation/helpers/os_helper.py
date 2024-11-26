@@ -24,3 +24,10 @@ class OSHelper:
     def create_directories(paths: list[str]) -> None:
         for path in paths:
             os.makedirs(path, exist_ok=True)
+
+    @staticmethod
+    def load_template(asset_file_path: str, template_name: str) -> str:
+        template_path = os.path.join(asset_file_path, template_name)
+        if not os.path.exists(template_path):
+            raise FileNotFoundError(f"Template file not found at {template_path}")
+        return template_path

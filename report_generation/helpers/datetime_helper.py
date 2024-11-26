@@ -8,6 +8,9 @@ class DatetimeHelper:
     def get_current_datetime() -> str:
         return datetime.now().strftime("%Y-%m-%d %Hh%M")
 
+    def get_precise_current_datetime() -> str:
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     @staticmethod
     def safe_to_date(x):
         if pd.isna(x):
