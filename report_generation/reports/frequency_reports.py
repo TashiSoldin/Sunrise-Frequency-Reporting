@@ -30,11 +30,6 @@ class FrequencyReports:
         ):
             df_account = df[df["Account"] == account]
 
-            if df_account.empty:
-                # TODO: Move this to data_manipulator and filter out these values and show them to team
-                print(f"Warning: Skipping account '{account}' - no data found.")
-                continue
-
             completed_pod_events = ["POD Details Captured", "POD Image Scanned"]
             completed_mask = df_account["POD Date"].notna() | df_account[
                 "Last Event"
