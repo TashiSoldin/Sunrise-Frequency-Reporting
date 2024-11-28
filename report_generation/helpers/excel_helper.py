@@ -1,11 +1,13 @@
+from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.styles import Font, Border, Side, PatternFill
 import pandas as pd
 
 
 class ExcelHelper:
     @staticmethod
-    def update_template_placeholders(workbook, replacements: dict) -> None:
+    def update_template_placeholders(workbook: Workbook, replacements: dict) -> None:
         for sheet in workbook.sheetnames:
             ws = workbook[sheet]
             for row in ws.iter_rows():
@@ -14,7 +16,9 @@ class ExcelHelper:
                         cell.value = replacements[cell.value]
 
     @staticmethod
-    def append_df_to_sheet(worksheet, df: pd.DataFrame, start_row: int) -> None:
+    def append_df_to_sheet(
+        worksheet: Worksheet, df: pd.DataFrame, start_row: int
+    ) -> None:
         thin = Side(border_style="thin", color="000000")
         border = Border(top=thin, left=thin, right=thin, bottom=thin)
         last_event_col_index = df.columns.get_loc("Last Event")

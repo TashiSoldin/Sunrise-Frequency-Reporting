@@ -2,28 +2,66 @@ from enum import Enum
 
 
 class LastEventTypes(Enum):
+    ATTEMPTED_DELIVERY = "Attempted delivery"
+    ATTEMPTED_MISROUTE = "Attempted Misroute"
+    CHAIN_STORE_FLOOR_CHECK = "Chain store floor check"
+    CHECKED_IN_AT_ORIGIN_DEPOT = "Checked in at Origin Depot"
+    CONSIGNMENT_DETAILS_CAPTURED = "Consignment details captured"
+    CUSTOMER_QUERY_FLOOR_CHECK = "Customer query floor check"
+    EVENT_SCAN_BLOCKED = "Event Scan Blocked"
+    FLOOR_CHECK = "Floor check"
+    FLOOR_CHECK_BOOKING_CARGO = "Floor check - Booking cargo"
+    FLOOR_CHECK_DEPOT_COLLECTION = "Floor check - Depot collection"
+    FLOOR_CHECK_QUERY = "Floor check - Query"
+    INBOUND_MANIFEST = "Inbound Manifest"
     LOADED_FOR_DELIVERY = "Loaded for Delivery"
+    MANIFEST_TRANSFERRED = "Manifest Transferred"
+    MIS_ROUTED = "Mis-routed"
+    OUTBOUND_MANIFEST_LOAD = "Outbound Manifest Load"
     POD_DETAILS_CAPTURED = "POD Details Captured"
     POD_IMAGE_SCANNED = "POD Image Scanned"
-    ATTEMPTED_DELIVERY = "Attempted Delivery"
-    CHECKED_IN_AT_ORIGIN_DEPOT = "Checked in at Origin Depot"
-    CONSIGNMENT_DETAILS_CAPTURED = "Consignment Details Captured"
-    EVENT_SCAN_BLOCKED = "Event Scan Blocked"
-    FLOOR_CHECK = "Floor Check"
-    INBOUND_MANIFEST = "Inbound Manifest"
-    MANIFEST_TRANSFERRED = "Manifest Transferred"
-    MIS_ROUTED = "Mis Routed"
-    RECEIVED_AT_ORIGIN_DEPOT = "Received at Origin Depot"
-    REMOVE_FROM_MANIFEST_TRIPSHEET = "Remove from Manifest Tripsheet"
+    PRELOAD = "Preload"
+    RECEIVED_AT_ORIGIN_DEPOT = "Received at origin depot"
+    REMOVE_FROM_MANIFEST_TRIPSHEET = "Remove from manifest/tripsheet"
     RETURN_TO_CLIENT = "Return to Client"
     RETURN_TO_DEPOT = "Return to Depot"
-    REVERSE_LOGISTICS_FLOOR_CHECK = "Reverse Logistics Floor Check"
+    REVERSE_LOGISTICS_FLOOR_CHECK = "Reverse logistics floor check"
     SWADDED = "Swadded"
-    UNLOAD_MANIFEST_TRIPSHEET = "Unload Manifest Tripsheet"
-    FLOOR_CHECK_DEPOT_COLLECTION = "Floor Check Depot Collection"
-    CHAIN_STORE_FLOOR_CHECK = "Chain Store Floor Check"
-    FLOOR_CHECK_BOOKING_CARGO = "Floor Check Booking Cargo"
-    OUTBOUND_MANIFEST_LOAD = "Outbound Manifest Load"
+    TRANSFER_TO_MANIFEST_TRIPSHEET = "Transfer to manifest/tripsheet"
+    UNLOAD_MANIFEST_TRIPSHEET = "Unload manifest/tripsheet"
+
+    @classmethod
+    def get_ordered_values(cls) -> list:
+        """Returns list of enum values in the specified sort order"""
+        return [
+            cls.FLOOR_CHECK_DEPOT_COLLECTION.value,
+            cls.LOADED_FOR_DELIVERY.value,
+            cls.ATTEMPTED_DELIVERY.value,
+            cls.ATTEMPTED_MISROUTE.value,
+            cls.MIS_ROUTED.value,
+            cls.CUSTOMER_QUERY_FLOOR_CHECK.value,
+            cls.RETURN_TO_CLIENT.value,
+            cls.RETURN_TO_DEPOT.value,
+            cls.FLOOR_CHECK_QUERY.value,
+            cls.REVERSE_LOGISTICS_FLOOR_CHECK.value,
+            cls.RECEIVED_AT_ORIGIN_DEPOT.value,
+            cls.CHECKED_IN_AT_ORIGIN_DEPOT.value,
+            cls.CONSIGNMENT_DETAILS_CAPTURED.value,
+            cls.FLOOR_CHECK.value,
+            cls.SWADDED.value,
+            cls.MANIFEST_TRANSFERRED.value,
+            cls.TRANSFER_TO_MANIFEST_TRIPSHEET.value,
+            cls.UNLOAD_MANIFEST_TRIPSHEET.value,
+            cls.INBOUND_MANIFEST.value,
+            cls.REMOVE_FROM_MANIFEST_TRIPSHEET.value,
+            cls.EVENT_SCAN_BLOCKED.value,
+            cls.PRELOAD.value,
+            cls.OUTBOUND_MANIFEST_LOAD.value,
+            cls.FLOOR_CHECK_BOOKING_CARGO.value,
+            cls.CHAIN_STORE_FLOOR_CHECK.value,
+            cls.POD_DETAILS_CAPTURED.value,
+            cls.POD_IMAGE_SCANNED.value,
+        ]
 
 
 class LastEventStyles(Enum):
