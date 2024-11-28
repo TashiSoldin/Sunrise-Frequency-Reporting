@@ -26,6 +26,10 @@ class OSHelper:
             os.makedirs(path, exist_ok=True)
 
     @staticmethod
+    def run_in_terminal(command: str) -> None:
+        os.system(command)
+
+    @staticmethod
     def load_template(asset_file_path: str, template_name: str) -> str:
         template_path = os.path.join(asset_file_path, template_name)
         if not os.path.exists(template_path):

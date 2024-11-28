@@ -1,4 +1,6 @@
 import argparse
+import time
+
 from helpers.os_helper import OSHelper
 from helpers.datetime_helper import DatetimeHelper
 from models.data_extractor import DataExtractor
@@ -44,7 +46,12 @@ class ReportGeneration:
     @classmethod
     def run(cls, output_file_path: str) -> None:
         report_gen = cls(output_file_path)
+
+        OSHelper.run_in_terminal("networksetup -connectpppoeservice SunriseVPN")
+        time.sleep(10)
+
         report_gen.generate_reports()
+        OSHelper.run_in_terminal("networksetup -disconnectpppoeservice SunriseVPN")
 
 
 def main() -> None:
