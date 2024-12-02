@@ -5,6 +5,7 @@ from helpers.os_helper import OSHelper
 from helpers.datetime_helper import DatetimeHelper
 from models.data_extractor import DataExtractor
 from models.data_manipulator import DataManipulator
+from models.email_sender import EmailSender
 from reports.booking_reports import BookingReports
 from reports.frequency_reports import FrequencyReports
 from utils.log_execution_time_decorator import log_execution_time
@@ -34,14 +35,19 @@ class ReportGeneration:
         df_mapping = DataExtractor(self._secrets.get("database")).get_data()
         df_mapping = DataManipulator(df_mapping).manipulate_data()
 
-        BookingReports(
+        booking_report_summary = BookingReports(
             df_mapping.get("wba"), self.output_file_path_booking
         ).generate_report()
-        FrequencyReports(
+        frequency_report_summary = FrequencyReports(
             df_mapping.get("wba"), self.output_file_path_frequency
         ).generate_report()
 
         print("Reports generated successfully!")
+
+        # TODO: Send the summaries into an email orchestrator
+        email_sender = EmailSender()
+        for summary in [booking_report_summary, frequency_report_summary]:
+            print(email_sender, summary)
 
     @classmethod
     def run(cls, output_file_path: str) -> None:

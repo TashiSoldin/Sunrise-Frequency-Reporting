@@ -22,8 +22,9 @@ class FrequencyReports:
             by=["Last Event", "Waybill Date"], ascending=[True, False]
         )
 
-    def generate_report(self) -> None:
+    def generate_report(self) -> dict:
         df = self.sort_df(self.df)
+        summary = {}
 
         for account in tqdm(
             df["Account"].unique(), desc="Generating frequency reports"
@@ -56,4 +57,6 @@ class FrequencyReports:
                     wb[sheet_name], sheet_df, wb[sheet_name].max_row + 2
                 )
 
-            wb.save(f"{self.output_file_path}/{account}.xlsx")
+            file_path = f"{self.output_file_path}/{account}.xlsx"
+            wb.save(file_path)
+            summary[account] = file_path
