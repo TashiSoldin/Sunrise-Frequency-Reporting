@@ -13,7 +13,11 @@ class OSHelper:
                 "user": os.getenv("DB_USER"),
                 "password": os.getenv("DB_PASSWORD"),
                 "role": os.getenv("DB_ROLE"),
-            }
+            },
+            "email": {
+                "sender_email": os.getenv("SENDER_EMAIL_ADDRESS"),
+                "sender_password": os.getenv("SENDER_EMAIL_PASSWORD"),
+            },
         }
 
     @staticmethod

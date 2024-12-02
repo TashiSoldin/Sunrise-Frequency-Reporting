@@ -7,14 +7,17 @@ from utils.log_execution_time_decorator import log_execution_time
 class DataManipulator:
     def __init__(self, df_mapping: dict[str, pd.DataFrame]) -> None:
         self.df_mapping = df_mapping
-        self.specific_functions = {"wba": [(self._rename_waybill_analysis_view, {})]}
+        self.specific_functions = {
+            "account_email_mapping": [(self._convert_df_to_dict, {})],
+            "wba": [(self._rename_waybill_analysis_view, {})],
+        }
         self.base_functions = {
             "wba": [
                 (self._filter_out_none_values, {"columns": ["Account"]}),
                 (
                     self._convert_date_columns,
                     {
-                        "date_columns": [
+                        "columns": [
                             "Waybill Date",
                             "Due Date",
                             "POD Date",
@@ -24,6 +27,17 @@ class DataManipulator:
                 ),
             ]
         }
+
+    def _convert_df_to_dict(self, df: pd.DataFrame) -> dict:
+        """Convert DataFrame to dictionary mapping ACCNUM to EMAIL.
+
+        Args:
+            df: DataFrame containing ACCNUM and EMAIL columns
+
+        Returns:
+            Dictionary with ACCNUM as keys and EMAIL as values
+        """
+        return pd.Series(df["EMAIL"].values, index=df["ACCNUM"]).to_dict()
 
     def _rename_waybill_analysis_view(self, df: pd.DataFrame) -> pd.DataFrame:
         column_mapping = {
@@ -52,7 +66,6 @@ class DataManipulator:
             "LASTEVENTHUB": "Last Event Hub",
             "LASTEVENTDATE": "Last Event Date",
             "LASTEVENTTIME": "Last Event Time",
-            "PODIMGPRESENT": "new_name2",  # TODO: Fix this
         }
         return df.rename(columns=column_mapping)
 

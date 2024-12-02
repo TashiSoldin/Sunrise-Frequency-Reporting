@@ -25,9 +25,15 @@ class OutlookEmailClient:
         self.connection.close()
 
     def _create_connection(self) -> smtplib.SMTP:
-        server = smtplib.SMTP(self.smtp_server, self.smtp_port)
-        server.starttls()
-        server.login(self.sender_email, self.sender_password)
+        try:
+            server = smtplib.SMTP(self.smtp_server, self.smtp_port)
+            server.starttls()
+            server.login(self.sender_email, self.sender_password)
+        except smtplib.SMTPAuthenticationError:
+            raise ValueError("Authentication failed. Check credentials.")
+        except Exception as e:
+            raise ValueError(f"Connection failed: {e}")
+
         return server
 
     def send_email(
@@ -62,4 +68,7 @@ class OutlookEmailClient:
                     )
                     msg.attach(attachment)
 
-        self.connection.send_message(msg)
+        try:
+            self.connection.send_message(msg)
+        except (smtplib.SMTPException, OSError) as smtp_err:
+            raise ValueError(f"SMTP error: {smtp_err}")
