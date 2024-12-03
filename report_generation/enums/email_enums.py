@@ -21,6 +21,7 @@ class EmailConfigs:
     BOOKING_REPORT = EmailConfig(
         recipient_type=EmailRecipientType.INTERNAL,
         default_recipients=[
+            "larry@sunriselogistics.net",
             "hatchjhb@sunriselogistics.net",
             "hatchcpt@sunriselogistics.net",
             "hatchdbn@sunriselogistics.net",
@@ -52,7 +53,10 @@ class EmailConfigs:
 
     FREQUENCY_REPORT = EmailConfig(
         recipient_type=EmailRecipientType.ACCOUNT,
-        default_recipients=["christine@sunriselogistics.net"],
+        default_recipients=[
+            "larry@sunriselogistics.net",
+            "christine@sunriselogistics.net",
+        ],
         subject=f"Frequency Report {DatetimeHelper.get_current_datetime()}",
         body="""
             <html>

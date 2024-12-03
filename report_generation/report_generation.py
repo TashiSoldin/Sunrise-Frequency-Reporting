@@ -35,25 +35,26 @@ class ReportGeneration:
         booking_report_summary = BookingReports(
             df_mapping.get("wba"), self.output_file_path_booking
         ).generate_report()
+        print(len(booking_report_summary))
 
-        EmailSender(
-            email_secrets=self._secrets.get("email"),
-            email_config=EmailConfigs.get_config("booking"),
-            report_summary=booking_report_summary,
-        ).send_emails()
+        # EmailSender(
+        #     email_secrets=self._secrets.get("email"),
+        #     email_config=EmailConfigs.get_config("booking"),
+        #     report_summary=booking_report_summary,
+        # ).send_emails()
 
     def _generate_and_send_frequency_reports(self, df_mapping: dict) -> None:
         frequency_report_summary = FrequencyReports(
             df_mapping.get("wba"), self.output_file_path_frequency
         ).generate_report()
-        print(len(frequency_report_summary))
+        # print(len(frequency_report_summary))
 
-        # EmailSender(
-        #     email_secrets=self._secrets.get("email"),
-        #     email_config=EmailConfigs.get_config("frequency"),
-        #     report_summary=frequency_report_summary,
-        #     account_email_mapping=df_mapping.get("account_email_mapping"),
-        # ).send_emails()
+        EmailSender(
+            email_secrets=self._secrets.get("email"),
+            email_config=EmailConfigs.get_config("frequency"),
+            report_summary=frequency_report_summary,
+            account_email_mapping=df_mapping.get("account_email_mapping"),
+        ).send_emails()
 
     @log_execution_time
     def generate_reports(self) -> None:

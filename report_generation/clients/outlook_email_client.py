@@ -72,3 +72,38 @@ class OutlookEmailClient:
             self.connection.send_message(msg)
         except (smtplib.SMTPException, OSError) as smtp_err:
             raise ValueError(f"SMTP error: {smtp_err}")
+
+    def send_email_with_memory_attachment(
+        self,
+        recipient_email: str,
+        subject: str,
+        body: str,
+        attachment_data: bytes,
+        attachment_name: str,
+    ) -> None:
+        """
+        Send a single email with an in-memory attachment.
+
+        Args:
+            recipient_email (str): Email address of the recipient
+            subject (str): Email subject line
+            body (str): Email body content
+            attachment_data (bytes): The attachment data in bytes
+            attachment_name (str): Name to give the attachment file
+        """
+        msg = MIMEMultipart()
+        msg["From"] = self.sender_email
+        msg["To"] = recipient_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "html"))
+
+        attachment = MIMEApplication(attachment_data, _subtype="zip")
+        attachment.add_header(
+            "Content-Disposition", "attachment", filename=attachment_name
+        )
+        msg.attach(attachment)
+
+        try:
+            self.connection.send_message(msg)
+        except (smtplib.SMTPException, OSError) as smtp_err:
+            raise ValueError(f"SMTP error: {smtp_err}")

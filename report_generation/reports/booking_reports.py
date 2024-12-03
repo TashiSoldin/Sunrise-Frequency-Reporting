@@ -10,8 +10,10 @@ class BookingReports:
         self.output_file_path = output_file_path
 
     def filter_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        tomorrow = DatetimeHelper.get_tomorrows_date()
         return df.loc[
             (df["Booking Date"].notna())
+            & (df["Booking Date"] == tomorrow)
             & (df["Dest Hub"].isin(["CPT", "DUR", "JNB"]))
             & (df["POD Date"].isna())
         ]

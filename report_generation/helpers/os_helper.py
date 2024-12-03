@@ -1,5 +1,7 @@
 from dotenv import load_dotenv
+import io
 import os
+import zipfile
 
 
 class OSHelper:
@@ -39,3 +41,21 @@ class OSHelper:
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Template file not found at {template_path}")
         return template_path
+
+    @staticmethod
+    def create_zip_in_memory(files: list[str]) -> io.BytesIO:
+        """Creates a zip file in memory from the given files.
+
+        Args:
+            files: List of file paths to zip
+
+        Returns:
+            BytesIO object containing the zip file
+        """
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for file_path in files:
+                zip_file.write(file_path, os.path.basename(file_path))
+
+        zip_buffer.seek(0)
+        return zip_buffer

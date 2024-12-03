@@ -24,7 +24,7 @@ class DataExtractor:
             AND wba.WAYBILL NOT LIKE 'COL%';
         """
 
-    def _get_contacts(self) -> str:
+    def _get_account_and_email_mapping(self) -> str:
         return """
         SELECT ACCNUM, EMAIL 
         FROM CONTACT
@@ -36,6 +36,8 @@ class DataExtractor:
         with self.pp_client as client:
             result = {
                 "wba": client.execute_query(self._waybill_analysis_view()),
-                "account_email_mapping": client.execute_query(self._get_contacts()),
+                "account_email_mapping": client.execute_query(
+                    self._get_account_and_email_mapping()
+                ),
             }
         return result

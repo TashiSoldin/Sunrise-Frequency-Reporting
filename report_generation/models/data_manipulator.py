@@ -21,6 +21,7 @@ class DataManipulator:
                             "Waybill Date",
                             "Due Date",
                             "POD Date",
+                            "Booking Date",
                             "Last Event Date",
                         ]
                     },

@@ -1,4 +1,4 @@
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 import pandas as pd
 import numpy as np
 
@@ -10,6 +10,15 @@ class DatetimeHelper:
 
     def get_precise_current_datetime() -> str:
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def get_tomorrows_date() -> datetime.date:
+        """
+        Returns tomorrow's date as a datetime.date object.
+
+        Returns:
+            datetime.date: Tomorrow's date in YYYY-MM-DD format
+        """
+        return (datetime.now() + timedelta(days=1)).date()
 
     @staticmethod
     def safe_to_date(x):
