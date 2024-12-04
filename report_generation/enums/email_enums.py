@@ -56,6 +56,7 @@ class EmailConfigs:
         default_recipients=[
             "larry@sunriselogistics.net",
             "christine@sunriselogistics.net",
+            "raeesa@sunriselogistics.net",
         ],
         subject=f"Frequency Report {DatetimeHelper.get_current_datetime()}",
         body="""
