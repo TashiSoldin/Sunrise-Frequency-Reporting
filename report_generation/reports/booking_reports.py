@@ -10,8 +10,10 @@ class BookingReports:
         self.output_file_path = output_file_path
 
     def filter_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        tomorrow = DatetimeHelper.get_tomorrows_date()
         return df.loc[
             (df["Booking Date"].notna())
+            & (df["Booking Date"] == tomorrow)
             & (df["Dest Hub"].isin(["CPT", "DUR", "JNB"]))
             & (df["POD Date"].isna())
         ]
@@ -19,13 +21,14 @@ class BookingReports:
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
         return df.sort_values(by="Booking Date", ascending=True)
 
-    def generate_report(self) -> None:
+    def generate_report(self) -> dict:
         df = self.filter_df(self.df)
         df = self.sort_df(df)
 
+        file_path = f"{self.output_file_path}/booking-report-{DatetimeHelper.get_current_datetime()}.xlsx"
         # Create an Excel writer object
         with pd.ExcelWriter(
-            f"{self.output_file_path}/booking-report-{DatetimeHelper.get_current_datetime()}.xlsx",
+            file_path,
             engine="openpyxl",
         ) as writer:
             # Group the DataFrame by 'Dest Hub' and write each group to a separate sheet
@@ -33,3 +36,5 @@ class BookingReports:
                 df.groupby("Dest Hub"), desc="Generating booking reports"
             ):
                 group.to_excel(writer, sheet_name=category, index=False)
+
+        return {"internal": file_path}

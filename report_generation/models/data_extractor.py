@@ -7,9 +7,8 @@ from utils.log_execution_time_decorator import log_execution_time
 
 
 class DataExtractor:
-    def __init__(self, database_data: dict) -> None:
-        self.database_data = database_data
-        self.pp_client = ParcelPerfectDatabaseClient(**database_data)
+    def __init__(self, database_secrets: dict) -> None:
+        self.pp_client = ParcelPerfectDatabaseClient(**database_secrets)
 
     def _waybill_analysis_view(self) -> str:
         return """
@@ -25,8 +24,20 @@ class DataExtractor:
             AND wba.WAYBILL NOT LIKE 'COL%';
         """
 
+    def _get_account_and_email_mapping(self) -> str:
+        return """
+        SELECT ACCNUM, EMAIL 
+        FROM CONTACT
+        WHERE NAME = 'Frequency Report';
+        """
+
     @log_execution_time
     def get_data(self) -> dict[str, pd.DataFrame]:
         with self.pp_client as client:
-            result = {"wba": client.execute_query(self._waybill_analysis_view())}
+            result = {
+                "wba": client.execute_query(self._waybill_analysis_view()),
+                "account_email_mapping": client.execute_query(
+                    self._get_account_and_email_mapping()
+                ),
+            }
         return result

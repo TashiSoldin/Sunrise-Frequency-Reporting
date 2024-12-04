@@ -1,8 +1,12 @@
 import argparse
+import time
+
+from enums.email_enums import EmailConfigs
 from helpers.os_helper import OSHelper
 from helpers.datetime_helper import DatetimeHelper
 from models.data_extractor import DataExtractor
 from models.data_manipulator import DataManipulator
+from models.email_sender import EmailSender
 from reports.booking_reports import BookingReports
 from reports.frequency_reports import FrequencyReports
 from utils.log_execution_time_decorator import log_execution_time
@@ -27,24 +31,50 @@ class ReportGeneration:
         OSHelper.create_directories([file_path_booking, file_path_frequency])
         return file_path_booking, file_path_frequency
 
+    def _generate_and_send_booking_report(self, df_mapping: dict) -> None:
+        booking_report_summary = BookingReports(
+            df_mapping.get("wba"), self.output_file_path_booking
+        ).generate_report()
+        print(len(booking_report_summary))
+
+        # EmailSender(
+        #     email_secrets=self._secrets.get("email"),
+        #     email_config=EmailConfigs.get_config("booking"),
+        #     report_summary=booking_report_summary,
+        # ).send_emails()
+
+    def _generate_and_send_frequency_reports(self, df_mapping: dict) -> None:
+        frequency_report_summary = FrequencyReports(
+            df_mapping.get("wba"), self.output_file_path_frequency
+        ).generate_report()
+        # print(len(frequency_report_summary))
+
+        EmailSender(
+            email_secrets=self._secrets.get("email"),
+            email_config=EmailConfigs.get_config("frequency"),
+            report_summary=frequency_report_summary,
+            account_email_mapping=df_mapping.get("account_email_mapping"),
+        ).send_emails()
+
     @log_execution_time
     def generate_reports(self) -> None:
         df_mapping = DataExtractor(self._secrets.get("database")).get_data()
         df_mapping = DataManipulator(df_mapping).manipulate_data()
 
-        BookingReports(
-            df_mapping.get("wba"), self.output_file_path_booking
-        ).generate_report()
-        FrequencyReports(
-            df_mapping.get("wba"), self.output_file_path_frequency
-        ).generate_report()
+        self._generate_and_send_booking_report(df_mapping)
+        self._generate_and_send_frequency_reports(df_mapping)
 
         print("Reports generated successfully!")
 
     @classmethod
     def run(cls, output_file_path: str) -> None:
         report_gen = cls(output_file_path)
+
+        OSHelper.run_in_terminal("networksetup -connectpppoeservice SunriseVPN")
+        time.sleep(10)
+
         report_gen.generate_reports()
+        OSHelper.run_in_terminal("networksetup -disconnectpppoeservice SunriseVPN")
 
 
 def main() -> None:
