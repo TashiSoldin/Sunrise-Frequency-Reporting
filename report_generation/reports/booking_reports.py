@@ -25,6 +25,9 @@ class BookingReports:
         df = self.filter_df(self.df)
         df = self.sort_df(df)
 
+        if df.empty:
+            return {}
+
         file_path = f"{self.output_file_path}/booking-report-{DatetimeHelper.get_current_datetime()}.xlsx"
         # Create an Excel writer object
         with pd.ExcelWriter(
