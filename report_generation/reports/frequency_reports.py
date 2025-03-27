@@ -59,6 +59,9 @@ class FrequencyReports:
 
             file_path = f"{self.output_file_path}/{account}.xlsx"
             wb.save(file_path)
-            summary[account] = file_path
+            summary[account] = {
+                "file_path": file_path,
+                "client_name": df_account["Customer"].iloc[0],
+            }
 
         return summary

@@ -13,6 +13,25 @@ class EmailSender:
         report_summary: dict,
         account_email_mapping: dict | None = None,
     ) -> None:
+        """
+        Args:
+            email_secrets (dict): The email secrets.
+            email_config (EmailConfig): The email configuration.
+            report_summary (dict): The report summary.
+            account_email_mapping (dict | None, optional): The account email mapping. Defaults to None.
+
+            Example report_summary:
+            {
+                "1234567890": {
+                    "file_path": "path/to/file.xlsx",
+                    "client_name": "Client Name"
+                },
+                "1234567891": {
+                    "file_path": "path/to/file2.xlsx",
+                    "client_name": "Client Name 2"
+                }
+            }
+        """
         self.email_client = OutlookEmailClient(**email_secrets)
         self.report_summary = report_summary
         self.email_config = email_config
@@ -30,10 +49,10 @@ class EmailSender:
 
     def _send_internal_reports(self) -> None:
         """Sends all reports to default recipients when in internal mode."""
-        for attachment in tqdm(
+        for summary in tqdm(
             self.report_summary.values(), desc="Sending internal reports"
         ):
-            self._send_to_default_recipients(attachment)
+            self._send_to_default_recipients(summary["file_path"])
 
     def _group_files_by_recipient(self) -> tuple[dict, list]:
         """
@@ -41,39 +60,43 @@ class EmailSender:
         Only used in account-based email mode.
 
         Returns:
-            tuple: (files_with_recipients, files_without_recipients)
+            tuple: (summaries_with_recipients, summaries_without_recipients)
         """
-        files_with_recipients = {}
-        files_without_recipients = []
+        summaries_with_recipients = {}
+        summaries_without_recipients = []
 
-        for account_number, attachment in self.report_summary.items():
+        for account_number, summary in self.report_summary.items():
             mapped_email = self.account_email_mapping.get(account_number)
             if mapped_email:
-                files_with_recipients[account_number] = attachment
+                summaries_with_recipients[account_number] = summary
             else:
-                files_without_recipients.append(attachment)
+                summaries_without_recipients.append(summary)
 
-        return files_with_recipients, files_without_recipients
+        return summaries_with_recipients, summaries_without_recipients
 
     def _send_account_based_emails(self) -> None:
         """Handles sending emails in account-based mode."""
-        files_with_recipients, files_without_recipients = (
+        summaries_with_recipients, summaries_without_recipients = (
             self._group_files_by_recipient()
         )
 
         # Send individual emails for mapped recipients
-        for account_number, attachment in tqdm(
-            files_with_recipients.items(), desc="Sending frequency reports with emails"
+        for account_number, summary in tqdm(
+            summaries_with_recipients.items(),
+            desc="Sending frequency reports with emails",
         ):
             self.email_client.send_email(
                 recipient_email=self.account_email_mapping.get(account_number),
-                subject=self.email_config.subject,
+                subject=f"{summary['client_name']} - {self.email_config.subject}",
                 body=self.email_config.body,
-                attachments=[attachment],
+                attachments=[summary["file_path"]],
             )
 
         # Handle files without recipients
-        if files_without_recipients:
+        if summaries_without_recipients:
+            files_without_recipients = [
+                summary["file_path"] for summary in summaries_without_recipients
+            ]
             zip_buffer = OSHelper.create_zip_in_memory(files_without_recipients)
 
             # Send the in-memory zip file
