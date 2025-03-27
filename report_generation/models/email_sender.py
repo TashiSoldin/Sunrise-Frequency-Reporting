@@ -94,7 +94,10 @@ class EmailSender:
 
         # Handle files without recipients
         if summaries_without_recipients:
-            zip_buffer = OSHelper.create_zip_in_memory(summaries_without_recipients)
+            files_without_recipients = [
+                summary["file_path"] for summary in summaries_without_recipients
+            ]
+            zip_buffer = OSHelper.create_zip_in_memory(files_without_recipients)
 
             # Send the in-memory zip file
             for recipient_email in tqdm(
