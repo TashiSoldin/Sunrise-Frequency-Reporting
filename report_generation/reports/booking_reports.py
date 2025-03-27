@@ -40,4 +40,4 @@ class BookingReports:
             ):
                 group.to_excel(writer, sheet_name=category, index=False)
 
-        return {"internal": file_path}
+        return {"internal": {"file_path": file_path, "client_name": "Internal"}}
