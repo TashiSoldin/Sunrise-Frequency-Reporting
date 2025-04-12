@@ -3,6 +3,7 @@
 .python-version
 
 data/
+logs/
 .venv/
 .env
 .ruff_cache

@@ -1,0 +1,48 @@
+2025-04-12 21:29:18,823 - __main__ - INFO - Starting report generation for types: ['frequency']
+2025-04-12 21:29:18,824 - __main__ - INFO - Generating reports of types: ['frequency']
+2025-04-12 21:30:46,567 - __main__ - INFO - Starting report generation for types: ['frequency']
+2025-04-12 21:30:46,569 - __main__ - INFO - Generating reports of types: ['frequency']
+2025-04-12 21:30:46,569 - __main__ - INFO - Extracting data from database
+2025-04-12 21:34:13,077 - __main__ - INFO - Starting report generation for types: ['frequency']
+2025-04-12 21:34:13,078 - __main__ - INFO - Generating reports of types: ['frequency']
+2025-04-12 21:34:13,078 - __main__ - INFO - Extracting data from database
+2025-04-12 21:36:36,987 - utils.log_execution_time_decorator - INFO - get_data took 143.912133 seconds
+2025-04-12 21:36:36,989 - __main__ - INFO - Manipulating extracted data
+2025-04-12 21:36:38,890 - utils.log_execution_time_decorator - INFO - manipulate_data took 1.900676 seconds
+2025-04-12 21:36:38,890 - __main__ - INFO - Generating frequency report
+2025-04-12 21:37:04,961 - __main__ - INFO - Sending frequency report emails
+2025-04-12 21:37:04,962 - __main__ - INFO - Frequency report emails sent successfully
+2025-04-12 21:37:04,962 - __main__ - INFO - Reports generated successfully!
+2025-04-12 21:37:04,979 - utils.log_execution_time_decorator - INFO - generate_reports took 171.905655 seconds
+2025-04-12 21:37:04,979 - __main__ - INFO - Report generation completed successfully
+2025-04-12 21:39:03,719 - __main__ - INFO - Starting report generation for types: ['frequency']
+2025-04-12 21:39:03,720 - __main__ - INFO - Generating reports of types: ['frequency']
+2025-04-12 21:39:03,720 - __main__ - INFO - Extracting data from database
+2025-04-12 21:39:29,239 - utils.log_execution_time_decorator - INFO - get_data took 25.519171 seconds
+2025-04-12 21:39:29,241 - __main__ - INFO - Manipulating extracted data
+2025-04-12 21:39:29,261 - models.data_manipulator - WARNING - Found 1 None values in column 'Account'
+2025-04-12 21:39:29,274 - models.data_manipulator - INFO - Removed 1 rows containing None values
+2025-04-12 21:39:31,130 - utils.log_execution_time_decorator - INFO - manipulate_data took 1.888696 seconds
+2025-04-12 21:39:31,130 - __main__ - INFO - Generating frequency report
+2025-04-12 21:39:56,010 - __main__ - INFO - Sending frequency report emails
+2025-04-12 21:39:56,010 - __main__ - INFO - Frequency report emails sent successfully
+2025-04-12 21:39:56,010 - __main__ - INFO - Reports generated successfully!
+2025-04-12 21:39:56,032 - utils.log_execution_time_decorator - INFO - generate_reports took 52.313695 seconds
+2025-04-12 21:39:56,032 - __main__ - INFO - Report generation completed successfully
+2025-04-12 21:43:06,158 - __main__ - INFO - Starting report generation for types: ['booking', 'frequency']
+2025-04-12 21:43:06,159 - __main__ - INFO - Generating reports of types: ['booking', 'frequency']
+2025-04-12 21:43:06,159 - __main__ - INFO - Extracting data from database
+2025-04-12 21:43:31,858 - utils.log_execution_time_decorator - INFO - get_data took 25.699880 seconds
+2025-04-12 21:43:31,859 - __main__ - INFO - Manipulating extracted data
+2025-04-12 21:43:31,884 - models.data_manipulator - WARNING - Found 1 None values in column 'Account'
+2025-04-12 21:43:31,905 - models.data_manipulator - INFO - Removed 1 rows containing None values
+2025-04-12 21:43:33,792 - utils.log_execution_time_decorator - INFO - manipulate_data took 1.932970 seconds
+2025-04-12 21:43:33,792 - __main__ - INFO - Generating booking report
+2025-04-12 21:43:33,829 - __main__ - INFO - Sending booking report emails
+2025-04-12 21:43:33,829 - __main__ - INFO - Booking report emails sent successfully
+2025-04-12 21:43:33,829 - __main__ - INFO - Generating frequency report
+2025-04-12 21:43:59,810 - __main__ - INFO - Sending frequency report emails
+2025-04-12 21:43:59,811 - __main__ - INFO - Frequency report emails sent successfully
+2025-04-12 21:43:59,811 - __main__ - INFO - Reports generated successfully!
+2025-04-12 21:43:59,826 - utils.log_execution_time_decorator - INFO - generate_reports took 53.668608 seconds
+2025-04-12 21:43:59,826 - __main__ - INFO - Report generation completed successfully

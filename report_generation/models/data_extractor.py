@@ -3,6 +3,7 @@ import pandas as pd
 from clients.parcel_perfect_database_client import (
     ParcelPerfectDatabaseClient,
 )
+from utils.retry_decorator import retry
 from utils.log_execution_time_decorator import log_execution_time
 
 
@@ -32,6 +33,7 @@ class DataExtractor:
         """
 
     @log_execution_time
+    @retry(max_attempts=3, delay=20, backoff=2)
     def get_data(self) -> dict[str, pd.DataFrame]:
         with self.pp_client as client:
             result = {

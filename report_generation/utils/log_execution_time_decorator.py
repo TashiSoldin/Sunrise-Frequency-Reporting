@@ -1,5 +1,8 @@
 import time
 from functools import wraps
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 
 def log_execution_time(func):
@@ -38,7 +41,7 @@ def log_execution_time(func):
         result = func(*args, **kwargs)
         end_time = time.perf_counter()
         execution_time = end_time - start_time
-        print(f"{func.__name__} took {execution_time:.6f} seconds")
+        logger.info(f"{func.__name__} took {execution_time:.6f} seconds")
         return result
 
     return wrapper

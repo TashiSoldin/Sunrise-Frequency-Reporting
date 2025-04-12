@@ -1,7 +1,10 @@
+import logging
 import pandas as pd
-
 from helpers.datetime_helper import DatetimeHelper
+from utils.retry_decorator import retry
 from utils.log_execution_time_decorator import log_execution_time
+
+logger = logging.getLogger(__name__)
 
 
 class DataManipulator:
@@ -75,13 +78,13 @@ class DataManipulator:
     ) -> pd.DataFrame:
         initial_rows = len(df)
         [
-            print(f"Found {n} None values in column '{col}'")
+            logger.warning(f"Found {n} None values in column '{col}'")
             for col, n in ((col, df[col].isna().sum()) for col in columns)
             if n > 0
         ]
 
         df = df.dropna(subset=columns)
-        print(f"Removed {initial_rows - len(df)} rows containing None values")
+        logger.info(f"Removed {initial_rows - len(df)} rows containing None values")
         return df
 
     def _convert_date_columns(
@@ -92,6 +95,7 @@ class DataManipulator:
         return df
 
     @log_execution_time
+    @retry(max_attempts=3, delay=5, backoff=2)
     def manipulate_data(self) -> dict[str, pd.DataFrame]:
         for key, value in self.df_mapping.items():
             specific_funcs = self.specific_functions.get(key, [])
