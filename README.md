@@ -39,19 +39,19 @@ Use the provided `run_reports.bat` file:
 
 ```cmd
 # Generate both booking and frequency reports
-run_reports.bat
+run_reports.bat --all
 
 # Generate only booking reports
-run_reports.bat --report-type booking
+run_reports.bat --booking
 
 # Generate only frequency reports
-run_reports.bat --report-type frequency
+run_reports.bat --frequency
 ```
 
-You can specify a custom output directory and Python interpreter:
+You can specify a custom output directory:
 
 ```cmd
-run_reports.bat --report-type booking --output-dir "C:\reports" --python "C:\path\to\python.exe"
+run_reports.bat --booking --output-dir "C:\reports"
 ```
 
 ### Direct Python Execution
@@ -68,21 +68,20 @@ Create two scheduled tasks in Windows Task Scheduler:
 
 1. **Frequency Report (11am on weekdays)**:
    - Program/script: `C:\path\to\run_reports.bat`
-   - Arguments: `--report-type frequency --output-dir "C:\path\to\reports"`
+   - Arguments: `--frequency --output-dir "C:\path\to\reports"`
    - Schedule: Daily, Monday-Friday at 11:00 AM
 
 2. **All Reports (4pm on weekdays)**:
    - Program/script: `C:\path\to\run_reports.bat`
-   - Arguments: `--report-type all --output-dir "C:\path\to\reports"`
+   - Arguments: `--all --output-dir "C:\path\to\reports"`
    - Schedule: Daily, Monday-Friday at 4:00 PM
 
 ## Logging and Error Handling
 
-The system logs all activities to `report_generation.log` in the execution directory.
-
-The data extraction and manipulation operations have built-in retry logic:
-- 3 retry attempts with exponential backoff
-- Detailed error logs to help with troubleshooting
+The system logs all activities to the `logs` directory with automatic rotation:
+- Logs are kept for 30 days
+- Daily rotation at midnight
+- Detailed information about execution time and errors
 
 ## Troubleshooting
 
