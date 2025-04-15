@@ -50,6 +50,7 @@ class EmailSender:
                 attachments=[attachment],
             )
             logger.info(f"Internal email sent to {recipient_email}")
+        logger.info("All internal emails sent successfully")
 
     def _send_internal_reports(self) -> None:
         """Sends all reports to default recipients when in internal mode."""
@@ -100,6 +101,7 @@ class EmailSender:
                 attachments=[summary["file_path"]],
             )
             logger.info(f"External email sent to {recipient_email}")
+        logger.info("All external emails sent successfully")
 
         # Handle files without recipients
         if summaries_without_recipients:
@@ -121,6 +123,7 @@ class EmailSender:
                     attachment_name=f"frequency_reports {DatetimeHelper.get_current_datetime()}.zip",
                 )
                 logger.info(f"Internal email sent to {recipient_email}")
+            logger.info("All internal emails sent successfully")
 
     def send_emails(self) -> None:
         """Sends emails based on the configured recipient type."""
