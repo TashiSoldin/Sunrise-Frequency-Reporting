@@ -39,19 +39,19 @@ Use the provided `run_reports.bat` file:
 
 ```cmd
 # Generate both booking and frequency reports
-run_reports.bat --all
+./run_reports.bat --all
 
 # Generate only booking reports
-run_reports.bat --booking
+./run_reports.bat --booking
 
 # Generate only frequency reports
-run_reports.bat --frequency
+./run_reports.bat --frequency
 ```
 
 You can specify a custom output directory:
 
 ```cmd
-run_reports.bat --booking --output-dir "C:\reports"
+./run_reports.bat --booking --output-dir "C:\reports"
 ```
 
 ### Direct Python Execution

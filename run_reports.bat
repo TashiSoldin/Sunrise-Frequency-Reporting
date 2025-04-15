@@ -3,11 +3,8 @@ setlocal enabledelayedexpansion
 
 :: Set default values
 set "OUTPUT_DIR=data"
-set "PYTHON_CMD=python"
+set "PYTHON_CMD=uv run"
 set "SCRIPT=report_generation/report_generation.py"
-
-:: Activate virtual environment
-call venv\Scripts\activate.bat
 
 :: Process command line arguments
 set "REPORT_TYPE="
@@ -64,8 +61,6 @@ echo   run_reports.bat --booking --output-dir C:\reports
 echo   run_reports.bat --frequency
 
 :end
-:: Deactivate virtual environment
-call deactivate
 
 endlocal
 exit /b 0
