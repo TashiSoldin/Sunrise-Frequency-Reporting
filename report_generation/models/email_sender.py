@@ -1,8 +1,11 @@
+import logging
 from tqdm import tqdm
 from clients.outlook_email_client import OutlookEmailClient
 from enums.email_enums import EmailConfig, EmailRecipientType
 from helpers.datetime_helper import DatetimeHelper
 from helpers.os_helper import OSHelper
+
+logger = logging.getLogger(__name__)
 
 
 class EmailSender:
@@ -46,6 +49,7 @@ class EmailSender:
                 body=self.email_config.body,
                 attachments=[attachment],
             )
+            logger.info(f"Internal email sent to {recipient_email}")
 
     def _send_internal_reports(self) -> None:
         """Sends all reports to default recipients when in internal mode."""
@@ -72,6 +76,9 @@ class EmailSender:
             else:
                 summaries_without_recipients.append(summary)
 
+        logger.info(f"Summaries with recipients: {summaries_with_recipients}")
+        logger.info(f"Summaries without recipients: {summaries_without_recipients}")
+
         return summaries_with_recipients, summaries_without_recipients
 
     def _send_account_based_emails(self) -> None:
@@ -85,12 +92,14 @@ class EmailSender:
             summaries_with_recipients.items(),
             desc="Sending frequency reports with emails",
         ):
+            recipient_email = self.account_email_mapping.get(account_number)
             self.email_client.send_email(
-                recipient_email=self.account_email_mapping.get(account_number),
+                recipient_email=recipient_email,
                 subject=f"{summary['client_name']} - {self.email_config.subject}",
                 body=self.email_config.body,
                 attachments=[summary["file_path"]],
             )
+            logger.info(f"External email sent to {recipient_email}")
 
         # Handle files without recipients
         if summaries_without_recipients:
@@ -111,6 +120,7 @@ class EmailSender:
                     attachment_data=zip_buffer.getvalue(),
                     attachment_name=f"frequency_reports {DatetimeHelper.get_current_datetime()}.zip",
                 )
+                logger.info(f"Internal email sent to {recipient_email}")
 
     def send_emails(self) -> None:
         """Sends emails based on the configured recipient type."""
