@@ -1,53 +1,92 @@
-# Sunrise-Frequency-Reporting
+# Sunrise Frequency Reporting
 
-This script generates frequency reports using a database connection.
+This system generates booking and frequency reports for the Sunrise application.
 
-## Usage
+## Setup
 
-You can run the report generation script using either the provided Makefile or directly with Python.
-
-### Using the Makefile
-
-To generate reports using the Makefile:
-
-Arguments:
-- `DATA_DIR`: (Optional) Path to the directory where the reports will be generated. Default is "data".
-
-Examples:
-1. Using default output directory:
+1. Ensure Python 3.x is installed on your system
+2. Install required dependencies:
    ```
-   make generate-report
+   pip install -r requirements.txt
    ```
 
-2. Specifying a custom output directory:
-   ```
-   make generate-report DATA_DIR="/custom/path/to/output"
-   ```
+## Running Reports
 
-### Using Python Directly
+### On macOS/Linux (using Makefile)
 
-To run the script directly with Python, use the following command:
+The system provides three main targets in the Makefile:
 
-Arguments:
-- `--output-dir` or `-out-dir`: Path to the directory where the reports will be generated. Default is "data".
+```bash
+# Generate both booking and frequency reports
+make generate-all-reports
 
-Examples:
-1. Using default output directory:
-   ```
-   python report_generation/report_generation.py
-   ```
+# Generate only booking reports
+make generate-booking-report
 
-2. Specifying a custom output directory:
-   ```
-   python report_generation/report_generation.py --output-dir "/custom/path/to/output"
-   ```
+# Generate only frequency reports
+make generate-frequency-report
+```
 
-3. Using short flag:
-   ```
-   python report_generation/report_generation.py -out-dir "/custom/path/to/output"
-   ```
+You can specify a custom output directory:
 
-## Notes
+```bash
+make generate-all-reports DATA_DIR="/custom/path/to/output"
+```
 
-- The script will automatically create output directories for booking and frequency reports within the specified output directory.
-- Make sure you have the required dependencies installed before running the script.
+### On Windows (using batch file)
+
+Use the provided `run_reports.bat` file:
+
+```cmd
+# Generate both booking and frequency reports
+run_reports.bat --all
+
+# Generate only booking reports
+run_reports.bat --booking
+
+# Generate only frequency reports
+run_reports.bat --frequency
+```
+
+You can specify a custom output directory:
+
+```cmd
+run_reports.bat --booking --output-dir "C:\reports"
+```
+
+### Direct Python Execution
+
+You can also run the Python script directly:
+
+```bash
+python report_generation/report_generation.py --output-dir data --report-types booking frequency
+```
+
+## CRON Job Setup (Windows Task Scheduler)
+
+Create two scheduled tasks in Windows Task Scheduler:
+
+1. **Frequency Report (11am on weekdays)**:
+   - Program/script: `C:\path\to\run_reports.bat`
+   - Arguments: `--frequency --output-dir "C:\path\to\reports"`
+   - Schedule: Daily, Monday-Friday at 11:00 AM
+
+2. **All Reports (4pm on weekdays)**:
+   - Program/script: `C:\path\to\run_reports.bat`
+   - Arguments: `--all --output-dir "C:\path\to\reports"`
+   - Schedule: Daily, Monday-Friday at 4:00 PM
+
+## Logging and Error Handling
+
+The system logs all activities to the `logs` directory with automatic rotation:
+- Logs are kept for 30 days
+- Daily rotation at midnight
+- Detailed information about execution time and errors
+
+## Troubleshooting
+
+If reports fail to generate:
+
+1. Check the log file `report_generation.log` for error details
+2. Verify database connection settings
+3. Ensure the output directory exists and is writable
