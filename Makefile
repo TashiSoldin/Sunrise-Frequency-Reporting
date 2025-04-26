@@ -1,4 +1,4 @@
-PYTHON = python
+PYTHON = python # This is executed within the uv venv
 SCRIPT = report_generation/report_generation.py
 OUTPUT_DIR = data
 

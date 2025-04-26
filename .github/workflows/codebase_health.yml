@@ -1,0 +1,8 @@
+name: "Codebase health"
+
+on: [ pull_request ]
+
+jobs:
+  ruff:
+    name: Ruff
+    uses: ./.github/workflows/ruff_linter.yml
