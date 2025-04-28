@@ -1,0 +1,15 @@
+name: "Lint code using Ruff"
+
+on: [ "workflow_call" ]
+
+jobs:
+  ruff:
+    name: Ruff
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout latest branch
+        uses: actions/checkout@v4
+
+      - name: Run Ruff linter
+        uses: chartboost/ruff-action@v1

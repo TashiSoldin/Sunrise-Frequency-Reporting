@@ -4,10 +4,12 @@ This system generates booking and frequency reports for the Sunrise application.
 
 ## Setup
 
-1. Ensure Python 3.x is installed on your system
-2. Install required dependencies:
+1. Ensure Python 3.13 is installed on your system, inline with the python version file
+2. Install required dependencies using uv package manager
    ```
-   pip install -r requirements.txt
+   uv python install 3.13
+   uv venv --python 3.13
+   uv sync
    ```
 
 ## Running Reports
@@ -59,7 +61,7 @@ You can specify a custom output directory:
 You can also run the Python script directly:
 
 ```bash
-python report_generation/report_generation.py --output-dir data --report-types booking frequency
+uv run report_generation/report_generation.py --output-dir data --report-types booking frequency
 ```
 
 ## CRON Job Setup (Windows Task Scheduler)
