@@ -4,11 +4,13 @@ from logging.handlers import TimedRotatingFileHandler
 import os
 
 from enums.email_enums import EmailConfigs
+from enums.report_enums import ReportTypes
 from helpers.os_helper import OSHelper
 from helpers.datetime_helper import DatetimeHelper
 from models.data_extractor import DataExtractor
 from models.data_manipulator import DataManipulator
 from models.email_sender import EmailSender
+from report_generation.reports.pod_agent_reports import PodAgentReports
 from reports.booking_reports import BookingReports
 from reports.frequency_reports import FrequencyReports
 from utils.log_execution_time_decorator import log_execution_time
@@ -43,17 +45,23 @@ class ReportGeneration:
         """Generate output file paths for specified report types and create directories"""
         current_date_time = DatetimeHelper.get_current_datetime()
 
-        if "booking" in report_types:
+        if ReportTypes.BOOKING.value in report_types:
             self.output_file_path_booking = (
                 f"{self.output_file_path}/booking-reports-{current_date_time}"
             )
             OSHelper.create_directories([self.output_file_path_booking])
 
-        if "frequency" in report_types:
+        if ReportTypes.FREQUENCY.value in report_types:
             self.output_file_path_frequency = (
                 f"{self.output_file_path}/frequency-reports-{current_date_time}"
             )
             OSHelper.create_directories([self.output_file_path_frequency])
+
+        if ReportTypes.POD_AGENT.value in report_types:
+            self.output_file_path_pod_agent = (
+                f"{self.output_file_path}/pod-agent-reports-{current_date_time}"
+            )
+            OSHelper.create_directories([self.output_file_path_pod_agent])
 
     def _generate_and_send_booking_report(self, df_mapping: dict) -> None:
         logger.info("Generating booking report")
@@ -88,6 +96,23 @@ class ReportGeneration:
         ).send_emails()
         logger.info("Frequency report emails sent successfully")
 
+    def _generate_and_send_pod_agent_reports(self, df_mapping: dict) -> None:
+        logger.info("Generating pod agent report")
+        pod_agent_report_summary = PodAgentReports(
+            df_mapping.get(ReportTypes.POD_AGENT.value),
+            self.output_file_path_pod_agent,
+        ).generate_report()
+
+        logger.info("Sending pod agent report emails")
+        print(pod_agent_report_summary)
+        # EmailSender(
+        #     email_secrets=self._secrets.get("email"),
+        #     email_config=EmailConfigs.get_config("pod_agent"),
+        #     report_summary=pod_agent_report_summary,
+        #     account_email_mapping=df_mapping.get("agent_email_mapping"),
+        # ).send_emails()
+        logger.info("Pod agent report emails sent successfully")
+
     @log_execution_time
     def generate_reports(self, report_types: list[str]) -> None:
         logger.info(f"Generating reports of types: {report_types}")
@@ -100,11 +125,14 @@ class ReportGeneration:
             logger.info("Manipulating extracted data")
             df_mapping = DataManipulator(df_mapping).manipulate_data()
 
-            if "booking" in report_types:
+            if ReportTypes.BOOKING.value in report_types:
                 self._generate_and_send_booking_report(df_mapping)
 
-            if "frequency" in report_types:
+            if ReportTypes.FREQUENCY.value in report_types:
                 self._generate_and_send_frequency_reports(df_mapping)
+
+            if ReportTypes.POD_AGENT.value in report_types:
+                self._generate_and_send_pod_agent_reports(df_mapping)
 
             logger.info("Reports generated successfully!")
         except Exception as e:
@@ -143,9 +171,9 @@ def main() -> None:
         "--report-types",
         "-r",
         nargs="+",
-        choices=["booking", "frequency", "all"],
+        choices=["booking", "frequency", "pod_agent", "all"],
         default=["all"],
-        help="Types of reports to generate: booking, frequency, or all",
+        help="Types of reports to generate: booking, frequency, pod_agent, or all",
     )
 
     args = parser.parse_args()
@@ -158,7 +186,7 @@ def main() -> None:
     # Convert 'all' to both report types
     report_types = args.report_types
     if "all" in report_types:
-        report_types = ["booking", "frequency"]
+        report_types = ReportTypes.get_list()
 
     try:
         ReportGeneration.run(output_file_path, report_types)

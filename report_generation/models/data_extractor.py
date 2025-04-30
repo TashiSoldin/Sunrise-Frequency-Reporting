@@ -32,6 +32,25 @@ class DataExtractor:
         WHERE NAME = 'Frequency Report';
         """
 
+    def _get_pod_agent_view(self) -> str:
+        # TODO: Ensure agent column is correct, ask about partial POD
+        return """
+        SELECT WAYBILL, WAYDATE, DUEDATE, ACCNUM, SERVICE, ORIGPERS, DESTPERS, 
+        ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, DELIVERYAGENT, PODIMGPRESENT
+        FROM VIEW_WBANALYSE wba
+        WHERE wba.PODDATE IS NULL 
+        AND wba.WAYDATE >= DATEADD(-60 DAY TO CURRENT_DATE)
+        AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE)
+        AND wba.WAYBILL NOT LIKE '%~%';
+        """
+
+    def _get_pod_agent_details(self) -> str:
+        return """
+        SELECT NAME, EMAIL  
+        FROM AGENT
+        WHERE EMAIL IS NOT NULL;
+        """
+
     @log_execution_time
     @retry(max_attempts=3, delay=20, backoff=2)
     def get_data(self) -> dict[str, pd.DataFrame]:
@@ -41,5 +60,9 @@ class DataExtractor:
                 "account_email_mapping": client.execute_query(
                     self._get_account_and_email_mapping()
                 ),
+                "pod_agent": {
+                    "content": client.execute_query(self._get_pod_agent_view()),
+                    "agent_email": client.execute_query(self._get_pod_agent_details()),
+                },
             }
         return result
