@@ -8,42 +8,48 @@ logger = logging.getLogger(__name__)
 
 
 class DataManipulator:
-    def __init__(self, df_mapping: dict[str, pd.DataFrame]) -> None:
+    def __init__(self, df_mapping: dict[str, dict[str, pd.DataFrame]]) -> None:
         self.df_mapping = df_mapping
-        self.specific_functions = {
-            "account_email_mapping": [(self._convert_df_to_dict, {})],
-            "wba": [(self._rename_waybill_analysis_view, {})],
+        self.transformations = {
+            "frequency": {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Account"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                                "POD Date",
+                                "Booking Date",
+                                "Last Event Date",
+                            ]
+                        },
+                    ),
+                ],
+            },
+            "booking": {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Account"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                                "POD Date",
+                                "Booking Date",
+                                "Last Event Date",
+                            ]
+                        },
+                    ),
+                ]
+            },
         }
-        self.base_functions = {
-            "wba": [
-                (self._filter_out_none_values, {"columns": ["Account"]}),
-                (
-                    self._convert_date_columns,
-                    {
-                        "columns": [
-                            "Waybill Date",
-                            "Due Date",
-                            "POD Date",
-                            "Booking Date",
-                            "Last Event Date",
-                        ]
-                    },
-                ),
-            ]
-        }
 
-    def _convert_df_to_dict(self, df: pd.DataFrame) -> dict:
-        """Convert DataFrame to dictionary mapping ACCNUM to EMAIL.
-
-        Args:
-            df: DataFrame containing ACCNUM and EMAIL columns
-
-        Returns:
-            Dictionary with ACCNUM as keys and EMAIL as values
-        """
-        return pd.Series(df["EMAIL"].values, index=df["ACCNUM"]).to_dict()
-
-    def _rename_waybill_analysis_view(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _rename_frequency_report_view_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         column_mapping = {
             "CUSTNAME": "Customer",
             "ACCNUM": "Account",
@@ -96,14 +102,22 @@ class DataManipulator:
 
     @log_execution_time
     @retry(max_attempts=3, delay=5, backoff=2)
-    def manipulate_data(self) -> dict[str, pd.DataFrame]:
-        for key, value in self.df_mapping.items():
-            specific_funcs = self.specific_functions.get(key, [])
-            base_funcs = self.base_functions.get(key, [])
+    def manipulate_data(self) -> dict[str, dict[str, pd.DataFrame]]:
+        """Process dataframes grouped by report type and dataset key."""
+        for report_type, report_data in self.df_mapping.items():
+            for dataset_key, df in report_data.items():
+                transformations = self.transformations.get(report_type, {}).get(
+                    dataset_key, []
+                )
 
-            for func, kwargs in specific_funcs + base_funcs:
-                value = func(value, **kwargs)
+                for transformation in transformations:
+                    if isinstance(transformation, tuple):
+                        func, kwargs = transformation
+                    else:
+                        func, kwargs = transformation, {}
 
-            self.df_mapping[key] = value
+                    df = func(df, **kwargs) if kwargs else func(df)
+
+                report_data[dataset_key] = df
 
         return self.df_mapping

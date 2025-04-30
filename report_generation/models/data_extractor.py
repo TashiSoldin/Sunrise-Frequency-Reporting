@@ -11,7 +11,7 @@ class DataExtractor:
     def __init__(self, database_secrets: dict) -> None:
         self.pp_client = ParcelPerfectDatabaseClient(**database_secrets)
 
-    def _waybill_analysis_view(self) -> str:
+    def _get_frequency_report_view(self) -> str:
         return """
             SELECT CUSTNAME, ACCNUM, WAYDATE, WAYBILL, SERVICE, REFERENCE, 
             ORIGPERS, DESTPERS, ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, PIECES, 
@@ -25,7 +25,7 @@ class DataExtractor:
             AND wba.WAYBILL NOT LIKE 'COL%';
         """
 
-    def _get_account_and_email_mapping(self) -> str:
+    def _get_contact_details(self) -> str:
         return """
         SELECT ACCNUM, EMAIL 
         FROM CONTACT
@@ -36,10 +36,16 @@ class DataExtractor:
     @retry(max_attempts=3, delay=20, backoff=2)
     def get_data(self) -> dict[str, pd.DataFrame]:
         with self.pp_client as client:
-            result = {
-                "wba": client.execute_query(self._waybill_analysis_view()),
-                "account_email_mapping": client.execute_query(
-                    self._get_account_and_email_mapping()
-                ),
+            result = {}
+
+            wba_df = client.execute_query(self._get_frequency_report_view())
+
+            result["frequency"] = {
+                "content": wba_df,
+                "contact_email": client.execute_query(self._get_contact_details()),
+            }
+
+            result["booking"] = {
+                "content": wba_df,
             }
         return result
