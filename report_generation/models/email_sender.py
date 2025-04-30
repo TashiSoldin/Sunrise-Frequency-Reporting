@@ -14,14 +14,12 @@ class EmailSender:
         email_secrets: dict,
         email_config: EmailConfig,
         report_summary: dict,
-        account_email_mapping: dict | None = None,
     ) -> None:
         """
         Args:
             email_secrets (dict): The email secrets.
             email_config (EmailConfig): The email configuration.
             report_summary (dict): The report summary.
-            account_email_mapping (dict | None, optional): The account email mapping. Defaults to None.
 
             Example report_summary:
             {
@@ -38,7 +36,6 @@ class EmailSender:
         self.email_client = OutlookEmailClient(**email_secrets)
         self.report_summary = report_summary
         self.email_config = email_config
-        self.account_email_mapping = account_email_mapping or {}
 
     def _send_to_default_recipients(self, attachment: str) -> None:
         """Sends an email with the given attachment to all default recipients."""
@@ -71,8 +68,7 @@ class EmailSender:
         summaries_without_recipients = []
 
         for account_number, summary in self.report_summary.items():
-            mapped_email = self.account_email_mapping.get(account_number)
-            if mapped_email:
+            if summary.get("email"):
                 summaries_with_recipients[account_number] = summary
             else:
                 summaries_without_recipients.append(summary)
@@ -82,8 +78,8 @@ class EmailSender:
 
         return summaries_with_recipients, summaries_without_recipients
 
-    def _send_account_based_emails(self) -> None:
-        """Handles sending emails in account-based mode."""
+    def _send_external_reports(self) -> None:
+        """Handles sending emails in external mode."""
         summaries_with_recipients, summaries_without_recipients = (
             self._group_files_by_recipient()
         )
@@ -91,9 +87,9 @@ class EmailSender:
         # Send individual emails for mapped recipients
         for account_number, summary in tqdm(
             summaries_with_recipients.items(),
-            desc="Sending frequency reports with emails",
+            desc="Sending external reports with emails",
         ):
-            recipient_email = self.account_email_mapping.get(account_number)
+            recipient_email = summary.get("email")
             self.email_client.send_email(
                 recipient_email=recipient_email,
                 subject=f"{summary['client_name']} - {self.email_config.subject}",
@@ -113,7 +109,7 @@ class EmailSender:
             # Send the in-memory zip file
             for recipient_email in tqdm(
                 self.email_config.default_recipients,
-                desc="Sending frequency reports without emails",
+                desc="Sending external reports without emails",
             ):
                 self.email_client.send_email_with_memory_attachment(
                     recipient_email=recipient_email,
@@ -131,4 +127,4 @@ class EmailSender:
             if self.email_config.recipient_type == EmailRecipientType.INTERNAL:
                 self._send_internal_reports()
             else:
-                self._send_account_based_emails()
+                self._send_external_reports()

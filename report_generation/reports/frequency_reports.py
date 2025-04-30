@@ -8,9 +8,17 @@ from helpers.datetime_helper import DatetimeHelper
 
 
 class FrequencyReports:
-    def __init__(self, df: pd.DataFrame, output_file_path: str) -> None:
-        self.df = df
+    def __init__(self, data: dict, output_file_path: str) -> None:
+        self.df: pd.DataFrame = data.get("content")
+        self.contact_details: pd.DataFrame = data.get("contact_email")
+        self.contact_email_mapping: dict = self._get_contact_email_mapping()
         self.output_file_path = output_file_path
+
+    def _get_contact_email_mapping(self) -> dict:
+        return pd.Series(
+            self.contact_details["EMAIL"].values,
+            index=self.contact_details["ACCNUM"],
+        ).to_dict()
 
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
         df["Last Event"] = pd.Categorical(
@@ -60,10 +68,10 @@ class FrequencyReports:
             file_path = f"{self.output_file_path}/{account}.xlsx"
             wb.save(file_path)
 
-            # TODO: Send in account contact email mapping here and add to summary with value or None
             summary[account] = {
                 "file_path": file_path,
                 "client_name": df_account["Customer"].iloc[0],
+                "email": self.contact_email_mapping.get(account),
             }
 
         return summary

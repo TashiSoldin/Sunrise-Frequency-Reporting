@@ -5,8 +5,8 @@ from helpers.datetime_helper import DatetimeHelper
 
 
 class BookingReports:
-    def __init__(self, df: pd.DataFrame, output_file_path: str) -> None:
-        self.df = df
+    def __init__(self, data: dict, output_file_path: str) -> None:
+        self.df = data.get("content")
         self.output_file_path = output_file_path
 
     def filter_df(self, df: pd.DataFrame) -> pd.DataFrame:

@@ -66,7 +66,7 @@ class ReportGeneration:
     def _generate_and_send_booking_report(self, df_mapping: dict) -> None:
         logger.info("Generating booking report")
         booking_report_summary = BookingReports(
-            df_mapping.get("wba"), self.output_file_path_booking
+            df_mapping.get("booking"), self.output_file_path_booking
         ).generate_report()
 
         if not booking_report_summary:
@@ -84,7 +84,7 @@ class ReportGeneration:
     def _generate_and_send_frequency_reports(self, df_mapping: dict) -> None:
         logger.info("Generating frequency report")
         frequency_report_summary = FrequencyReports(
-            df_mapping.get("wba"), self.output_file_path_frequency
+            df_mapping.get("frequency"), self.output_file_path_frequency
         ).generate_report()
 
         logger.info("Sending frequency report emails")
@@ -92,7 +92,6 @@ class ReportGeneration:
             email_secrets=self._secrets.get("email"),
             email_config=EmailConfigs.get_config("frequency"),
             report_summary=frequency_report_summary,
-            account_email_mapping=df_mapping.get("account_email_mapping"),
         ).send_emails()
         logger.info("Frequency report emails sent successfully")
 
