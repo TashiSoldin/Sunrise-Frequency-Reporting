@@ -1,4 +1,5 @@
 import pandas as pd
+from tqdm import tqdm
 
 
 class PodAgentReports:
@@ -15,4 +16,21 @@ class PodAgentReports:
         ).to_dict()
 
     def generate_report(self) -> dict:
-        pass
+        summary = {}
+
+        for delivery_agent in tqdm(
+            self.df["DELIVERYAGENT"].unique(), desc="Generating pod agent reports"
+        ):
+            df_agent = self.df[self.df["DELIVERYAGENT"] == delivery_agent]
+
+            df_agent.to_excel(
+                f"{self.output_file_path}/{delivery_agent}.xlsx", index=False
+            )
+
+            summary[delivery_agent] = {
+                "file_path": f"{self.output_file_path}/{delivery_agent}.xlsx",
+                # "client_name": delivery_agent,
+                "email": self.agent_email_mapping.get(delivery_agent),
+            }
+
+        return summary
