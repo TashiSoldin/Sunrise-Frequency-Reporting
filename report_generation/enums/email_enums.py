@@ -5,7 +5,7 @@ from helpers.datetime_helper import DatetimeHelper
 
 
 class EmailRecipientType(Enum):
-    ACCOUNT = "account"
+    EXTERNAL = "external"
     INTERNAL = "internal"
 
 
@@ -52,7 +52,7 @@ class EmailConfigs:
     )
 
     FREQUENCY_REPORT = EmailConfig(
-        recipient_type=EmailRecipientType.ACCOUNT,
+        recipient_type=EmailRecipientType.EXTERNAL,
         default_recipients=[
             "larry@sunriselogistics.net",
             "christine@sunriselogistics.net",
