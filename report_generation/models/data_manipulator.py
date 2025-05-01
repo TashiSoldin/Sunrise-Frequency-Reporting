@@ -1,5 +1,6 @@
 import logging
 import pandas as pd
+from enums.report_enums import ReportTypes
 from helpers.datetime_helper import DatetimeHelper
 from utils.retry_decorator import retry
 from utils.log_execution_time_decorator import log_execution_time
@@ -11,7 +12,7 @@ class DataManipulator:
     def __init__(self, df_mapping: dict[str, dict[str, pd.DataFrame]]) -> None:
         self.df_mapping = df_mapping
         self.transformations = {
-            "frequency": {
+            ReportTypes.FREQUENCY.value: {
                 "content": [
                     self._rename_frequency_report_view_columns,
                     (self._filter_out_none_values, {"columns": ["Account"]}),
@@ -29,7 +30,7 @@ class DataManipulator:
                     ),
                 ],
             },
-            "booking": {
+            ReportTypes.BOOKING.value: {
                 "content": [
                     self._rename_frequency_report_view_columns,
                     (self._filter_out_none_values, {"columns": ["Account"]}),
@@ -47,10 +48,27 @@ class DataManipulator:
                     ),
                 ]
             },
+            ReportTypes.POD_AGENT.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Delivery Agent"]}),
+                    (self._strip_special_characters, {"columns": ["Delivery Agent"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                            ]
+                        },
+                    ),
+                ]
+            },
         }
 
     def _rename_frequency_report_view_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         column_mapping = {
+            # Frequency Report
             "CUSTNAME": "Customer",
             "ACCNUM": "Account",
             "WAYDATE": "Waybill Date",
@@ -76,6 +94,9 @@ class DataManipulator:
             "LASTEVENTHUB": "Last Event Hub",
             "LASTEVENTDATE": "Last Event Date",
             "LASTEVENTTIME": "Last Event Time",
+            # Pod Agent Report
+            "DELIVERYAGENT": "Delivery Agent",
+            "PODIMGPRESENT": "POD Present",
         }
         return df.rename(columns=column_mapping)
 
@@ -91,6 +112,14 @@ class DataManipulator:
 
         df = df.dropna(subset=columns)
         logger.info(f"Removed {initial_rows - len(df)} rows containing None values")
+        return df
+
+    # TODO: Remove once the data quality is fixed
+    def _strip_special_characters(
+        self, df: pd.DataFrame, columns: list[str]
+    ) -> pd.DataFrame:
+        for col in columns:
+            df[col] = df[col].str.replace(r"[^a-zA-Z0-9\s]", "", regex=True)
         return df
 
     def _convert_date_columns(

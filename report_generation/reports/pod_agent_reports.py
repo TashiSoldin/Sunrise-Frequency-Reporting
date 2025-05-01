@@ -19,9 +19,10 @@ class PodAgentReports:
         summary = {}
 
         for delivery_agent in tqdm(
-            self.df["DELIVERYAGENT"].unique(), desc="Generating pod agent reports"
+            self.df["Delivery Agent"].unique(),
+            desc="Generating pod agent reports",
         ):
-            df_agent = self.df[self.df["DELIVERYAGENT"] == delivery_agent]
+            df_agent = self.df[self.df["Delivery Agent"] == delivery_agent]
 
             df_agent.to_excel(
                 f"{self.output_file_path}/{delivery_agent}.xlsx", index=False
@@ -29,8 +30,10 @@ class PodAgentReports:
 
             summary[delivery_agent] = {
                 "file_path": f"{self.output_file_path}/{delivery_agent}.xlsx",
-                # "client_name": delivery_agent,
-                "email": self.agent_email_mapping.get(delivery_agent),
+                "client_name": delivery_agent,
+                # TODO: Change to external emails once we are happy
+                # "email": self.agent_email_mapping.get(delivery_agent),
+                "email": None,
             }
 
         return summary

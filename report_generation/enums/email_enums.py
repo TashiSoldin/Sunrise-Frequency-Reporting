@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from helpers.datetime_helper import DatetimeHelper
+from enums.report_enums import ReportTypes
 
 
 class EmailRecipientType(Enum):
@@ -86,9 +87,44 @@ class EmailConfigs:
             """,
     )
 
+    POD_AGENT_REPORT = EmailConfig(
+        recipient_type=EmailRecipientType.EXTERNAL,
+        default_recipients=[
+            "larry@sunriselogistics.net",
+            "christine@sunriselogistics.net",
+            "raeesa@sunriselogistics.net",
+        ],
+        subject=f"Missing POD Report {DatetimeHelper.get_current_datetime()}",
+        body="""
+            <html>
+            <head>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        font-size: 14px;
+                        line-height: 1.6;
+                        color: #333333;
+                    }
+                </style>
+            </head>
+            <body>
+            <p>Dear recipient,</p>
+
+            <p>Please find attached the latest automated report.</p>
+
+            <p>Best regards,<br>
+            </body>
+            </html>
+            """,
+    )
+
     @classmethod
     def get_config(cls, report_type: str) -> EmailConfig:
-        config_map = {"booking": cls.BOOKING_REPORT, "frequency": cls.FREQUENCY_REPORT}
+        config_map = {
+            ReportTypes.BOOKING.value: cls.BOOKING_REPORT,
+            ReportTypes.FREQUENCY.value: cls.FREQUENCY_REPORT,
+            ReportTypes.POD_AGENT.value: cls.POD_AGENT_REPORT,
+        }
         if report_type not in config_map:
             raise ValueError(f"Unknown report type: {report_type}")
         return config_map[report_type]

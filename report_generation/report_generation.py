@@ -3,7 +3,7 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 import os
 
-from enums.email_enums import EmailConfigs
+from enums.email_enums import EmailConfig, EmailConfigs
 from enums.report_enums import ReportTypes
 from helpers.os_helper import OSHelper
 from helpers.datetime_helper import DatetimeHelper
@@ -39,7 +39,10 @@ logger = logging.getLogger(__name__)
 class ReportGeneration:
     def __init__(self, output_file_path: str) -> None:
         self.output_file_path = output_file_path
+
         self._secrets = OSHelper.get_secrets()
+        self._database_secrets = self._secrets.get("database")
+        self._email_secrets = self._secrets.get("email")
 
     def _get_output_file_paths(self, report_types: list[str]) -> None:
         """Generate output file paths for specified report types and create directories"""
@@ -63,10 +66,12 @@ class ReportGeneration:
             )
             OSHelper.create_directories([self.output_file_path_pod_agent])
 
-    def _generate_and_send_booking_report(self, df_mapping: dict) -> None:
+    def _generate_and_send_booking_report(
+        self, data: dict, email_config: EmailConfig
+    ) -> None:
         logger.info("Generating booking report")
         booking_report_summary = BookingReports(
-            df_mapping.get("booking"), self.output_file_path_booking
+            data, self.output_file_path_booking
         ).generate_report()
 
         if not booking_report_summary:
@@ -75,41 +80,43 @@ class ReportGeneration:
 
         logger.info("Sending booking report emails")
         EmailSender(
-            email_secrets=self._secrets.get("email"),
-            email_config=EmailConfigs.get_config("booking"),
+            email_secrets=self._email_secrets,
+            email_config=email_config,
             report_summary=booking_report_summary,
         ).send_emails()
         logger.info("Booking report emails sent successfully")
 
-    def _generate_and_send_frequency_reports(self, df_mapping: dict) -> None:
+    def _generate_and_send_frequency_reports(
+        self, data: dict, email_config: EmailConfig
+    ) -> None:
         logger.info("Generating frequency report")
         frequency_report_summary = FrequencyReports(
-            df_mapping.get("frequency"), self.output_file_path_frequency
+            data,
+            self.output_file_path_frequency,
         ).generate_report()
 
         logger.info("Sending frequency report emails")
         EmailSender(
-            email_secrets=self._secrets.get("email"),
-            email_config=EmailConfigs.get_config("frequency"),
+            email_secrets=self._email_secrets,
+            email_config=email_config,
             report_summary=frequency_report_summary,
         ).send_emails()
         logger.info("Frequency report emails sent successfully")
 
-    def _generate_and_send_pod_agent_reports(self, df_mapping: dict) -> None:
+    def _generate_and_send_pod_agent_reports(
+        self, data: dict, email_config: EmailConfig
+    ) -> None:
         logger.info("Generating pod agent report")
         pod_agent_report_summary = PodAgentReports(
-            df_mapping.get(ReportTypes.POD_AGENT.value),
-            self.output_file_path_pod_agent,
+            data, self.output_file_path_pod_agent
         ).generate_report()
 
         logger.info("Sending pod agent report emails")
-        print(pod_agent_report_summary)
-        # EmailSender(
-        #     email_secrets=self._secrets.get("email"),
-        #     email_config=EmailConfigs.get_config("pod_agent"),
-        #     report_summary=pod_agent_report_summary,
-        #     account_email_mapping=df_mapping.get("agent_email_mapping"),
-        # ).send_emails()
+        EmailSender(
+            email_secrets=self._email_secrets,
+            email_config=email_config,
+            report_summary=pod_agent_report_summary,
+        ).send_emails()
         logger.info("Pod agent report emails sent successfully")
 
     @log_execution_time
@@ -120,18 +127,27 @@ class ReportGeneration:
 
         try:
             logger.info("Extracting data from database")
-            df_mapping = DataExtractor(self._secrets.get("database")).get_data()
+            df_mapping = DataExtractor(self._database_secrets).get_data(report_types)
             logger.info("Manipulating extracted data")
             df_mapping = DataManipulator(df_mapping).manipulate_data()
 
             if ReportTypes.BOOKING.value in report_types:
-                self._generate_and_send_booking_report(df_mapping)
+                self._generate_and_send_booking_report(
+                    df_mapping.get(ReportTypes.BOOKING.value),
+                    EmailConfigs.get_config(ReportTypes.BOOKING.value),
+                )
 
             if ReportTypes.FREQUENCY.value in report_types:
-                self._generate_and_send_frequency_reports(df_mapping)
+                self._generate_and_send_frequency_reports(
+                    df_mapping.get(ReportTypes.FREQUENCY.value),
+                    EmailConfigs.get_config(ReportTypes.FREQUENCY.value),
+                )
 
             if ReportTypes.POD_AGENT.value in report_types:
-                self._generate_and_send_pod_agent_reports(df_mapping)
+                self._generate_and_send_pod_agent_reports(
+                    df_mapping.get(ReportTypes.POD_AGENT.value),
+                    EmailConfigs.get_config(ReportTypes.POD_AGENT.value),
+                )
 
             logger.info("Reports generated successfully!")
         except Exception as e:

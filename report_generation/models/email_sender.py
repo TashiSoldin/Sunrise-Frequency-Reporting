@@ -2,7 +2,6 @@ import logging
 from tqdm import tqdm
 from clients.outlook_email_client import OutlookEmailClient
 from enums.email_enums import EmailConfig, EmailRecipientType
-from helpers.datetime_helper import DatetimeHelper
 from helpers.os_helper import OSHelper
 
 logger = logging.getLogger(__name__)
@@ -59,7 +58,7 @@ class EmailSender:
     def _group_files_by_recipient(self) -> tuple[dict, list]:
         """
         Groups files based on whether they have mapped recipients.
-        Only used in account-based email mode.
+        Only used in external email mode.
 
         Returns:
             tuple: (summaries_with_recipients, summaries_without_recipients)
@@ -116,7 +115,7 @@ class EmailSender:
                     subject=self.email_config.subject,
                     body=self.email_config.body,
                     attachment_data=zip_buffer.getvalue(),
-                    attachment_name=f"frequency_reports {DatetimeHelper.get_current_datetime()}.zip",
+                    attachment_name=f"{self.email_config.subject}.zip",
                 )
                 logger.info(f"Internal email sent to {recipient_email}")
             logger.info("All internal emails sent successfully")
