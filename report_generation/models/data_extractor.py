@@ -67,7 +67,11 @@ class DataExtractor:
                 }
 
             if ReportTypes.BOOKING.value in report_types:
-                wba_df = client.execute_query(self._get_frequency_report_view())
+                if "frequency" in result:
+                    wba_df = result["frequency"]["content"]
+                else:
+                    wba_df = client.execute_query(self._get_frequency_report_view())
+
                 result["booking"] = {
                     "content": wba_df,
                 }
@@ -77,5 +81,7 @@ class DataExtractor:
                     "content": client.execute_query(self._get_pod_agent_view()),
                     "agent_email": client.execute_query(self._get_pod_agent_details()),
                 }
+
+                result["pod_agent"]["content"].to_excel("pod_data_test.xlsx")
 
         return result
