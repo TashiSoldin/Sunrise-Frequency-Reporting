@@ -52,7 +52,7 @@ class DataManipulator:
                 "content": [
                     self._rename_frequency_report_view_columns,
                     (self._filter_out_none_values, {"columns": ["Delivery Agent"]}),
-                    (self._strip_special_characters, {"columns": ["Delivery Agent"]}),
+                    # (self._strip_special_characters, {"columns": ["Delivery Agent"]}),
                     (
                         self._convert_date_columns,
                         {

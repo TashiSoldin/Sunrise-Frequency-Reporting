@@ -34,14 +34,16 @@ class DataExtractor:
         """
 
     def _get_pod_agent_view(self) -> str:
-        # TODO: Ensure agent column is correct, ask about partial POD
+        # TODO: Ensure start date is start of Jan of current year
+        # TODO: Add POD verbal column
         return """
         SELECT WAYBILL, WAYDATE, DUEDATE, ACCNUM, SERVICE, ORIGPERS, DESTPERS, 
         ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, DELIVERYAGENT, PODIMGPRESENT
         FROM VIEW_WBANALYSE wba
         WHERE wba.PODDATE IS NULL 
+        AND wba.DELIVERYAGENT NOT LIKE '%OCD%'
         AND wba.DELIVERYAGENT NOT LIKE 'xxx%'
-        AND wba.WAYDATE >= DATEADD(-60 DAY TO CURRENT_DATE)
+        AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
         AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
         """
 
@@ -50,6 +52,7 @@ class DataExtractor:
         SELECT NAME, EMAIL  
         FROM AGENT
         WHERE EMAIL IS NOT NULL
+        AND NAME NOT LIKE '%OCD%'
         AND NAME NOT LIKE 'xxx%';
         """
 

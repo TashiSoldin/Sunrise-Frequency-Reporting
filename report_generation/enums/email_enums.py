@@ -13,14 +13,17 @@ class EmailRecipientType(Enum):
 @dataclass
 class EmailConfig:
     recipient_type: EmailRecipientType
+    cc_recipients: list[str]
     subject: str
     default_recipients: list[str]
+    default_ccs: list[str]
     body: str
 
 
 class EmailConfigs:
     BOOKING_REPORT = EmailConfig(
         recipient_type=EmailRecipientType.INTERNAL,
+        cc_recipients=[],
         default_recipients=[
             "larry@sunriselogistics.net",
             "hatchjhb@sunriselogistics.net",
@@ -28,6 +31,7 @@ class EmailConfigs:
             "hatchdbn@sunriselogistics.net",
             "christine@sunriselogistics.net",
         ],
+        default_ccs=[],
         subject=f"Booking Report {DatetimeHelper.get_current_datetime()}",
         body="""
             <html>
@@ -54,11 +58,13 @@ class EmailConfigs:
 
     FREQUENCY_REPORT = EmailConfig(
         recipient_type=EmailRecipientType.EXTERNAL,
+        cc_recipients=[],
         default_recipients=[
             "larry@sunriselogistics.net",
             "christine@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
         ],
+        default_ccs=[],
         subject=f"Frequency Report {DatetimeHelper.get_current_datetime()}",
         body="""
             <html>
@@ -89,11 +95,16 @@ class EmailConfigs:
 
     POD_AGENT_REPORT = EmailConfig(
         recipient_type=EmailRecipientType.EXTERNAL,
+        cc_recipients=[
+            "mirika@sunriselogistics.net",
+        ],
         default_recipients=[
             "larry@sunriselogistics.net",
-            "christine@sunriselogistics.net",
+            "mirika@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
+            "alex.soldin@gmail.com",
         ],
+        default_ccs=[],
         subject=f"Missing POD Report {DatetimeHelper.get_current_datetime()}",
         body="""
             <html>
@@ -110,9 +121,11 @@ class EmailConfigs:
             <body>
             <p>Dear recipient,</p>
 
-            <p>Please find attached the latest automated report.</p>
+            <p>Please find attached a listing of all waybills which have been handed over to yourselves but where delivery has as yet not been confirmed.</p>
 
-            <p>Best regards,<br>
+            <p>Please can you urgently review and make sure the deliveries have been completed and POD details both verbal and physical POD entered onto the system.</p>
+
+            <p>Kind regards,<br>
             </body>
             </html>
             """,

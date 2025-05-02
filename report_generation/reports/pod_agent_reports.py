@@ -15,18 +15,27 @@ class PodAgentReports:
             index=self.agent_email["NAME"],
         ).to_dict()
 
+    def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        return df.sort_values(by="Waybill Date", ascending=True)
+
     def generate_report(self) -> dict:
+        df = self.sort_df(self.df)
         summary = {}
 
+        # TODO: Look into using a template and listing len(df) in red
+
         for delivery_agent in tqdm(
-            self.df["Delivery Agent"].unique(),
+            df["Delivery Agent"].unique(),
             desc="Generating pod agent reports",
         ):
-            df_agent = self.df[self.df["Delivery Agent"] == delivery_agent]
+            df_agent = df[df["Delivery Agent"] == delivery_agent]
 
-            df_agent.to_excel(
-                f"{self.output_file_path}/{delivery_agent}.xlsx", index=False
-            )
+            with pd.ExcelWriter(
+                f"{self.output_file_path}/{delivery_agent}.xlsx", engine="xlsxwriter"
+            ) as writer:
+                df_agent.to_excel(writer, index=False)
+                worksheet = writer.sheets["Sheet1"]
+                worksheet.autofit()
 
             summary[delivery_agent] = {
                 "file_path": f"{self.output_file_path}/{delivery_agent}.xlsx",

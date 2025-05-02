@@ -41,6 +41,7 @@ class EmailSender:
         for recipient_email in self.email_config.default_recipients:
             self.email_client.send_email(
                 recipient_email=recipient_email,
+                cc_recipients=self.email_config.cc_recipients,
                 subject=self.email_config.subject,
                 body=self.email_config.body,
                 attachments=[attachment],
@@ -91,6 +92,7 @@ class EmailSender:
             recipient_email = summary.get("email")
             self.email_client.send_email(
                 recipient_email=recipient_email,
+                cc_recipients=self.email_config.cc_recipients,
                 subject=f"{summary['client_name']} - {self.email_config.subject}",
                 body=self.email_config.body,
                 attachments=[summary["file_path"]],
@@ -112,6 +114,7 @@ class EmailSender:
             ):
                 self.email_client.send_email_with_memory_attachment(
                     recipient_email=recipient_email,
+                    cc_recipients=self.email_config.default_ccs,
                     subject=self.email_config.subject,
                     body=self.email_config.body,
                     attachment_data=zip_buffer.getvalue(),
