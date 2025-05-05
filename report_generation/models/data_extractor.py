@@ -34,8 +34,7 @@ class DataExtractor:
         """
 
     def _get_pod_agent_view(self) -> str:
-        # TODO: Ensure start date is start of Jan of current year
-        # TODO: Add POD verbal column
+        # TODO: Add POD verbal column - can't find this...
         return """
         SELECT WAYBILL, WAYDATE, DUEDATE, ACCNUM, SERVICE, ORIGPERS, DESTPERS, 
         ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, DELIVERYAGENT, PODIMGPRESENT

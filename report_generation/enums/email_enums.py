@@ -102,7 +102,6 @@ class EmailConfigs:
             "larry@sunriselogistics.net",
             "mirika@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
-            "alex.soldin@gmail.com",
         ],
         default_ccs=[],
         subject=f"Missing POD Report {DatetimeHelper.get_current_datetime()}",
