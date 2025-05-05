@@ -81,10 +81,7 @@ class DataManipulator:
                             ],
                         },
                     ),
-                    (
-                        self._extract_agent_name_for_ocd,
-                        {"columns": ["Delivery Agent"]},
-                    ),
+                    self._extract_agent_name_for_ocd,
                 ]
             },
         }
@@ -118,7 +115,7 @@ class DataManipulator:
             "LASTEVENTHUB": "Last Event Hub",
             "LASTEVENTDATE": "Last Event Date",
             "LASTEVENTTIME": "Last Event Time",
-            # Pod agent and ocd Report
+            # Pod agent and ocd reports
             "DELIVERYAGENT": "Delivery Agent",
         }
         return df.rename(columns=column_mapping)
@@ -144,10 +141,8 @@ class DataManipulator:
             df[col] = df[col].apply(DatetimeHelper.safe_to_date)
         return df
 
-    def _extract_agent_name_for_ocd(
-        self, df: pd.DataFrame, columns: list[str]
-    ) -> pd.DataFrame:
-        def parse_agent_name(agent_str: str) -> str:
+    def _extract_agent_name_for_ocd(self, df: pd.DataFrame) -> pd.DataFrame:
+        def _parse_agent_name(agent_str: str) -> str:
             if not isinstance(agent_str, str) or not agent_str.strip():
                 logger.warning("Missing or invalid delivery agent: %r", agent_str)
                 return "No Delivery Agent"
@@ -162,9 +157,7 @@ class DataManipulator:
                 return "No Delivery Agent"
             return agent
 
-        for col in columns:
-            df[col] = df[col].apply(parse_agent_name)
-
+        df["Delivery Agent"] = df["Delivery Agent"].apply(_parse_agent_name)
         return df
 
     @log_execution_time
