@@ -1,6 +1,8 @@
 import pandas as pd
 from tqdm import tqdm
 
+from helpers.excel_helper import ExcelHelper
+
 
 class PodAgentReports:
     def __init__(self, data: dict, output_file_path: str) -> None:
@@ -30,15 +32,14 @@ class PodAgentReports:
         ):
             df_agent = df[df["Delivery Agent"] == delivery_agent]
 
-            with pd.ExcelWriter(
-                f"{self.output_file_path}/{delivery_agent}.xlsx", engine="xlsxwriter"
-            ) as writer:
+            file_path = f"{self.output_file_path}/{delivery_agent}.xlsx"
+            with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
                 df_agent.to_excel(writer, index=False)
-                worksheet = writer.sheets["Sheet1"]
-                worksheet.autofit()
+
+            ExcelHelper.autofit_excel_file(file_path)
 
             summary[delivery_agent] = {
-                "file_path": f"{self.output_file_path}/{delivery_agent}.xlsx",
+                "file_path": file_path,
                 "client_name": delivery_agent,
                 # TODO: Change to external emails once we are happy
                 # "email": self.agent_email_mapping.get(delivery_agent),

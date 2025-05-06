@@ -16,7 +16,7 @@ class DataExtractor:
         return """
             SELECT CUSTNAME, ACCNUM, WAYDATE, WAYBILL, SERVICE, REFERENCE, 
             ORIGPERS, DESTPERS, ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, PIECES, 
-            CHARGEMASS, DUEDATE, PODDATE, PODTIME, PODRECIPIENT, BOOKDATE, 
+            CHARGEMASS, DUEDATE, PODDATE, PODTIME, PODRECIPIENT, PODIMGPRESENT, BOOKDATE, 
             BOOKSTARTTIME, BOOKENDTIME, EVENTNAME, LASTEVENTHUB, LASTEVENTDATE, 
             LASTEVENTTIME
             FROM VIEW_WBANALYSE wba
@@ -34,10 +34,11 @@ class DataExtractor:
         """
 
     def _get_pod_agent_view(self) -> str:
-        # TODO: Add POD verbal column - can't find this...
         return """
         SELECT WAYBILL, WAYDATE, DUEDATE, ACCNUM, SERVICE, ORIGPERS, DESTPERS, 
-        ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, DELIVERYAGENT, PODIMGPRESENT
+        ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, DELIVERYAGENT, PODDATE, PODTIME, 
+        PODRECIPIENT, PODIMGPRESENT, EVENTNAME, LASTEVENTHUB, LASTEVENTDATE, 
+        LASTEVENTTIME
         FROM VIEW_WBANALYSE wba
         WHERE wba.PODDATE IS NULL 
         AND wba.DELIVERYAGENT NOT LIKE '%OCD%'
@@ -53,6 +54,20 @@ class DataExtractor:
         WHERE EMAIL IS NOT NULL
         AND NAME NOT LIKE '%OCD%'
         AND NAME NOT LIKE 'xxx%';
+        """
+
+    def _get_pod_ocd_view(self) -> str:
+        return """
+        SELECT WAYBILL, WAYDATE, DUEDATE, ACCNUM, SERVICE, ORIGPERS, DESTPERS, 
+        ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, DELIVERYAGENT, PODDATE, PODTIME, 
+        PODRECIPIENT, PODIMGPRESENT, EVENTNAME, LASTEVENTHUB, LASTEVENTDATE, 
+        LASTEVENTTIME
+        FROM VIEW_WBANALYSE wba
+        WHERE wba.PODDATE IS NULL 
+        AND wba.DELIVERYAGENT LIKE '%OCD%'
+        AND wba.DELIVERYAGENT NOT LIKE 'xxx%'
+        AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
+        AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
         """
 
     @log_execution_time
@@ -84,6 +99,9 @@ class DataExtractor:
                     "agent_email": client.execute_query(self._get_pod_agent_details()),
                 }
 
-                result["pod_agent"]["content"].to_excel("pod_data_test.xlsx")
+            if ReportTypes.POD_OCD.value in report_types:
+                result["pod_ocd"] = {
+                    "content": client.execute_query(self._get_pod_ocd_view()),
+                }
 
         return result

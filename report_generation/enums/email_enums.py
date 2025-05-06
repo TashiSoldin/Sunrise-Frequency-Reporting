@@ -130,12 +130,50 @@ class EmailConfigs:
             """,
     )
 
+    POD_OCD_REPORT = EmailConfig(
+        recipient_type=EmailRecipientType.EXTERNAL,
+        cc_recipients=[
+            "mirika@sunriselogistics.net",
+        ],
+        default_recipients=[
+            "larry@sunriselogistics.net",
+            "mirika@sunriselogistics.net",
+            "raeesa@sunriselogistics.net",
+        ],
+        default_ccs=[],
+        subject=f"Missing POD Report {DatetimeHelper.get_current_datetime()}",
+        body="""
+            <html>
+            <head>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        font-size: 14px;
+                        line-height: 1.6;
+                        color: #333333;
+                    }
+                </style>
+            </head>
+            <body>
+            <p>Dear recipient,</p>
+
+            <p>Please find attached a listing of all waybills which have been handed over to yourselves but where delivery has as yet not been confirmed.</p>
+
+            <p>Please can you urgently review and make sure the deliveries have been completed and POD details both verbal and physical POD entered onto the system.</p>
+
+            <p>Kind regards,<br>
+            </body>
+            </html>
+            """,
+    )
+
     @classmethod
     def get_config(cls, report_type: str) -> EmailConfig:
         config_map = {
             ReportTypes.BOOKING.value: cls.BOOKING_REPORT,
             ReportTypes.FREQUENCY.value: cls.FREQUENCY_REPORT,
             ReportTypes.POD_AGENT.value: cls.POD_AGENT_REPORT,
+            ReportTypes.POD_OCD.value: cls.POD_OCD_REPORT,
         }
         if report_type not in config_map:
             raise ValueError(f"Unknown report type: {report_type}")
