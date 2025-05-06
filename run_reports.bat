@@ -5,21 +5,20 @@ setlocal enabledelayedexpansion
 set "OUTPUT_DIR=data"
 set "PYTHON_CMD=uv run"
 set "SCRIPT=report_generation/report_generation.py"
+set "REPORT_TYPES="
 
-:: Process command line arguments
-set "REPORT_TYPE="
 :parse
 if "%~1"=="" goto :endparse
 if /i "%~1"=="--booking" (
-    set "REPORT_TYPE=booking"
+    set "REPORT_TYPES=!REPORT_TYPES! booking"
 ) else if /i "%~1"=="--frequency" (
-    set "REPORT_TYPE=frequency"
+    set "REPORT_TYPES=!REPORT_TYPES! frequency"
 ) else if /i "%~1"=="--pod_agent" (
-    set "REPORT_TYPE=pod_agent"
+    set "REPORT_TYPES=!REPORT_TYPES! pod_agent"
 ) else if /i "%~1"=="--pod_ocd" (
-    set "REPORT_TYPE=pod_ocd"
+    set "REPORT_TYPES=!REPORT_TYPES! pod_ocd"
 ) else if /i "%~1"=="--all" (
-    set "REPORT_TYPE=all"
+    set "REPORT_TYPES=all"
 ) else if /i "%~1"=="--output-dir" (
     if "%~2"=="" (
         echo Error: Missing value for --output-dir
@@ -38,19 +37,15 @@ goto :parse
 :endparse
 
 :: If no report type specified, show usage
-if "%REPORT_TYPE%"=="" goto :usage
+if "%REPORT_TYPES%"=="" goto :usage
 
 :: Run the report generation script
-if "%REPORT_TYPE%"=="all" (
-    %PYTHON_CMD% %SCRIPT% --output-dir "%OUTPUT_DIR%" --report-types all
-) else (
-    %PYTHON_CMD% %SCRIPT% --output-dir "%OUTPUT_DIR%" --report-types %REPORT_TYPE%
-)
+%PYTHON_CMD% %SCRIPT% --output-dir "%OUTPUT_DIR%" --report-types %REPORT_TYPES%
 goto :end
 
 :usage
 echo Usage:
-echo   run_reports.bat [--booking^|--frequency^|--all] [--output-dir OUTPUT_DIR]
+echo   run_reports.bat [--booking^|--frequency^|--pod_agent^|--pod_ocd^|--all] [--output-dir OUTPUT_DIR]
 echo.
 echo Options:
 echo   --booking      Generate booking reports
@@ -65,8 +60,7 @@ echo Examples:
 echo   run_reports.bat --all
 echo   run_reports.bat --booking --output-dir C:\reports
 echo   run_reports.bat --frequency
-echo   run_reports.bat --pod_agent
-echo   run_reports.bat --pod_ocd
+echo   run_reports.bat --booking --frequency
 :end
 
 endlocal
