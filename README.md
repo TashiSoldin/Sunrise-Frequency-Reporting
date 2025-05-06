@@ -27,6 +27,12 @@ make generate-booking-report
 
 # Generate only frequency reports
 make generate-frequency-report
+
+# Generate only pod agent reports
+make generate-pod-agent-report
+
+# Generate only pod ocd reports
+make generate-pod-ocd-report
 ```
 
 You can specify a custom output directory:
@@ -48,6 +54,12 @@ Use the provided `run_reports.bat` file:
 
 # Generate only frequency reports
 ./run_reports.bat --frequency
+
+# Generate only pod agent reports
+./run_reports.bat --pod_agent
+
+# Generate only pod ocd reports
+./run_reports.bat --pod_ocd
 ```
 
 You can specify a custom output directory:

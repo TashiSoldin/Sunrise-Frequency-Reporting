@@ -39,6 +39,7 @@ class OutlookEmailClient:
     def send_email(
         self,
         recipient_email: str,
+        cc_recipients: list[str],
         subject: str,
         body: str,
         attachments: list[str] | None,
@@ -55,6 +56,7 @@ class OutlookEmailClient:
         msg = MIMEMultipart()
         msg["From"] = self.sender_email
         msg["To"] = recipient_email
+        msg["Cc"] = ", ".join(cc_recipients) if cc_recipients else ""
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "html"))
 
@@ -76,6 +78,7 @@ class OutlookEmailClient:
     def send_email_with_memory_attachment(
         self,
         recipient_email: str,
+        cc_recipients: list[str],
         subject: str,
         body: str,
         attachment_data: bytes,
@@ -94,6 +97,7 @@ class OutlookEmailClient:
         msg = MIMEMultipart()
         msg["From"] = self.sender_email
         msg["To"] = recipient_email
+        msg["Cc"] = ", ".join(cc_recipients) if cc_recipients else ""
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "html"))
 

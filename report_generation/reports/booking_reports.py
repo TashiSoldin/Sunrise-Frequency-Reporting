@@ -2,6 +2,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from helpers.datetime_helper import DatetimeHelper
+from helpers.excel_helper import ExcelHelper
 
 
 class BookingReports:
@@ -40,4 +41,12 @@ class BookingReports:
             ):
                 group.to_excel(writer, sheet_name=category, index=False)
 
-        return {"internal": {"file_path": file_path, "client_name": "Internal"}}
+        ExcelHelper.autofit_excel_file(file_path)
+
+        return {
+            "internal": {
+                "file_path": file_path,
+                "client_name": "Internal",
+                "email": None,
+            }
+        }

@@ -1,5 +1,7 @@
 import logging
 import pandas as pd
+import re
+from enums.report_enums import ReportTypes
 from helpers.datetime_helper import DatetimeHelper
 from utils.retry_decorator import retry
 from utils.log_execution_time_decorator import log_execution_time
@@ -11,7 +13,7 @@ class DataManipulator:
     def __init__(self, df_mapping: dict[str, dict[str, pd.DataFrame]]) -> None:
         self.df_mapping = df_mapping
         self.transformations = {
-            "frequency": {
+            ReportTypes.FREQUENCY.value: {
                 "content": [
                     self._rename_frequency_report_view_columns,
                     (self._filter_out_none_values, {"columns": ["Account"]}),
@@ -29,7 +31,7 @@ class DataManipulator:
                     ),
                 ],
             },
-            "booking": {
+            ReportTypes.BOOKING.value: {
                 "content": [
                     self._rename_frequency_report_view_columns,
                     (self._filter_out_none_values, {"columns": ["Account"]}),
@@ -47,10 +49,46 @@ class DataManipulator:
                     ),
                 ]
             },
+            ReportTypes.POD_AGENT.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Delivery Agent"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                                "POD Date",
+                                "Last Event Date",
+                            ]
+                        },
+                    ),
+                ]
+            },
+            ReportTypes.POD_OCD.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Delivery Agent"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                                "POD Date",
+                                "Last Event Date",
+                            ],
+                        },
+                    ),
+                    self._extract_agent_name_for_ocd,
+                ]
+            },
         }
 
     def _rename_frequency_report_view_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         column_mapping = {
+            # Frequency Report
             "CUSTNAME": "Customer",
             "ACCNUM": "Account",
             "WAYDATE": "Waybill Date",
@@ -69,6 +107,7 @@ class DataManipulator:
             "PODDATE": "POD Date",
             "PODTIME": "POD Time",
             "PODRECIPIENT": "POD Recipient",
+            "PODIMGPRESENT": "POD Image Present",
             "BOOKDATE": "Booking Date",
             "BOOKSTARTTIME": "Start Time",
             "BOOKENDTIME": "End Time",
@@ -76,6 +115,8 @@ class DataManipulator:
             "LASTEVENTHUB": "Last Event Hub",
             "LASTEVENTDATE": "Last Event Date",
             "LASTEVENTTIME": "Last Event Time",
+            # Pod agent and ocd reports
+            "DELIVERYAGENT": "Delivery Agent",
         }
         return df.rename(columns=column_mapping)
 
@@ -98,6 +139,25 @@ class DataManipulator:
     ) -> pd.DataFrame:
         for col in columns:
             df[col] = df[col].apply(DatetimeHelper.safe_to_date)
+        return df
+
+    def _extract_agent_name_for_ocd(self, df: pd.DataFrame) -> pd.DataFrame:
+        def _parse_agent_name(agent_str: str) -> str:
+            if not isinstance(agent_str, str) or not agent_str.strip():
+                logger.warning("Missing or invalid delivery agent: %r", agent_str)
+                return "No Delivery Agent"
+
+            parts = [p.strip() for p in agent_str.split(" - ") if p.strip()]
+            agent = parts[-1] if parts else ""
+            agent = re.sub(r"[\/\-]+", " ", agent)
+            agent = re.sub(r"\s+", " ", agent).strip()
+
+            if not agent:
+                logger.warning("Could not extract agent from: %r", agent_str)
+                return "No Delivery Agent"
+            return agent
+
+        df["Delivery Agent"] = df["Delivery Agent"].apply(_parse_agent_name)
         return df
 
     @log_execution_time

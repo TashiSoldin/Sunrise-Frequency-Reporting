@@ -1,5 +1,6 @@
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.styles import Font, Border, Side, PatternFill
 import pandas as pd
@@ -71,3 +72,34 @@ class ExcelHelper:
                     cell_to_style.fill = PatternFill(
                         start_color=color, end_color=color, fill_type="solid"
                     )
+
+    @staticmethod
+    def autofit_workbook_columns(workbook: Workbook) -> None:
+        """
+        Autofit all columns in all sheets of the given openpyxl Workbook.
+        """
+        for ws in workbook.worksheets:
+            for col in ws.columns:
+                max_length = 0
+                col_letter = get_column_letter(col[0].column)
+                for cell in col:
+                    try:
+                        cell_length = (
+                            len(str(cell.value)) if cell.value is not None else 0
+                        )
+                        if cell_length > max_length:
+                            max_length = cell_length
+                    except Exception:
+                        pass
+                ws.column_dimensions[col_letter].width = max_length + 2
+
+    @staticmethod
+    def autofit_excel_file(file_path: str) -> None:
+        """
+        Open an Excel file, autofit all columns in all sheets, and save it.
+        """
+        from openpyxl import load_workbook
+
+        wb = load_workbook(file_path)
+        ExcelHelper.autofit_workbook_columns(wb)
+        wb.save(file_path)
