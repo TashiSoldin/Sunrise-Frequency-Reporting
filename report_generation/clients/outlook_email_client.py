@@ -3,6 +3,10 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 import smtplib
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class OutlookEmailClient:
     def __init__(
@@ -49,6 +53,7 @@ class OutlookEmailClient:
 
         Args:
             recipient_email (str): Email address of the recipient
+            cc_recipients (list[str]): List of email addresses to CC
             subject (str): Email subject line
             body (str): Email body content
             attachments (list[str], optional): List of file paths to attach
@@ -56,8 +61,11 @@ class OutlookEmailClient:
         msg = MIMEMultipart()
         msg["From"] = self.sender_email
         msg["To"] = recipient_email
-        msg["Cc"] = ", ".join(cc_recipients) if cc_recipients else ""
         msg["Subject"] = subject
+
+        if cc_recipients:
+            msg["Cc"] = ", ".join(cc_recipients)
+
         msg.attach(MIMEText(body, "html"))
 
         if attachments:
@@ -89,6 +97,7 @@ class OutlookEmailClient:
 
         Args:
             recipient_email (str): Email address of the recipient
+            cc_recipients (list[str]): List of email addresses to CC
             subject (str): Email subject line
             body (str): Email body content
             attachment_data (bytes): The attachment data in bytes
@@ -97,8 +106,11 @@ class OutlookEmailClient:
         msg = MIMEMultipart()
         msg["From"] = self.sender_email
         msg["To"] = recipient_email
-        msg["Cc"] = ", ".join(cc_recipients) if cc_recipients else ""
         msg["Subject"] = subject
+
+        if cc_recipients:
+            msg["Cc"] = ", ".join(cc_recipients)
+
         msg.attach(MIMEText(body, "html"))
 
         attachment = MIMEApplication(attachment_data, _subtype="zip")
