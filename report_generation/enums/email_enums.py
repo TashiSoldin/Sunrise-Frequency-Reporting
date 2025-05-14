@@ -30,6 +30,7 @@ class EmailConfigs:
             "hatchcpt@sunriselogistics.net",
             "hatchdbn@sunriselogistics.net",
             "christine@sunriselogistics.net",
+            "raeesa@sunriselogistics.net",
         ],
         default_ccs=[],
         subject=f"Booking Report {DatetimeHelper.get_current_datetime()}",

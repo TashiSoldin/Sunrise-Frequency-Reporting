@@ -14,6 +14,16 @@ class DatetimeHelper:
     def get_precise_current_datetime() -> str:
         return datetime.now(DatetimeHelper.TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
 
+    @staticmethod
+    def get_today() -> datetime.date:
+        """
+        Returns today's date as a datetime.date object in the configured timezone.
+
+        Returns:
+            datetime.date: Today's date in YYYY-MM-DD format
+        """
+        return datetime.now(DatetimeHelper.TIMEZONE).date()
+
     def get_next_working_day() -> datetime.date:
         """
         Returns the next working day as a datetime.date object.

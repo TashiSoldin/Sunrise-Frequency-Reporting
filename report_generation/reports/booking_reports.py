@@ -11,10 +11,10 @@ class BookingReports:
         self.output_file_path = output_file_path
 
     def filter_df(self, df: pd.DataFrame) -> pd.DataFrame:
-        tomorrow = DatetimeHelper.get_next_working_day()
+        today = DatetimeHelper.get_today()
         return df.loc[
             (df["Booking Date"].notna())
-            & (df["Booking Date"] == tomorrow)
+            & (df["Booking Date"] == today)
             & (df["Dest Hub"].isin(["CPT", "DUR", "JNB"]))
             & (df["POD Date"].isna())
         ]
