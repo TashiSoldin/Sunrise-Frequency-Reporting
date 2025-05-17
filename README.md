@@ -33,6 +33,9 @@ make generate-pod-agent-report
 
 # Generate only pod ocd reports
 make generate-pod-ocd-report
+
+# Generate only pod summary reports
+make generate-pod-summary-report
 ```
 
 You can specify a custom output directory:
@@ -60,6 +63,9 @@ Use the provided `run_reports.bat` file:
 
 # Generate only pod ocd reports
 ./run_reports.bat --pod_ocd
+
+# Generate only pod summary reports
+./run_reports.bat --pod_summary
 ```
 
 You can specify a custom output directory:
@@ -80,15 +86,9 @@ uv run report_generation/report_generation.py --output-dir data --report-types b
 
 Create two scheduled tasks in Windows Task Scheduler:
 
-1. **Frequency Report (11am on weekdays)**:
-   - Program/script: `C:\path\to\run_reports.bat`
-   - Arguments: `--frequency --output-dir "C:\path\to\reports"`
-   - Schedule: Daily, Monday-Friday at 11:00 AM
-
-2. **All Reports (4pm on weekdays)**:
-   - Program/script: `C:\path\to\run_reports.bat`
-   - Arguments: `--all --output-dir "C:\path\to\reports"`
-   - Schedule: Daily, Monday-Friday at 4:00 PM
+1. **Booking, POD agent, POD ocd and POD summary report (6am on weekdays)**
+2. **Frequency Report (11am on weekdays)**:
+3. **Frequency Reports (4pm on weekdays)**:
 
 ## Logging and Error Handling
 

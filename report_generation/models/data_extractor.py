@@ -70,6 +70,19 @@ class DataExtractor:
         AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
         """
 
+    def _get_pod_summary_view(self) -> str:
+        return """
+        SELECT WAYBILL, WAYDATE, DUEDATE, ACCNUM, SERVICE, ORIGPERS, DESTPERS, 
+        ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, DELIVERYAGENT, PODDATE, PODTIME, 
+        PODRECIPIENT, PODIMGPRESENT, EVENTNAME, LASTEVENTHUB, LASTEVENTDATE, 
+        LASTEVENTTIME
+        FROM VIEW_WBANALYSE wba
+        WHERE wba.PODDATE IS NULL 
+        AND wba.DELIVERYAGENT NOT LIKE 'xxx%'
+        AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
+        AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
+        """
+
     @log_execution_time
     @retry(max_attempts=3, delay=20, backoff=2)
     def get_data(self, report_types: list[ReportTypes]) -> dict[str, pd.DataFrame]:
@@ -84,7 +97,7 @@ class DataExtractor:
                 }
 
             if ReportTypes.BOOKING.value in report_types:
-                if "frequency" in result:
+                if ReportTypes.FREQUENCY.value in result:
                     wba_df = result["frequency"]["content"]
                 else:
                     wba_df = client.execute_query(self._get_frequency_report_view())
@@ -102,6 +115,21 @@ class DataExtractor:
             if ReportTypes.POD_OCD.value in report_types:
                 result["pod_ocd"] = {
                     "content": client.execute_query(self._get_pod_ocd_view()),
+                }
+
+            if ReportTypes.POD_SUMMARY.value in report_types:
+                if (
+                    ReportTypes.POD_AGENT.value in result
+                    and ReportTypes.POD_OCD.value in result
+                ):
+                    pod_summary_df = pd.concat(
+                        [result["pod_agent"]["content"], result["pod_ocd"]["content"]]
+                    )
+                else:
+                    pod_summary_df = client.execute_query(self._get_pod_summary_view())
+
+                result["pod_summary"] = {
+                    "content": pod_summary_df,
                 }
 
         return result

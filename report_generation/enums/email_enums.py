@@ -51,7 +51,7 @@ class EmailConfigs:
 
             <p>Please find attached the latest automated booking report.</p>
 
-            <p>Best regards,<br>
+            <p>Kind regards,<br>
             </body>
             </html>
             """,
@@ -88,7 +88,7 @@ class EmailConfigs:
 
             <p>If you have any questions or need clarification about the contents of this report, please don't hesitate to reach out.</p>
 
-            <p>Best regards,<br>
+            <p>Kind regards,<br>
             </body>
             </html>
             """,
@@ -168,6 +168,39 @@ class EmailConfigs:
             """,
     )
 
+    POD_SUMMARY_REPORT = EmailConfig(
+        recipient_type=EmailRecipientType.INTERNAL,
+        cc_recipients=[],
+        default_recipients=[
+            "larry@sunriselogistics.net",
+            "mirika@sunriselogistics.net",
+            "raeesa@sunriselogistics.net",
+        ],
+        default_ccs=[],
+        subject=f"POD Summary Report {DatetimeHelper.get_current_datetime()}",
+        body="""
+            <html>
+            <head>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        font-size: 14px;
+                        line-height: 1.6;
+                        color: #333333;
+                    }
+                </style>
+            </head>
+            <body>
+            <p>Dear recipient,</p>
+
+            <p>Please find attached the latest automated pod summary report.</p>
+
+            <p>Kind regards,<br>
+            </body>
+            </html>
+            """,
+    )
+
     @classmethod
     def get_config(cls, report_type: str) -> EmailConfig:
         config_map = {
@@ -175,6 +208,7 @@ class EmailConfigs:
             ReportTypes.FREQUENCY.value: cls.FREQUENCY_REPORT,
             ReportTypes.POD_AGENT.value: cls.POD_AGENT_REPORT,
             ReportTypes.POD_OCD.value: cls.POD_OCD_REPORT,
+            ReportTypes.POD_SUMMARY.value: cls.POD_SUMMARY_REPORT,
         }
         if report_type not in config_map:
             raise ValueError(f"Unknown report type: {report_type}")

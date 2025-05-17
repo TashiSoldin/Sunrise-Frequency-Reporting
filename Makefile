@@ -19,6 +19,9 @@ generate-pod-agent-report:
 generate-pod-ocd-report:
 	@$(PYTHON) $(SCRIPT) --output-dir "$(if $(DATA_DIR),$(DATA_DIR),$(OUTPUT_DIR))" --report-types pod_ocd
 
+generate-pod-summary-report:
+	@$(PYTHON) $(SCRIPT) --output-dir "$(if $(DATA_DIR),$(DATA_DIR),$(OUTPUT_DIR))" --report-types pod_summary
+	
 help:
 	@echo "Usage:"
 	@echo "  make generate-all-reports [DATA_DIR='/path/to/output']"
@@ -26,6 +29,7 @@ help:
 	@echo "  make generate-frequency-report [DATA_DIR='/path/to/output']"
 	@echo "  make generate-pod-agent-report [DATA_DIR='/path/to/output']"
 	@echo "  make generate-pod-ocd-report [DATA_DIR='/path/to/output']"
+	@echo "  make generate-pod-summary-report [DATA_DIR='/path/to/output']"
 	@echo ""
 	@echo "Arguments:"
 	@echo "  DATA_DIR : Path to the directory where the reports will be generated (optional, default: $(OUTPUT_DIR))"
@@ -36,3 +40,4 @@ help:
 	@echo "  make generate-frequency-report"
 	@echo "  make generate-pod-agent-report"
 	@echo "  make generate-pod-ocd-report"
+	

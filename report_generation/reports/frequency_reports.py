@@ -65,7 +65,7 @@ class FrequencyReports:
                     wb[sheet_name], sheet_df, wb[sheet_name].max_row + 2
                 )
 
-            file_path = f"{self.output_file_path}/{account}.xlsx"
+            file_path = f"{self.output_file_path}/{account}-{DatetimeHelper.get_current_datetime()}.xlsx"
             wb.save(file_path)
 
             ExcelHelper.autofit_excel_file(file_path)

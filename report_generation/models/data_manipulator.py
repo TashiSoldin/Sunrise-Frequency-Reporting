@@ -84,6 +84,12 @@ class DataManipulator:
                     self._extract_agent_name_for_ocd,
                 ]
             },
+            ReportTypes.POD_SUMMARY.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._replace_none_values, {"columns": ["Delivery Agent"]}),
+                ]
+            },
         }
 
     def _rename_frequency_report_view_columns(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -132,6 +138,18 @@ class DataManipulator:
 
         df = df.dropna(subset=columns)
         logger.info(f"Removed {initial_rows - len(df)} rows containing None values")
+        return df
+
+    def _replace_none_values(
+        self, df: pd.DataFrame, columns: list[str]
+    ) -> pd.DataFrame:
+        [
+            logger.warning(f"Found {n} None values in column '{col}'")
+            for col, n in ((col, df[col].isna().sum()) for col in columns)
+            if n > 0
+        ]
+        for col in columns:
+            df[col] = df[col].fillna("Unknown")
         return df
 
     def _convert_date_columns(
