@@ -23,6 +23,36 @@ class PodOcdReports:
         self.output_file_path = output_file_path
 
     def _create_hub_to_hub_group_mapping(self) -> dict:
+        """
+        Creates a mapping from individual destination hubs to their corresponding hub groups.
+
+        This method transforms the hierarchical HUB_GROUP_MAPPING_DEFINITION into a flat
+        dictionary for efficient lookups during report generation.
+
+        Returns:
+            dict: A dictionary mapping individual hub codes to their group names
+
+        Example:
+            If HUB_GROUP_MAPPING_DEFINITION is:
+            {
+                "JNB-PRY": {
+                    "dest_hubs": ["JNB", "PRY"],
+                    "emails": [],
+                },
+                "DUR-PMB": {
+                    "dest_hubs": ["DUR", "PMB"],
+                    "emails": [],
+                }
+            }
+
+            The resulting mapping will be:
+            {
+                "JNB": "JNB-PRY",
+                "PRY": "JNB-PRY",
+                "DUR": "DUR-PMB",
+                "PMB": "DUR-PMB"
+            }
+        """
         hub_group_mapping = {}
         for group_name, group_data in HUB_GROUP_MAPPING_DEFINITION.items():
             for dest_hub in group_data["dest_hubs"]:
