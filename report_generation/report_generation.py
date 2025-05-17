@@ -14,6 +14,7 @@ from reports.booking_reports import BookingReports
 from reports.frequency_reports import FrequencyReports
 from reports.pod_agent_reports import PodAgentReports
 from reports.pod_ocd_reports import PodOcdReports
+from reports.pod_summary_reports import PodSummaryReports
 from utils.log_execution_time_decorator import log_execution_time
 
 # Create logs directory if it doesn't exist
@@ -72,6 +73,12 @@ class ReportGeneration:
                 f"{self.output_file_path}/pod-ocd-reports-{current_date_time}"
             )
             OSHelper.create_directories([self.output_file_path_pod_ocd])
+
+        if ReportTypes.POD_SUMMARY.value in report_types:
+            self.output_file_path_pod_summary = (
+                f"{self.output_file_path}/pod-summary-reports-{current_date_time}"
+            )
+            OSHelper.create_directories([self.output_file_path_pod_summary])
 
     def _generate_and_send_booking_report(
         self, data: dict, email_config: EmailConfig
@@ -142,6 +149,22 @@ class ReportGeneration:
         ).send_emails()
         logger.info("Pod ocd report emails sent successfully")
 
+    def _generate_and_send_pod_summary_reports(
+        self, data: dict, email_config: EmailConfig
+    ) -> None:
+        logger.info("Generating pod summary report")
+        pod_summary_report_summary = PodSummaryReports(
+            data, self.output_file_path_pod_summary
+        ).generate_report()
+
+        logger.info("Sending pod summary report emails")
+        EmailSender(
+            email_secrets=self._email_secrets,
+            email_config=email_config,
+            report_summary=pod_summary_report_summary,
+        ).send_emails()
+        logger.info("Pod summary report emails sent successfully")
+
     @log_execution_time
     def generate_reports(self, report_types: list[str]) -> None:
         logger.info(f"Generating reports of types: {report_types}")
@@ -176,6 +199,12 @@ class ReportGeneration:
                 self._generate_and_send_pod_ocd_reports(
                     df_mapping.get(ReportTypes.POD_OCD.value),
                     EmailConfigs.get_config(ReportTypes.POD_OCD.value),
+                )
+
+            if ReportTypes.POD_SUMMARY.value in report_types:
+                self._generate_and_send_pod_summary_reports(
+                    df_mapping.get(ReportTypes.POD_SUMMARY.value),
+                    EmailConfigs.get_config(ReportTypes.POD_SUMMARY.value),
                 )
 
             logger.info("Reports generated successfully!")
@@ -215,9 +244,9 @@ def main() -> None:
         "--report-types",
         "-r",
         nargs="+",
-        choices=["booking", "frequency", "pod_agent", "pod_ocd", "all"],
+        choices=["booking", "frequency", "pod_agent", "pod_ocd", "pod_summary", "all"],
         default=["all"],
-        help="Types of reports to generate: booking, frequency, pod_agent, pod_ocd, or all",
+        help="Types of reports to generate: booking, frequency, pod_agent, pod_ocd, pod_summary, or all",
     )
 
     args = parser.parse_args()

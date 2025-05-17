@@ -6,6 +6,7 @@ class ReportTypes(Enum):
     FREQUENCY = "frequency"
     POD_AGENT = "pod_agent"
     POD_OCD = "pod_ocd"
+    POD_SUMMARY = "pod_summary"
 
     @classmethod
     def get_list(cls) -> list[str]:

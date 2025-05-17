@@ -24,11 +24,13 @@ class EmailSender:
             {
                 "1234567890": {
                     "file_path": "path/to/file.xlsx",
-                    "client_name": "Client Name"
+                    "client_name": "Client Name",
+                    "email": "email@example.com"
                 },
                 "1234567891": {
                     "file_path": "path/to/file2.xlsx",
-                    "client_name": "Client Name 2"
+                    "client_name": "Client Name 2",
+                    "email": "email@example.com"
                 }
             }
         """

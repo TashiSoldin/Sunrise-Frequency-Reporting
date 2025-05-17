@@ -30,7 +30,6 @@ class BookingReports:
             return {}
 
         file_path = f"{self.output_file_path}/booking-report-{DatetimeHelper.get_current_datetime()}.xlsx"
-        # Create an Excel writer object
         with pd.ExcelWriter(
             file_path,
             engine="openpyxl",

@@ -17,6 +17,8 @@ if /i "%~1"=="--booking" (
     set "REPORT_TYPES=!REPORT_TYPES! pod_agent"
 ) else if /i "%~1"=="--pod_ocd" (
     set "REPORT_TYPES=!REPORT_TYPES! pod_ocd"
+) else if /i "%~1"=="--pod_summary" (
+    set "REPORT_TYPES=!REPORT_TYPES! pod_summary"
 ) else if /i "%~1"=="--all" (
     set "REPORT_TYPES=all"
 ) else if /i "%~1"=="--output-dir" (
@@ -52,6 +54,7 @@ echo   --booking      Generate booking reports
 echo   --frequency    Generate frequency reports
 echo   --pod_agent    Generate pod agent reports
 echo   --pod_ocd      Generate pod ocd reports
+echo   --pod_summary  Generate pod summary reports
 echo   --all          Generate all report types
 echo   --output-dir   Specify output directory (default: data)
 echo   --help         Show this help message
