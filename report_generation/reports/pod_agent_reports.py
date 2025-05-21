@@ -43,7 +43,7 @@ class PodAgentReports:
             replacements = {
                 "agent_name": delivery_agent,
                 "date_time": DatetimeHelper.get_precise_current_datetime(),
-                "total_count": len(df_agent),
+                "num_missing": len(df_agent),
             }
             ExcelHelper.update_template_placeholders(wb, replacements)
 
