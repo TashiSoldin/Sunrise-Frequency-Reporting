@@ -1,8 +1,10 @@
+from openpyxl import load_workbook
 import pandas as pd
 from tqdm import tqdm
 
 from helpers.excel_helper import ExcelHelper
 from helpers.datetime_helper import DatetimeHelper
+from helpers.os_helper import OSHelper
 
 HUB_GROUP_MAPPING_DEFINITION = {
     "JNB-PRY": {
@@ -79,9 +81,29 @@ class PodOcdReports:
         for hub_group, hub_df in tqdm(
             df.groupby("Hub Group"), desc="Generating pod ocd reports"
         ):
+            # file_path = f"{self.output_file_path}/{hub_group}-{DatetimeHelper.get_current_datetime()}.xlsx"
+            # with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+            #     hub_df.to_excel(writer, sheet_name=hub_group, index=False)
+
+            # ExcelHelper.autofit_excel_file(file_path)
+
+            template_path = OSHelper.load_template(
+                "assets/", "pod_report_template.xlsx"
+            )
+            wb = load_workbook(template_path, data_only=False)
+
+            replacements = {
+                "agent_name": hub_group,
+                "date_time": DatetimeHelper.get_precise_current_datetime(),
+                "num_missing": len(hub_df),
+            }
+            ExcelHelper.update_template_placeholders(wb, replacements)
+
+            ws = wb.active
+            ExcelHelper.append_df_to_sheet(ws, hub_df, ws.max_row + 2)
+
             file_path = f"{self.output_file_path}/{hub_group}-{DatetimeHelper.get_current_datetime()}.xlsx"
-            with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
-                hub_df.to_excel(writer, sheet_name=hub_group, index=False)
+            wb.save(file_path)
 
             ExcelHelper.autofit_excel_file(file_path)
 

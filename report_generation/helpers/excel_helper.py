@@ -20,6 +20,16 @@ class ExcelHelper:
     def append_df_to_sheet(
         worksheet: Worksheet, df: pd.DataFrame, start_row: int
     ) -> None:
+        for r_idx, row in enumerate(
+            dataframe_to_rows(df, index=False, header=True), start=start_row
+        ):
+            for c_idx, value in enumerate(row, 1):
+                worksheet.cell(row=r_idx, column=c_idx, value=value)
+
+    @staticmethod
+    def append_df_to_sheet_with_styling(
+        worksheet: Worksheet, df: pd.DataFrame, start_row: int
+    ) -> None:
         thin = Side(border_style="thin", color="000000")
         border = Border(top=thin, left=thin, right=thin, bottom=thin)
         last_event_col_index = df.columns.get_loc("Last Event")

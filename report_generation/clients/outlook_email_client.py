@@ -78,10 +78,10 @@ class OutlookEmailClient:
                     )
                     msg.attach(attachment)
 
-        try:
-            self.connection.send_message(msg)
-        except (smtplib.SMTPException, OSError) as smtp_err:
-            raise ValueError(f"SMTP error: {smtp_err}")
+        # try:
+        #     self.connection.send_message(msg)
+        # except (smtplib.SMTPException, OSError) as smtp_err:
+        #     raise ValueError(f"SMTP error: {smtp_err}")
 
     def send_email_with_memory_attachment(
         self,
@@ -119,7 +119,7 @@ class OutlookEmailClient:
         )
         msg.attach(attachment)
 
-        try:
-            self.connection.send_message(msg)
-        except (smtplib.SMTPException, OSError) as smtp_err:
-            raise ValueError(f"SMTP error: {smtp_err}")
+        # try:
+        #     self.connection.send_message(msg)
+        # except (smtplib.SMTPException, OSError) as smtp_err:
+        #     raise ValueError(f"SMTP error: {smtp_err}")

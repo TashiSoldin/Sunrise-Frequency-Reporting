@@ -61,7 +61,7 @@ class FrequencyReports:
                 ("Current deliveries", current_deliveries_df),
                 ("Completed deliveries", completed_deliveries_df),
             ]:
-                ExcelHelper.append_df_to_sheet(
+                ExcelHelper.append_df_to_sheet_with_styling(
                     wb[sheet_name], sheet_df, wb[sheet_name].max_row + 2
                 )
 

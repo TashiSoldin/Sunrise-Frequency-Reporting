@@ -27,8 +27,6 @@ class PodAgentReports:
         df = self.sort_df(self.df)
         summary = {}
 
-        # TODO: Look into using a template and listing len(df) in red
-
         for delivery_agent in tqdm(
             df["Delivery Agent"].unique(),
             desc="Generating pod agent reports",
@@ -36,7 +34,7 @@ class PodAgentReports:
             df_agent = df[df["Delivery Agent"] == delivery_agent]
 
             template_path = OSHelper.load_template(
-                "assets/", "pod_agent_report_template.xlsx"
+                "assets/", "pod_report_template.xlsx"
             )
             wb = load_workbook(template_path, data_only=False)
 
@@ -54,12 +52,6 @@ class PodAgentReports:
             wb.save(file_path)
 
             ExcelHelper.autofit_excel_file(file_path)
-
-            # file_path = f"{self.output_file_path}/{delivery_agent}-{DatetimeHelper.get_current_datetime()}.xlsx"
-            # with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
-            #     df_agent.to_excel(writer, index=False)
-
-            # ExcelHelper.autofit_excel_file(file_path)
 
             summary[delivery_agent] = {
                 "file_path": file_path,
