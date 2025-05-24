@@ -61,14 +61,14 @@ class FrequencyReports:
                 ("Current deliveries", current_deliveries_df),
                 ("Completed deliveries", completed_deliveries_df),
             ]:
-                ExcelHelper.append_df_to_sheet(
+                ExcelHelper.append_df_to_sheet_with_styling(
                     wb[sheet_name], sheet_df, wb[sheet_name].max_row + 2
                 )
 
+            ExcelHelper.autofit_workbook_columns(wb)
+
             file_path = f"{self.output_file_path}/{account}-{DatetimeHelper.get_current_datetime()}.xlsx"
             wb.save(file_path)
-
-            ExcelHelper.autofit_excel_file(file_path)
 
             summary[account] = {
                 "file_path": file_path,

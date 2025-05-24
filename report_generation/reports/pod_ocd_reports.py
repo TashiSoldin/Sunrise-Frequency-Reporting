@@ -1,8 +1,10 @@
+from openpyxl import load_workbook
 import pandas as pd
 from tqdm import tqdm
 
 from helpers.excel_helper import ExcelHelper
 from helpers.datetime_helper import DatetimeHelper
+from helpers.os_helper import OSHelper
 
 HUB_GROUP_MAPPING_DEFINITION = {
     "JNB-PRY": {
@@ -72,22 +74,33 @@ class PodOcdReports:
         df = self.sort_df(self.df)
         summary = {}
 
-        # TODO: Look into using a template and listing len(df) in red
-
         df["Hub Group"] = df["Dest Hub"].map(self._get_hub_group)
-
         for hub_group, hub_df in tqdm(
             df.groupby("Hub Group"), desc="Generating pod ocd reports"
         ):
-            file_path = f"{self.output_file_path}/{hub_group}-{DatetimeHelper.get_current_datetime()}.xlsx"
-            with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
-                hub_df.to_excel(writer, sheet_name=hub_group, index=False)
+            template_path = OSHelper.load_template(
+                "assets/", "pod_report_template.xlsx"
+            )
+            wb = load_workbook(template_path, data_only=False)
 
-            ExcelHelper.autofit_excel_file(file_path)
+            replacements = {
+                "agent_name": hub_group,
+                "date_time": DatetimeHelper.get_precise_current_datetime(),
+                "num_missing": len(hub_df),
+            }
+            ExcelHelper.update_template_placeholders(wb, replacements)
+
+            ws = wb.active
+            ExcelHelper.append_df_to_sheet(ws, hub_df, ws.max_row + 2)
+            ExcelHelper.autofit_workbook_columns(wb)
+
+            file_path = f"{self.output_file_path}/{hub_group}-{DatetimeHelper.get_current_datetime()}.xlsx"
+            wb.save(file_path)
 
             summary[hub_group] = {
                 "file_path": file_path,
                 "client_name": hub_group,
+                # TODO: Change to emails once we are happy
                 # "email": self._get_hub_group_emails(hub_group),
                 "email": None,
             }
