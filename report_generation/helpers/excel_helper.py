@@ -20,10 +20,11 @@ class ExcelHelper:
     def append_df_to_sheet(
         worksheet: Worksheet, df: pd.DataFrame, start_row: int
     ) -> None:
-        rows = dataframe_to_rows(df, index=False, header=True)
-        for row_idx, row in enumerate(rows, start=start_row):
-            for col_idx, value in enumerate(row, start=1):
-                worksheet.cell(row=row_idx, column=col_idx, value=value)
+        for r_idx, row in enumerate(
+            dataframe_to_rows(df, index=False, header=True), start=start_row
+        ):
+            for c_idx, value in enumerate(row, 1):
+                worksheet.cell(row=r_idx, column=c_idx, value=value)
 
     @staticmethod
     def append_df_to_sheet_with_styling(
@@ -88,19 +89,17 @@ class ExcelHelper:
         Autofit all columns in all sheets of the given openpyxl Workbook.
         """
         for ws in workbook.worksheets:
-            for col in ws.columns:
-                max_length = 0
-                col_letter = get_column_letter(col[0].column)
-                for cell in col:
-                    try:
-                        cell_length = (
-                            len(str(cell.value)) if cell.value is not None else 0
-                        )
-                        if cell_length > max_length:
-                            max_length = cell_length
-                    except Exception:
-                        pass
-                ws.column_dimensions[col_letter].width = max_length + 2
+            try:
+                for col in ws.columns:
+                    if not col:
+                        continue
+                    max_length = max(
+                        (len(str(cell.value or "")) for cell in col), default=8
+                    )
+                    col_letter = get_column_letter(col[0].column)
+                    ws.column_dimensions[col_letter].width = min(max_length + 2, 50)
+            except Exception:
+                continue
 
     @staticmethod
     def autofit_excel_file(file_path: str) -> None:

@@ -66,6 +66,7 @@ class FrequencyReports:
                 )
 
             ExcelHelper.autofit_workbook_columns(wb)
+
             file_path = f"{self.output_file_path}/{account}-{DatetimeHelper.get_current_datetime()}.xlsx"
             wb.save(file_path)
 

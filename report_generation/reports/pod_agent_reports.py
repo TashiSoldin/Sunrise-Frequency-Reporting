@@ -1,4 +1,3 @@
-from copy import deepcopy
 from openpyxl import load_workbook
 import pandas as pd
 from tqdm import tqdm
@@ -28,16 +27,16 @@ class PodAgentReports:
         df = self.sort_df(self.df)
         summary = {}
 
-        template_path = OSHelper.load_template("assets/", "pod_report_template.xlsx")
-        template_wb = load_workbook(template_path, data_only=False)
-
         for delivery_agent in tqdm(
             df["Delivery Agent"].unique(),
             desc="Generating pod agent reports",
         ):
             df_agent = df[df["Delivery Agent"] == delivery_agent]
 
-            wb = deepcopy(template_wb)
+            template_path = OSHelper.load_template(
+                "assets/", "pod_report_template.xlsx"
+            )
+            wb = load_workbook(template_path, data_only=False)
 
             replacements = {
                 "agent_name": delivery_agent,

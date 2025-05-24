@@ -1,4 +1,3 @@
-from copy import deepcopy
 from openpyxl import load_workbook
 import pandas as pd
 from tqdm import tqdm
@@ -75,14 +74,14 @@ class PodOcdReports:
         df = self.sort_df(self.df)
         summary = {}
 
-        template_path = OSHelper.load_template("assets/", "pod_report_template.xlsx")
-        template_wb = load_workbook(template_path, data_only=False)
-
         df["Hub Group"] = df["Dest Hub"].map(self._get_hub_group)
         for hub_group, hub_df in tqdm(
             df.groupby("Hub Group"), desc="Generating pod ocd reports"
         ):
-            wb = deepcopy(template_wb)
+            template_path = OSHelper.load_template(
+                "assets/", "pod_report_template.xlsx"
+            )
+            wb = load_workbook(template_path, data_only=False)
 
             replacements = {
                 "agent_name": hub_group,
