@@ -20,11 +20,10 @@ class ExcelHelper:
     def append_df_to_sheet(
         worksheet: Worksheet, df: pd.DataFrame, start_row: int
     ) -> None:
-        for r_idx, row in enumerate(
-            dataframe_to_rows(df, index=False, header=True), start=start_row
-        ):
-            for c_idx, value in enumerate(row, 1):
-                worksheet.cell(row=r_idx, column=c_idx, value=value)
+        rows = dataframe_to_rows(df, index=False, header=True)
+        for row_idx, row in enumerate(rows, start=start_row):
+            for col_idx, value in enumerate(row, start=1):
+                worksheet.cell(row=row_idx, column=col_idx, value=value)
 
     @staticmethod
     def append_df_to_sheet_with_styling(

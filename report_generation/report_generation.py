@@ -89,7 +89,7 @@ class ReportGeneration:
         ).generate_report()
 
         if not booking_report_summary:
-            logger.info("No booking report data found for tomorrow")
+            logger.info("No booking report data found for today")
             return
 
         logger.info("Sending booking report emails")

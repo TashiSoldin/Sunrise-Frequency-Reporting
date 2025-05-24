@@ -32,7 +32,6 @@ class PodSummaryReports:
         return monthly_dataframes
 
     def generate_report(self) -> dict:
-        """Generate POD summary reports with cumulative pivot tables by month."""
         df = self._prepare_data(self.df)
         monthly_dataframes = self._create_monthly_dataframes(df)
 
