@@ -74,6 +74,11 @@ class PodOcdReports:
         df = self.sort_df(self.df)
         summary = {}
 
+        sheet_config = {
+            "Physical": {"filter_value": "Y"},
+            "Verbal": {"filter_value": "N"},
+        }
+
         df["Hub Group"] = df["Dest Hub"].map(self._get_hub_group)
         for hub_group, hub_df in tqdm(
             df.groupby("Hub Group"), desc="Generating pod ocd reports"
@@ -83,16 +88,27 @@ class PodOcdReports:
             )
             wb = load_workbook(template_path, data_only=False)
 
-            replacements = {
-                "agent_name": hub_group,
-                "date_time": DatetimeHelper.get_precise_current_datetime(),
-                "num_missing": len(hub_df),
-            }
-            ExcelHelper.update_template_placeholders(wb, replacements)
+            # Process each sheet with the same logic
+            for sheet_name, config in sheet_config.items():
+                ws = wb[sheet_name]
 
-            ws = wb.active
-            ExcelHelper.append_df_to_sheet(ws, hub_df, ws.max_row + 2)
-            ExcelHelper.autofit_workbook_columns(wb)
+                # Filter data based on sheet configuration
+                df_filtered = hub_df[
+                    hub_df["POD Image Present"] == config["filter_value"]
+                ]
+
+                # Apply replacements
+                replacements = {
+                    "agent_name": hub_group,
+                    "date_time": DatetimeHelper.get_precise_current_datetime(),
+                    "num_missing": len(df_filtered),
+                }
+                ExcelHelper.update_template_placeholders_sheet(ws, replacements)
+
+                # Append data if not empty
+                if not df_filtered.empty:
+                    ExcelHelper.append_df_to_sheet(ws, df_filtered, ws.max_row + 2)
+                    ExcelHelper.autofit_worksheet_columns(ws)
 
             file_path = f"{self.output_file_path}/{hub_group}-{DatetimeHelper.get_current_datetime()}.xlsx"
             wb.save(file_path)

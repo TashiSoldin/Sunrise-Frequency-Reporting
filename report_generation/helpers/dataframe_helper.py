@@ -27,3 +27,29 @@ class DataFrameHelper:
         cum_df = count_df.cumsum(axis=1)
 
         return cum_df
+
+    @staticmethod
+    def add_total_row(df: pd.DataFrame, total_row_label: str = "Total") -> pd.DataFrame:
+        """
+        Add a total row to the bottom of a DataFrame that sums all numeric columns.
+
+        Args:
+            df: DataFrame to add totals to
+            total_row_label: Label for the total row (default: "Total")
+
+        Returns:
+            DataFrame with total row appended
+        """
+        numeric_columns = df.select_dtypes(include=[int, float]).columns
+        total_row = df[numeric_columns].sum()
+
+        total_series = pd.Series(total_row, name=total_row_label)
+
+        for col in df.columns:
+            if col not in numeric_columns:
+                total_series[col] = ""
+
+        total_series = total_series.reindex(df.columns, fill_value="")
+        df_with_totals = pd.concat([df, total_series.to_frame().T])
+
+        return df_with_totals

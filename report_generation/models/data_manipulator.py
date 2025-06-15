@@ -149,7 +149,7 @@ class DataManipulator:
             if n > 0
         ]
         for col in columns:
-            df[col] = df[col].fillna("Unknown")
+            df[col] = df[col].fillna(f"No {col} specified")
         return df
 
     def _convert_date_columns(

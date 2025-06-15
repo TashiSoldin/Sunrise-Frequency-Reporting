@@ -78,7 +78,7 @@ class DataExtractor:
         LASTEVENTTIME
         FROM VIEW_WBANALYSE wba
         WHERE wba.PODDATE IS NULL 
-        AND wba.DELIVERYAGENT NOT LIKE 'xxx%'
+        AND (wba.DELIVERYAGENT NOT LIKE 'xxx%' OR wba.DELIVERYAGENT IS NULL)
         AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
         AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
         """
@@ -118,16 +118,7 @@ class DataExtractor:
                 }
 
             if ReportTypes.POD_SUMMARY.value in report_types:
-                if (
-                    ReportTypes.POD_AGENT.value in result
-                    and ReportTypes.POD_OCD.value in result
-                ):
-                    pod_summary_df = pd.concat(
-                        [result["pod_agent"]["content"], result["pod_ocd"]["content"]]
-                    )
-                else:
-                    pod_summary_df = client.execute_query(self._get_pod_summary_view())
-
+                pod_summary_df = client.execute_query(self._get_pod_summary_view())
                 result["pod_summary"] = {
                     "content": pod_summary_df,
                 }

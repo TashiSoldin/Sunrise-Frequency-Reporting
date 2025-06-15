@@ -8,6 +8,15 @@ import pandas as pd
 
 class ExcelHelper:
     @staticmethod
+    def update_template_placeholders_sheet(
+        worksheet: Worksheet, replacements: dict
+    ) -> None:
+        for row in worksheet.iter_rows():
+            for cell in row:
+                if cell.value in replacements:
+                    cell.value = replacements[cell.value]
+
+    @staticmethod
     def update_template_placeholders(workbook: Workbook, replacements: dict) -> None:
         for sheet in workbook.sheetnames:
             ws = workbook[sheet]
@@ -82,6 +91,23 @@ class ExcelHelper:
                     cell_to_style.fill = PatternFill(
                         start_color=color, end_color=color, fill_type="solid"
                     )
+
+    @staticmethod
+    def autofit_worksheet_columns(worksheet: Worksheet) -> None:
+        """
+        Autofit all columns in a specific worksheet.
+        """
+        try:
+            for col in worksheet.columns:
+                if not col:
+                    continue
+                max_length = max(
+                    (len(str(cell.value or "")) for cell in col), default=8
+                )
+                col_letter = get_column_letter(col[0].column)
+                worksheet.column_dimensions[col_letter].width = min(max_length + 2, 50)
+        except Exception:
+            pass
 
     @staticmethod
     def autofit_workbook_columns(workbook: Workbook) -> None:
