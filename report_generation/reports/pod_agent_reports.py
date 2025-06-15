@@ -27,6 +27,11 @@ class PodAgentReports:
         df = self.sort_df(self.df)
         summary = {}
 
+        sheet_config = {
+            "Physical": {"filter_value": "Y"},
+            "Verbal": {"filter_value": "N"},
+        }
+
         for delivery_agent in tqdm(
             df["Delivery Agent"].unique(),
             desc="Generating pod agent reports",
@@ -38,16 +43,25 @@ class PodAgentReports:
             )
             wb = load_workbook(template_path, data_only=False)
 
-            replacements = {
-                "agent_name": delivery_agent,
-                "date_time": DatetimeHelper.get_precise_current_datetime(),
-                "num_missing": len(df_agent),
-            }
-            ExcelHelper.update_template_placeholders(wb, replacements)
+            for sheet_name, config in sheet_config.items():
+                ws = wb[sheet_name]
 
-            ws = wb.active
-            ExcelHelper.append_df_to_sheet(ws, df_agent, ws.max_row + 2)
-            ExcelHelper.autofit_workbook_columns(wb)
+                # Filter data based on sheet configuration
+                df_filtered = df_agent[
+                    df_agent["POD Image Present"] == config["filter_value"]
+                ]
+
+                # Apply replacements
+                replacements = {
+                    "agent_name": delivery_agent,
+                    "date_time": DatetimeHelper.get_precise_current_datetime(),
+                    "num_missing": len(df_filtered),
+                }
+                ExcelHelper.update_template_placeholders_sheet(ws, replacements)
+
+                if not df_filtered.empty:
+                    ExcelHelper.append_df_to_sheet(ws, df_filtered, ws.max_row + 2)
+                    ExcelHelper.autofit_worksheet_columns(ws)
 
             file_path = f"{self.output_file_path}/{delivery_agent}-{DatetimeHelper.get_current_datetime()}.xlsx"
             wb.save(file_path)
