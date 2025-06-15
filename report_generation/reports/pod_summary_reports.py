@@ -26,7 +26,8 @@ class PodSummaryReports:
 
     def _create_monthly_dataframes(self, df: pd.DataFrame) -> dict:
         monthly_dataframes = {}
-        for month in df["Month Year"].unique():
+        sorted_months = sorted(df["Month Year"].unique())
+        for month in sorted_months:
             monthly_dataframes[month] = df[df["Month Year"] == month]
 
         return monthly_dataframes
@@ -38,18 +39,24 @@ class PodSummaryReports:
         # Create pivot tables for each month
         pivot_dfs = {}
         for month, df in monthly_dataframes.items():
-            pivot_dfs[month] = (
+            pivot_df = (
                 DataFrameHelper.create_cumulative_pivot_table_for_count_by_date_column(
                     df=df, index_column="Delivery Agent", date_column="Waybill Date"
                 )
             )
+            pivot_dfs[month] = DataFrameHelper.add_total_row(pivot_df, "Total")
 
         file_path = f"{self.output_file_path}/pod-summary-report-{DatetimeHelper.get_current_datetime()}.xlsx"
         with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
             for month, pivot_df in tqdm(
                 pivot_dfs.items(), desc="Generating POD summary reports"
             ):
-                pivot_df.to_excel(writer, sheet_name=f"{month.strftime('%b %Y')}")
+                # Remove Delivery Agent index to fix formatting issue
+                pivot_df.index.name = "Delivery Agent"
+                pivot_df_reset = pivot_df.reset_index()
+                pivot_df_reset.to_excel(
+                    writer, sheet_name=f"{month.strftime('%b %Y')}", index=False
+                )
 
         ExcelHelper.autofit_excel_file(file_path)
 
