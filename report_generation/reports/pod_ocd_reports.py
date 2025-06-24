@@ -75,11 +75,11 @@ class PodOcdReports:
         summary = {}
 
         sheet_config = {
-            "Verbal missing": (df["POD Date"].isna())
+            "Verbal Missing": (df["POD Date"].isna())
             & (df["POD Image Present"] == "N"),
-            "Image missing": (df["POD Date"].notna())
+            "Image Missing": (df["POD Date"].notna())
             & (df["POD Image Present"] == "N"),
-            "Verbal not captured": (df["POD Date"].isna())
+            "Verbal Not Captured": (df["POD Date"].isna())
             & (df["POD Image Present"] == "Y"),
         }
 
