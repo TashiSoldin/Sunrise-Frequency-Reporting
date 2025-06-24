@@ -28,8 +28,12 @@ class PodAgentReports:
         summary = {}
 
         sheet_config = {
-            "Physical": {"filter_value": "Y"},
-            "Verbal": {"filter_value": "N"},
+            "Verbal missing": (df["POD Date"].isna())
+            & (df["POD Image Present"] == "N"),
+            "Image missing": (df["POD Date"].notna())
+            & (df["POD Image Present"] == "N"),
+            "Verbal not captured": (df["POD Date"].isna())
+            & (df["POD Image Present"] == "Y"),
         }
 
         for delivery_agent in tqdm(
@@ -47,9 +51,7 @@ class PodAgentReports:
                 ws = wb[sheet_name]
 
                 # Filter data based on sheet configuration
-                df_filtered = df_agent[
-                    df_agent["POD Image Present"] == config["filter_value"]
-                ]
+                df_filtered = df_agent[config[df_agent.index]]
 
                 # Apply replacements
                 replacements = {
