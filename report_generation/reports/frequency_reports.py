@@ -1,3 +1,4 @@
+from datetime import timedelta
 from openpyxl import load_workbook
 import pandas as pd
 from tqdm import tqdm
@@ -45,6 +46,15 @@ class FrequencyReports:
             ].isin(completed_pod_events)
             completed_deliveries_df = df_account[completed_mask]
             current_deliveries_df = df_account[~completed_mask]
+
+            # If current deliveries is empty and the last completed delivery is more than 7 days ago, continue
+            valid_dates = completed_deliveries_df["Last Event Date"].dropna()
+            max_last_event_date = valid_dates.max() if not valid_dates.empty else pd.NaT
+            if current_deliveries_df.empty and (
+                max_last_event_date is pd.NaT
+                or max_last_event_date < DatetimeHelper.get_today() - timedelta(days=7)
+            ):
+                continue
 
             template_path = OSHelper.load_template(
                 "assets/", "frequency_report_template.xlsx"

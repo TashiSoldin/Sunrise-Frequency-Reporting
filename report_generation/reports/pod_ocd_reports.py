@@ -7,12 +7,16 @@ from helpers.datetime_helper import DatetimeHelper
 from helpers.os_helper import OSHelper
 
 HUB_GROUP_MAPPING_DEFINITION = {
-    "JNB-PRY": {
-        "dest_hubs": ["JNB", "PRY"],
+    "JNB-HUB": {
+        "dest_hubs": ["JNB", "PRY", "BFN", "WDH", "POL", "JB1"],
         "emails": [],
     },
-    "DUR-PMB": {
-        "dest_hubs": ["DUR", "PMB"],
+    "DUR-HUB": {
+        "dest_hubs": ["DUR", "PMB", "DB1", "KZ1"],
+        "emails": [],
+    },
+    "CPT-HUB": {
+        "dest_hubs": ["CPT"],
         "emails": [],
     },
 }
@@ -37,22 +41,29 @@ class PodOcdReports:
         Example:
             If HUB_GROUP_MAPPING_DEFINITION is:
             {
-                "JNB-PRY": {
-                    "dest_hubs": ["JNB", "PRY"],
+                "JNB-HUB": {
+                    "dest_hubs": ["JNB", "PRY", "BFN", "WDH", "POL", "JB1"],
                     "emails": [],
                 },
-                "DUR-PMB": {
-                    "dest_hubs": ["DUR", "PMB"],
+                "DUR-HUB": {
+                    "dest_hubs": ["DUR", "PMB", "DB1", "KZ1"],
                     "emails": [],
                 }
             }
 
             The resulting mapping will be:
             {
-                "JNB": "JNB-PRY",
-                "PRY": "JNB-PRY",
-                "DUR": "DUR-PMB",
-                "PMB": "DUR-PMB"
+                "JNB": "JNB-HUB",
+                "PRY": "JNB-HUB",
+                "BFN": "JNB-HUB",
+                "WDH": "JNB-HUB",
+                "POL": "JNB-HUB",
+                "JB1": "JNB-HUB",
+                "DUR": "DUR-HUB",
+                "PMB": "DUR-HUB",
+                "DB1": "DUR-HUB",
+                "KZ1": "DUR-HUB",
+
             }
         """
         hub_group_mapping = {}
