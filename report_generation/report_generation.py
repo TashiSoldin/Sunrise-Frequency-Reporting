@@ -14,7 +14,7 @@ from reports.booking_reports import BookingReports
 from reports.frequency_reports import FrequencyReports
 from reports.pod_agent_reports import PodAgentReports
 from reports.pod_ocd_reports import PodOcdReports
-from reports.pod_summary_reports import PodSummaryReports
+from reports.summary_reports import SummaryReports
 from utils.log_execution_time_decorator import log_execution_time
 
 # Create logs directory if it doesn't exist
@@ -150,11 +150,11 @@ class ReportGeneration:
         logger.info("Pod ocd report emails sent successfully")
 
     def _generate_and_send_pod_summary_reports(
-        self, data: dict, email_config: EmailConfig
+        self, input_file_paths: list[str], email_config: EmailConfig
     ) -> None:
         logger.info("Generating pod summary report")
-        pod_summary_report_summary = PodSummaryReports(
-            data, self.output_file_path_pod_summary
+        pod_summary_report_summary = SummaryReports(
+            input_file_paths, self.output_file_path_pod_summary
         ).generate_report()
 
         logger.info("Sending pod summary report emails")
@@ -203,7 +203,7 @@ class ReportGeneration:
 
             if ReportTypes.POD_SUMMARY.value in report_types:
                 self._generate_and_send_pod_summary_reports(
-                    df_mapping.get(ReportTypes.POD_SUMMARY.value),
+                    [self.output_file_path_pod_agent, self.output_file_path_pod_ocd],
                     EmailConfigs.get_config(ReportTypes.POD_SUMMARY.value),
                 )
 

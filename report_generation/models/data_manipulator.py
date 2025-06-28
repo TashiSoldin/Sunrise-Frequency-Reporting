@@ -84,12 +84,6 @@ class DataManipulator:
                     self._extract_agent_name_for_ocd,
                 ]
             },
-            ReportTypes.POD_SUMMARY.value: {
-                "content": [
-                    self._rename_frequency_report_view_columns,
-                    (self._replace_none_values, {"columns": ["Delivery Agent"]}),
-                ]
-            },
         }
 
     def _rename_frequency_report_view_columns(self, df: pd.DataFrame) -> pd.DataFrame:
