@@ -69,7 +69,7 @@ class DataManipulator:
             ReportTypes.POD_OCD.value: {
                 "content": [
                     self._rename_frequency_report_view_columns,
-                    (self._filter_out_none_values, {"columns": ["Delivery Agent"]}),
+                    (self._replace_none_values, {"columns": ["Delivery Agent"]}),
                     (
                         self._convert_date_columns,
                         {

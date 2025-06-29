@@ -14,7 +14,7 @@ class SummaryReports:
     def _summarise_file(
         self, file_name: str, file_path: str, workbook: Workbook
     ) -> dict:
-        row_dict = {"File Name": file_name}
+        row_dict = {"File Name": file_name[:-22]}
 
         for sheet_name in workbook.sheetnames:
             df = DataFrameHelper.read_sheet_safely(file_path, sheet_name)
@@ -25,11 +25,10 @@ class SummaryReports:
                 continue
 
             current_month = DatetimeHelper.get_today().month
-            previous_months = [(current_month - i) % 12 for i in range(1, 13)]
 
             df["Month"] = pd.to_datetime(df["Waybill Date"]).dt.month
             current_month_rows = df[df["Month"] == current_month].shape[0]
-            previous_months_rows = df[df["Month"].isin(previous_months)].shape[0]
+            previous_months_rows = df[df["Month"] != current_month].shape[0]
 
             row_dict[f"{sheet_name} Previous Month"] = previous_months_rows
             row_dict[f"{sheet_name} Current Month"] = current_month_rows
