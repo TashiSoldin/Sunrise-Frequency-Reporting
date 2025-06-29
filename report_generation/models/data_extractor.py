@@ -41,8 +41,8 @@ class DataExtractor:
         LASTEVENTTIME
         FROM VIEW_WBANALYSE wba
         WHERE NOT (wba.PODDATE IS NOT NULL AND wba.PODIMGPRESENT = 'Y')
-        AND wba.DELIVERYAGENT NOT LIKE '%OCD%'
-        AND wba.DELIVERYAGENT NOT LIKE 'xxx%'
+        AND (wba.DELIVERYAGENT NOT LIKE '%OCD%' OR wba.DELIVERYAGENT IS NULL)
+        AND (wba.DELIVERYAGENT NOT LIKE 'xxx%' OR wba.DELIVERYAGENT IS NULL)
         AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
         AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
         """
@@ -66,19 +66,6 @@ class DataExtractor:
         WHERE NOT (wba.PODDATE IS NOT NULL AND wba.PODIMGPRESENT = 'Y') 
         AND wba.DELIVERYAGENT LIKE '%OCD%'
         AND wba.DELIVERYAGENT NOT LIKE 'xxx%'
-        AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
-        AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
-        """
-
-    def _get_pod_summary_view(self) -> str:
-        return """
-        SELECT WAYBILL, WAYDATE, DUEDATE, ACCNUM, SERVICE, ORIGPERS, DESTPERS, 
-        ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, DELIVERYAGENT, PODDATE, PODTIME, 
-        PODRECIPIENT, PODIMGPRESENT, EVENTNAME, LASTEVENTHUB, LASTEVENTDATE, 
-        LASTEVENTTIME
-        FROM VIEW_WBANALYSE wba
-        WHERE wba.PODDATE IS NULL 
-        AND (wba.DELIVERYAGENT NOT LIKE 'xxx%' OR wba.DELIVERYAGENT IS NULL)
         AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
         AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
         """
@@ -115,12 +102,6 @@ class DataExtractor:
             if ReportTypes.POD_OCD.value in report_types:
                 result["pod_ocd"] = {
                     "content": client.execute_query(self._get_pod_ocd_view()),
-                }
-
-            if ReportTypes.POD_SUMMARY.value in report_types:
-                pod_summary_df = client.execute_query(self._get_pod_summary_view())
-                result["pod_summary"] = {
-                    "content": pod_summary_df,
                 }
 
         return result
