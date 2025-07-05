@@ -82,10 +82,10 @@ class ReportGeneration:
             OSHelper.create_directories([self.output_file_path_pod_summary])
 
         if ReportTypes.CHAMPION.value in report_types:
-            self.output_file_path_pod_summary = (
+            self.output_file_path_champion = (
                 f"{self.output_file_path}/champion-reports-{current_date_time}"
             )
-            OSHelper.create_directories([self.output_file_path_pod_summary])
+            OSHelper.create_directories([self.output_file_path_champion])
 
     def _generate_and_send_booking_report(
         self, data: dict, email_config: EmailConfig
@@ -177,7 +177,7 @@ class ReportGeneration:
     ) -> None:
         logger.info("Generating champion report")
         champion_report_summary = ChampionReports(
-            data, self.output_file_path_pod_summary
+            data, self.output_file_path_champion
         ).generate_report()
 
         logger.info("Sending champion report emails")
@@ -283,7 +283,7 @@ def main() -> None:
             "all",
         ],
         default=["all"],
-        help="Types of reports to generate: booking, frequency, pod_agent, pod_ocd, pod_summary, or all",
+        help="Types of reports to generate: booking, frequency, pod_agent, pod_ocd, pod_summary, champion, or all",
     )
 
     args = parser.parse_args()

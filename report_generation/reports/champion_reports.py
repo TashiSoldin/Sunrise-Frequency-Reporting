@@ -6,5 +6,6 @@ class ChampionReports:
         self.df: pd.DataFrame = data.get("content")
         self.output_file_path = output_file_path
 
-    def generate_report(self):
-        return ""
+    def generate_report(self) -> dict:
+        summary = {}
+        return summary
