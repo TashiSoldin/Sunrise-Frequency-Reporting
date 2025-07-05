@@ -70,6 +70,19 @@ class DataExtractor:
         AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
         """
 
+    def _get_champion_view(self) -> str:
+        return """
+        SELECT WAYBILL, SERVICE, ACCNUM, SHIPPER, CONSIGNEE, ORIGHUB, ORIGTOWN, ORIGRING,
+        DESTHUB, DESTTOWN, DESTRING, PIECES, WAYDATE, BOOKDATE, PODDATE, PODIMGPRESENT, 
+        EVENTNAME, LASTEVENTHUB, LASTEVENTDATE, DELIVERYAGENT
+        FROM VIEW_WBANALYSE wba
+        WHERE NOT (wba.PODDATE IS NULL AND wba.PODIMGPRESENT = 'N')
+        AND wba.DELIVERYAGENT LIKE '%OCD%'
+        AND wba.DELIVERYAGENT NOT LIKE 'xxx%'
+        AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
+        AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
+        """
+
     @log_execution_time
     @retry(max_attempts=3, delay=20, backoff=2)
     def get_data(self, report_types: list[ReportTypes]) -> dict[str, pd.DataFrame]:
