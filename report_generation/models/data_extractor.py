@@ -117,4 +117,9 @@ class DataExtractor:
                     "content": client.execute_query(self._get_pod_ocd_view()),
                 }
 
+            if ReportTypes.CHAMPION.value in report_types:
+                result["champion"] = {
+                    "content": client.execute_query(self._get_champion_view()),
+                }
+
         return result

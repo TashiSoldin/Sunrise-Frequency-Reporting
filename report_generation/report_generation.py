@@ -15,6 +15,7 @@ from reports.frequency_reports import FrequencyReports
 from reports.pod_agent_reports import PodAgentReports
 from reports.pod_ocd_reports import PodOcdReports
 from reports.summary_reports import SummaryReports
+from reports.champion_reports import ChampionReports
 from utils.log_execution_time_decorator import log_execution_time
 
 # Create logs directory if it doesn't exist
@@ -77,6 +78,12 @@ class ReportGeneration:
         if ReportTypes.POD_SUMMARY.value in report_types:
             self.output_file_path_pod_summary = (
                 f"{self.output_file_path}/pod-summary-reports-{current_date_time}"
+            )
+            OSHelper.create_directories([self.output_file_path_pod_summary])
+
+        if ReportTypes.CHAMPION.value in report_types:
+            self.output_file_path_pod_summary = (
+                f"{self.output_file_path}/champion-reports-{current_date_time}"
             )
             OSHelper.create_directories([self.output_file_path_pod_summary])
 
@@ -165,6 +172,22 @@ class ReportGeneration:
         ).send_emails()
         logger.info("Pod summary report emails sent successfully")
 
+    def _generate_and_send_champion_reports(
+        self, data: dict, email_config: EmailConfig
+    ) -> None:
+        logger.info("Generating champion report")
+        champion_report_summary = ChampionReports(
+            data, self.output_file_path_pod_summary
+        ).generate_report()
+
+        logger.info("Sending champion report emails")
+        EmailSender(
+            email_secrets=self._email_secrets,
+            email_config=email_config,
+            report_summary=champion_report_summary,
+        ).send_emails()
+        logger.info("Champion report emails sent successfully")
+
     @log_execution_time
     def generate_reports(self, report_types: list[str]) -> None:
         logger.info(f"Generating reports of types: {report_types}")
@@ -207,6 +230,12 @@ class ReportGeneration:
                     EmailConfigs.get_config(ReportTypes.POD_SUMMARY.value),
                 )
 
+            if ReportTypes.CHAMPION.value in report_types:
+                self._generate_and_send_champion_reports(
+                    df_mapping.get(ReportTypes.CHAMPION.value),
+                    EmailConfigs.get_config(ReportTypes.CHAMPION.value),
+                )
+
             logger.info("Reports generated successfully!")
         except Exception as e:
             logger.error(f"Report generation failed: {str(e)}")
@@ -244,7 +273,15 @@ def main() -> None:
         "--report-types",
         "-r",
         nargs="+",
-        choices=["booking", "frequency", "pod_agent", "pod_ocd", "pod_summary", "all"],
+        choices=[
+            "booking",
+            "frequency",
+            "pod_agent",
+            "pod_ocd",
+            "pod_summary",
+            "champion",
+            "all",
+        ],
         default=["all"],
         help="Types of reports to generate: booking, frequency, pod_agent, pod_ocd, pod_summary, or all",
     )
