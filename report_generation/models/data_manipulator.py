@@ -84,6 +84,24 @@ class DataManipulator:
                     self._extract_agent_name_for_ocd,
                 ]
             },
+            ReportTypes.CHAMPION.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Account"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                                "POD Date",
+                                "Booking Date",
+                                "Last Event Date",
+                            ]
+                        },
+                    ),
+                ],
+            },
         }
 
     def _rename_frequency_report_view_columns(self, df: pd.DataFrame) -> pd.DataFrame:

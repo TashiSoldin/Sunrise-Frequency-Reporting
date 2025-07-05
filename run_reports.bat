@@ -19,6 +19,8 @@ if /i "%~1"=="--booking" (
     set "REPORT_TYPES=!REPORT_TYPES! pod_ocd"
 ) else if /i "%~1"=="--pod_summary" (
     set "REPORT_TYPES=!REPORT_TYPES! pod_summary"
+) else if /i "%~1"=="--champion" (
+    set "REPORT_TYPES=!REPORT_TYPES! champion"
 ) else if /i "%~1"=="--all" (
     set "REPORT_TYPES=all"
 ) else if /i "%~1"=="--output-dir" (
@@ -47,7 +49,7 @@ goto :end
 
 :usage
 echo Usage:
-echo   run_reports.bat [--booking^|--frequency^|--pod_agent^|--pod_ocd^|--all] [--output-dir OUTPUT_DIR]
+echo   run_reports.bat [--booking^|--frequency^|--pod_agent^|--pod_ocd^|--pod_summary^|--champion^|--all] [--output-dir OUTPUT_DIR]
 echo.
 echo Options:
 echo   --booking      Generate booking reports
@@ -55,6 +57,7 @@ echo   --frequency    Generate frequency reports
 echo   --pod_agent    Generate pod agent reports
 echo   --pod_ocd      Generate pod ocd reports
 echo   --pod_summary  Generate pod summary reports
+echo   --champion     Generate champion reports
 echo   --all          Generate all report types
 echo   --output-dir   Specify output directory (default: data)
 echo   --help         Show this help message
