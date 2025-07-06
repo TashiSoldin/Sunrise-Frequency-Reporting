@@ -1,4 +1,8 @@
 import pandas as pd
+from tqdm import tqdm
+from helpers.excel_helper import ExcelHelper
+from helpers.datetime_helper import DatetimeHelper
+import re
 
 
 class ChampionReports:
@@ -6,6 +10,37 @@ class ChampionReports:
         self.df: pd.DataFrame = data.get("content")
         self.output_file_path = output_file_path
 
+    def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        return df.sort_values(by=["Waybill Date", "Account"], ascending=[True, True])
+
     def generate_report(self) -> dict:
+        df = self.sort_df(self.df)
         summary = {}
+
+        for champion_id in tqdm(
+            df["User Code"].unique(),
+            desc="Generating champion reports",
+        ):
+            df_champion = df[df["User Code"] == champion_id]
+            champion_name = df_champion["Name"].iloc[0]
+
+            file_path = f"{self.output_file_path}/{re.sub(r"-+", "-",champion_name)}-{DatetimeHelper.get_current_datetime()}.xlsx"
+
+            with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+                for account_number in sorted(df_champion["Account"].unique()):
+                    df_account = df_champion[df_champion["Account"] == account_number]
+                    df_account.to_excel(
+                        writer, sheet_name=str(account_number), index=False
+                    )
+
+            ExcelHelper.autofit_excel_file(file_path)
+
+            summary[champion_id] = {
+                "file_path": file_path,
+                "client_name": champion_name,
+                # TODO: Change to external emails once we are happy
+                # "email": self.champion_email_mapping.get(champion),
+                "email": None,
+            }
+
         return summary
