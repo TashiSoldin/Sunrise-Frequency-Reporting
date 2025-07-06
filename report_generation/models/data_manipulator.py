@@ -93,7 +93,6 @@ class DataManipulator:
                         {
                             "columns": [
                                 "Waybill Date",
-                                "Due Date",
                                 "POD Date",
                                 "Booking Date",
                                 "Last Event Date",
@@ -135,6 +134,8 @@ class DataManipulator:
             "LASTEVENTTIME": "Last Event Time",
             # Pod agent and ocd reports
             "DELIVERYAGENT": "Delivery Agent",
+            # Champion reports
+            "EMAIL": "Email",
         }
         return df.rename(columns=column_mapping)
 
