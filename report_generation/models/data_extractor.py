@@ -23,7 +23,8 @@ class DataExtractor:
             WHERE wba.WAYDATE >= DATEADD(-60 DAY TO CURRENT_DATE)
             AND wba.WAYDATE <= CURRENT_DATE
             AND wba.WAYBILL NOT LIKE '%~%'
-            AND wba.WAYBILL NOT LIKE 'COL%';
+            AND wba.WAYBILL NOT LIKE 'COL%'
+            AND wba.STATUS <> 'Cancelled';
         """
 
     def _get_contact_details(self) -> str:
@@ -43,6 +44,7 @@ class DataExtractor:
         WHERE NOT (wba.PODDATE IS NOT NULL AND wba.PODIMGPRESENT = 'Y')
         AND (wba.DELIVERYAGENT NOT LIKE '%OCD%' OR wba.DELIVERYAGENT IS NULL)
         AND (wba.DELIVERYAGENT NOT LIKE 'xxx%' OR wba.DELIVERYAGENT IS NULL)
+        AND wba.STATUS <> 'Cancelled'
         AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
         AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
         """
@@ -66,8 +68,24 @@ class DataExtractor:
         WHERE NOT (wba.PODDATE IS NOT NULL AND wba.PODIMGPRESENT = 'Y') 
         AND wba.DELIVERYAGENT LIKE '%OCD%'
         AND wba.DELIVERYAGENT NOT LIKE 'xxx%'
+        AND wba.STATUS <> 'Cancelled'
         AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
         AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
+        """
+
+    def _get_champion_view(self) -> str:
+        return """
+        SELECT wba.WAYDATE, wba.WAYBILL, wba.SERVICE, wba.ACCNUM, wba.ORIGPERS, wba.DESTPERS, wba.ORIGHUB, wba.ORIGTOWN,
+        wba.DESTHUB, wba.DESTTOWN, wba.PIECES, wba.BOOKDATE, wba.PODDATE, wba.PODIMGPRESENT, 
+        wba.EVENTNAME, wba.LASTEVENTHUB, wba.LASTEVENTDATE, wba.DELIVERYAGENT,
+        vu.USERCODE, vu.NAME, vu.EMAIL
+        FROM VIEW_WBANALYSE wba
+        INNER JOIN CUSTOMER c ON c.ACCNUM = wba.ACCNUM
+        INNER JOIN VIEW_USERCODE vu ON vu.USERCODE = c.CREDCONT
+        WHERE wba.PODDATE IS NULL
+        AND wba.WAYDATE >= DATEADD(-60 DAY TO CURRENT_DATE)
+        AND wba.WAYDATE <= CURRENT_DATE
+        AND c.CREDCONT IS NOT NULL;
         """
 
     @log_execution_time
@@ -102,6 +120,11 @@ class DataExtractor:
             if ReportTypes.POD_OCD.value in report_types:
                 result["pod_ocd"] = {
                     "content": client.execute_query(self._get_pod_ocd_view()),
+                }
+
+            if ReportTypes.CHAMPION.value in report_types:
+                result["champion"] = {
+                    "content": client.execute_query(self._get_champion_view()),
                 }
 
         return result

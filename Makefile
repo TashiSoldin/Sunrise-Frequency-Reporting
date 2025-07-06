@@ -21,6 +21,9 @@ generate-pod-ocd-report:
 
 generate-pod-summary-report:
 	@$(PYTHON) $(SCRIPT) --output-dir "$(if $(DATA_DIR),$(DATA_DIR),$(OUTPUT_DIR))" --report-types pod_summary
+
+generate-champion-report:
+	@$(PYTHON) $(SCRIPT) --output-dir "$(if $(DATA_DIR),$(DATA_DIR),$(OUTPUT_DIR))" --report-types champion
 	
 help:
 	@echo "Usage:"
@@ -30,6 +33,7 @@ help:
 	@echo "  make generate-pod-agent-report [DATA_DIR='/path/to/output']"
 	@echo "  make generate-pod-ocd-report [DATA_DIR='/path/to/output']"
 	@echo "  make generate-pod-summary-report [DATA_DIR='/path/to/output']"
+	@echo "  make generate-champion-report [DATA_DIR='/path/to/output']"
 	@echo ""
 	@echo "Arguments:"
 	@echo "  DATA_DIR : Path to the directory where the reports will be generated (optional, default: $(OUTPUT_DIR))"
@@ -40,4 +44,3 @@ help:
 	@echo "  make generate-frequency-report"
 	@echo "  make generate-pod-agent-report"
 	@echo "  make generate-pod-ocd-report"
-	

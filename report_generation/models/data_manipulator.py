@@ -84,6 +84,23 @@ class DataManipulator:
                     self._extract_agent_name_for_ocd,
                 ]
             },
+            ReportTypes.CHAMPION.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Account"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "POD Date",
+                                "Booking Date",
+                                "Last Event Date",
+                            ]
+                        },
+                    ),
+                ],
+            },
         }
 
     def _rename_frequency_report_view_columns(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -117,6 +134,10 @@ class DataManipulator:
             "LASTEVENTTIME": "Last Event Time",
             # Pod agent and ocd reports
             "DELIVERYAGENT": "Delivery Agent",
+            # Champion reports
+            "USERCODE": "User Code",
+            "NAME": "Name",
+            "EMAIL": "Email",
         }
         return df.rename(columns=column_mapping)
 

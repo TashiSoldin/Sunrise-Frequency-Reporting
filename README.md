@@ -36,6 +36,9 @@ make generate-pod-ocd-report
 
 # Generate only pod summary reports
 make generate-pod-summary-report
+
+# Generate only champion reports
+make generate-champion-report
 ```
 
 You can specify a custom output directory:
@@ -66,6 +69,9 @@ Use the provided `run_reports.bat` file:
 
 # Generate only pod summary reports
 ./run_reports.bat --pod_summary
+
+# Generate only champion reports
+./run_reports.bat --champion
 ```
 
 You can specify a custom output directory:
