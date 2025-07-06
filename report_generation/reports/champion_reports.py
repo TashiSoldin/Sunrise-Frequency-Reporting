@@ -11,7 +11,9 @@ class ChampionReports:
         self.output_file_path = output_file_path
 
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
-        return df.sort_values(by=["Waybill Date", "Account"], ascending=[True, True])
+        return df.sort_values(
+            by=["User Code", "Account", "Waybill Date"], ascending=[True, True, True]
+        )
 
     def generate_report(self) -> dict:
         df = self.sort_df(self.df)
@@ -24,10 +26,10 @@ class ChampionReports:
             df_champion = df[df["User Code"] == champion_id]
             champion_name = df_champion["Name"].iloc[0]
 
-            file_path = f"{self.output_file_path}/{re.sub(r"-+", "-",champion_name)}-{DatetimeHelper.get_current_datetime()}.xlsx"
+            file_path = f"{self.output_file_path}/{re.sub(r'-+', '-', re.sub(r'[ ]+', '-', champion_name))}-{DatetimeHelper.get_current_datetime()}.xlsx"
 
             with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
-                for account_number in sorted(df_champion["Account"].unique()):
+                for account_number in df_champion["Account"].unique():
                     df_account = df_champion[df_champion["Account"] == account_number]
                     df_account.to_excel(
                         writer, sheet_name=str(account_number), index=False
