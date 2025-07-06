@@ -204,9 +204,11 @@ class EmailConfigs:
     CHAMPION_REPORT = EmailConfig(
         recipient_type=EmailRecipientType.EXTERNAL,
         cc_recipients=[
+            "larry@sunriselogistics.net",
             "christine@sunriselogistics.net",
             "kim@sunriselogistics.net",
             "krishnie@sunriselogistics.net",
+            "raeesa@sunriselogistics.net",
         ],
         default_recipients=[
             "larry@sunriselogistics.net",
@@ -233,8 +235,6 @@ class EmailConfigs:
             <p>Dear recipient,</p>
 
             <p>Please find attached the latest automated champion report.</p>
-
-            <p>For additional information, please visit our <a href="https://www.sunriselogistics.net/">website</a>.</p>
 
             <p>If you have any questions or need clarification about the contents of this report, please don't hesitate to reach out.</p>
 

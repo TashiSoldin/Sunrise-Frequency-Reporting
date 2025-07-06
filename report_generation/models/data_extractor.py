@@ -23,7 +23,8 @@ class DataExtractor:
             WHERE wba.WAYDATE >= DATEADD(-60 DAY TO CURRENT_DATE)
             AND wba.WAYDATE <= CURRENT_DATE
             AND wba.WAYBILL NOT LIKE '%~%'
-            AND wba.WAYBILL NOT LIKE 'COL%';
+            AND wba.WAYBILL NOT LIKE 'COL%'
+            AND wba.STATUS <> 'Cancelled';
         """
 
     def _get_contact_details(self) -> str:
@@ -43,6 +44,7 @@ class DataExtractor:
         WHERE NOT (wba.PODDATE IS NOT NULL AND wba.PODIMGPRESENT = 'Y')
         AND (wba.DELIVERYAGENT NOT LIKE '%OCD%' OR wba.DELIVERYAGENT IS NULL)
         AND (wba.DELIVERYAGENT NOT LIKE 'xxx%' OR wba.DELIVERYAGENT IS NULL)
+        AND wba.STATUS <> 'Cancelled'
         AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
         AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
         """
@@ -66,6 +68,7 @@ class DataExtractor:
         WHERE NOT (wba.PODDATE IS NOT NULL AND wba.PODIMGPRESENT = 'Y') 
         AND wba.DELIVERYAGENT LIKE '%OCD%'
         AND wba.DELIVERYAGENT NOT LIKE 'xxx%'
+        AND wba.STATUS <> 'Cancelled'
         AND wba.WAYDATE >= CAST(EXTRACT(YEAR FROM CURRENT_DATE) || '-01-01' AS DATE)
         AND wba.WAYDATE <= DATEADD(-4 DAY TO CURRENT_DATE);
         """

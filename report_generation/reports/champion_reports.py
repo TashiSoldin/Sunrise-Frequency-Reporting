@@ -40,9 +40,7 @@ class ChampionReports:
             summary[champion_id] = {
                 "file_path": file_path,
                 "client_name": champion_name,
-                # TODO: Change to external emails once we are happy
-                # "email": self.champion_email_mapping.get(champion),
-                "email": None,
+                "email": df_champion["Email"].iloc[0].lower(),
             }
 
         return summary
