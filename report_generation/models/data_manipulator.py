@@ -135,6 +135,8 @@ class DataManipulator:
             # Pod agent and ocd reports
             "DELIVERYAGENT": "Delivery Agent",
             # Champion reports
+            "USERCODE": "User Code",
+            "NAME": "Name",
             "EMAIL": "Email",
         }
         return df.rename(columns=column_mapping)
