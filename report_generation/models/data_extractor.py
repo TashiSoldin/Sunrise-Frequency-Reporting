@@ -72,8 +72,8 @@ class DataExtractor:
 
     def _get_champion_view(self) -> str:
         return """
-        SELECT wba.WAYBILL, wba.SERVICE, wba.ACCNUM, wba.ORIGHUB, wba.ORIGTOWN, wba.ORIGRING,
-        wba.DESTHUB, wba.DESTTOWN, wba.DESTRING, wba.PIECES, wba.WAYDATE, wba.BOOKDATE, wba.PODDATE, wba.PODIMGPRESENT, 
+        SELECT wba.WAYDATE, wba.WAYBILL, wba.SERVICE, wba.ACCNUM, wba.ORIGPERS, wba.DESTPERS, wba.ORIGHUB, wba.ORIGTOWN,
+        wba.DESTHUB, wba.DESTTOWN, wba.PIECES, wba.BOOKDATE, wba.PODDATE, wba.PODIMGPRESENT, 
         wba.EVENTNAME, wba.LASTEVENTHUB, wba.LASTEVENTDATE, wba.DELIVERYAGENT,
         vu.USERCODE, vu.NAME, vu.EMAIL
         FROM VIEW_WBANALYSE wba

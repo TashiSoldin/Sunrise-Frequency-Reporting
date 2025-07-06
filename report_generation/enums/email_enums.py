@@ -203,10 +203,16 @@ class EmailConfigs:
 
     CHAMPION_REPORT = EmailConfig(
         recipient_type=EmailRecipientType.EXTERNAL,
-        cc_recipients=[],
+        cc_recipients=[
+            "christine@sunriselogistics.net",
+            "kim@sunriselogistics.net",
+            "krishnie@sunriselogistics.net",
+        ],
         default_recipients=[
             "larry@sunriselogistics.net",
             "christine@sunriselogistics.net",
+            "kim@sunriselogistics.net",
+            "krishnie@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
         ],
         default_ccs=[],
