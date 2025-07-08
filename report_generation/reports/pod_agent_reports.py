@@ -71,9 +71,7 @@ class PodAgentReports:
             summary[delivery_agent] = {
                 "file_path": file_path,
                 "client_name": delivery_agent,
-                # TODO: Change to external emails once we are happy
-                # "email": self.agent_email_mapping.get(delivery_agent),
-                "email": None,
+                "email": self.agent_email_mapping.get(delivery_agent),
             }
 
         return summary
