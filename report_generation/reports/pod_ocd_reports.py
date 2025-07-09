@@ -9,15 +9,15 @@ from helpers.os_helper import OSHelper
 HUB_GROUP_MAPPING_DEFINITION = {
     "JNB-HUB": {
         "dest_hubs": ["JNB", "PRY", "BFN", "WDH", "POL", "JB1"],
-        "emails": [],
+        "email": "steven@sunriselogistics.net",
     },
     "DUR-HUB": {
         "dest_hubs": ["DUR", "PMB", "DB1", "KZ1"],
-        "emails": [],
+        "email": "nishalan@sunriselogistics.net",
     },
     "CPT-HUB": {
         "dest_hubs": ["CPT"],
-        "emails": [],
+        "email": "shawn@sunriselogistics.net",
     },
 }
 
@@ -75,8 +75,8 @@ class PodOcdReports:
     def _get_hub_group(self, dest_hub: str) -> str:
         return self.hub_group_mapping.get(dest_hub, dest_hub)
 
-    def _get_hub_group_emails(self, hub_group: str) -> list[str]:
-        return HUB_GROUP_MAPPING_DEFINITION.get(hub_group, {}).get("emails", [])
+    def _get_hub_group_email(self, hub_group: str) -> str:
+        return HUB_GROUP_MAPPING_DEFINITION.get(hub_group, {}).get("email", "")
 
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
         return df.sort_values(by="Waybill Date", ascending=True)
@@ -129,9 +129,7 @@ class PodOcdReports:
             summary[hub_group] = {
                 "file_path": file_path,
                 "client_name": hub_group,
-                # TODO: Change to emails once we are happy
-                # "email": self._get_hub_group_emails(hub_group),
-                "email": None,
+                "email": self._get_hub_group_email(hub_group),
             }
 
         return summary
