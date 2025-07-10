@@ -83,6 +83,7 @@ class DataExtractor:
         INNER JOIN CUSTOMER c ON c.ACCNUM = wba.ACCNUM
         INNER JOIN VIEW_USERCODE vu ON vu.USERCODE = c.CREDCONT
         WHERE wba.PODDATE IS NULL
+        AND wba.STATUS <> 'Cancelled'
         AND wba.WAYDATE >= DATEADD(-60 DAY TO CURRENT_DATE)
         AND wba.WAYDATE <= CURRENT_DATE
         AND c.CREDCONT IS NOT NULL;
