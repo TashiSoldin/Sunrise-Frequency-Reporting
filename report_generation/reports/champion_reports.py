@@ -40,7 +40,7 @@ class ChampionReports:
             summary[champion_id] = {
                 "file_path": file_path,
                 "client_name": champion_name,
-                "email": df_champion["Email"].iloc[0].lower(),
+                "email": df_champion["Email"].iloc[0],
             }
 
         return summary
