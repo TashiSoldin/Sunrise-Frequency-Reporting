@@ -97,7 +97,9 @@ class EmailConfigs:
     POD_AGENT_REPORT = EmailConfig(
         recipient_type=EmailRecipientType.EXTERNAL,
         cc_recipients=[
+            "larry@sunriselogistics.net",
             "mirika@sunriselogistics.net",
+            "raeesa@sunriselogistics.net",
         ],
         default_recipients=[
             "larry@sunriselogistics.net",
@@ -134,7 +136,9 @@ class EmailConfigs:
     POD_OCD_REPORT = EmailConfig(
         recipient_type=EmailRecipientType.EXTERNAL,
         cc_recipients=[
+            "larry@sunriselogistics.net",
             "mirika@sunriselogistics.net",
+            "raeesa@sunriselogistics.net",
         ],
         default_recipients=[
             "larry@sunriselogistics.net",
