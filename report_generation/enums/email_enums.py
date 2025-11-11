@@ -100,6 +100,8 @@ class EmailConfigs:
             "larry@sunriselogistics.net",
             "mirika@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
+            "arlene@sunriselogitics.net",
+            "anneline@sunriselogistics.net",
         ],
         default_recipients=[
             "larry@sunriselogistics.net",
@@ -139,6 +141,8 @@ class EmailConfigs:
             "larry@sunriselogistics.net",
             "mirika@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
+            "arlene@sunriselogitics.net",
+            "anneline@sunriselogistics.net",
         ],
         default_recipients=[
             "larry@sunriselogistics.net",
@@ -179,6 +183,8 @@ class EmailConfigs:
             "larry@sunriselogistics.net",
             "mirika@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
+            "arlene@sunriselogitics.net",
+            "anneline@sunriselogistics.net",
         ],
         default_ccs=[],
         subject=f"POD Summary Report {DatetimeHelper.get_current_datetime()}",
