@@ -2,18 +2,19 @@ import pandas as pd
 from tqdm import tqdm
 
 from helpers.datetime_helper import DatetimeHelper
+from helpers.excel_helper import ExcelHelper
 
 
 class BookingReports:
-    def __init__(self, df: pd.DataFrame, output_file_path: str) -> None:
-        self.df = df
+    def __init__(self, data: dict, output_file_path: str) -> None:
+        self.df = data.get("content")
         self.output_file_path = output_file_path
 
     def filter_df(self, df: pd.DataFrame) -> pd.DataFrame:
-        tomorrow = DatetimeHelper.get_next_working_day()
+        today = DatetimeHelper.get_today()
         return df.loc[
             (df["Booking Date"].notna())
-            & (df["Booking Date"] == tomorrow)
+            & (df["Booking Date"] == today)
             & (df["Dest Hub"].isin(["CPT", "DUR", "JNB"]))
             & (df["POD Date"].isna())
         ]
@@ -29,7 +30,6 @@ class BookingReports:
             return {}
 
         file_path = f"{self.output_file_path}/booking-report-{DatetimeHelper.get_current_datetime()}.xlsx"
-        # Create an Excel writer object
         with pd.ExcelWriter(
             file_path,
             engine="openpyxl",
@@ -40,4 +40,12 @@ class BookingReports:
             ):
                 group.to_excel(writer, sheet_name=category, index=False)
 
-        return {"internal": {"file_path": file_path, "client_name": "Internal"}}
+        ExcelHelper.autofit_excel_file(file_path)
+
+        return {
+            "internal": {
+                "file_path": file_path,
+                "client_name": "Internal",
+                "email": None,
+            }
+        }

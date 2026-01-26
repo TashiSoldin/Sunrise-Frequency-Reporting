@@ -1,5 +1,7 @@
 import logging
 import pandas as pd
+import re
+from enums.report_enums import ReportTypes
 from helpers.datetime_helper import DatetimeHelper
 from utils.retry_decorator import retry
 from utils.log_execution_time_decorator import log_execution_time
@@ -8,43 +10,102 @@ logger = logging.getLogger(__name__)
 
 
 class DataManipulator:
-    def __init__(self, df_mapping: dict[str, pd.DataFrame]) -> None:
+    def __init__(self, df_mapping: dict[str, dict[str, pd.DataFrame]]) -> None:
         self.df_mapping = df_mapping
-        self.specific_functions = {
-            "account_email_mapping": [(self._convert_df_to_dict, {})],
-            "wba": [(self._rename_waybill_analysis_view, {})],
+        self.transformations = {
+            ReportTypes.FREQUENCY.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Account"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                                "POD Date",
+                                "Booking Date",
+                                "Last Event Date",
+                            ]
+                        },
+                    ),
+                ],
+            },
+            ReportTypes.BOOKING.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Account"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                                "POD Date",
+                                "Booking Date",
+                                "Last Event Date",
+                            ]
+                        },
+                    ),
+                ]
+            },
+            ReportTypes.POD_AGENT.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._replace_none_values, {"columns": ["Delivery Agent"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                                "POD Date",
+                                "Last Event Date",
+                            ]
+                        },
+                    ),
+                ]
+            },
+            ReportTypes.POD_OCD.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Delivery Agent"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                                "POD Date",
+                                "Last Event Date",
+                            ],
+                        },
+                    ),
+                    self._extract_agent_name_for_ocd,
+                ]
+            },
+            ReportTypes.CHAMPION.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Account"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "POD Date",
+                                "Booking Date",
+                                "Last Event Date",
+                            ]
+                        },
+                    ),
+                ],
+            },
         }
-        self.base_functions = {
-            "wba": [
-                (self._filter_out_none_values, {"columns": ["Account"]}),
-                (
-                    self._convert_date_columns,
-                    {
-                        "columns": [
-                            "Waybill Date",
-                            "Due Date",
-                            "POD Date",
-                            "Booking Date",
-                            "Last Event Date",
-                        ]
-                    },
-                ),
-            ]
-        }
 
-    def _convert_df_to_dict(self, df: pd.DataFrame) -> dict:
-        """Convert DataFrame to dictionary mapping ACCNUM to EMAIL.
-
-        Args:
-            df: DataFrame containing ACCNUM and EMAIL columns
-
-        Returns:
-            Dictionary with ACCNUM as keys and EMAIL as values
-        """
-        return pd.Series(df["EMAIL"].values, index=df["ACCNUM"]).to_dict()
-
-    def _rename_waybill_analysis_view(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _rename_frequency_report_view_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         column_mapping = {
+            # Frequency Report
             "CUSTNAME": "Customer",
             "ACCNUM": "Account",
             "WAYDATE": "Waybill Date",
@@ -63,6 +124,7 @@ class DataManipulator:
             "PODDATE": "POD Date",
             "PODTIME": "POD Time",
             "PODRECIPIENT": "POD Recipient",
+            "PODIMGPRESENT": "POD Image Present",
             "BOOKDATE": "Booking Date",
             "BOOKSTARTTIME": "Start Time",
             "BOOKENDTIME": "End Time",
@@ -70,6 +132,12 @@ class DataManipulator:
             "LASTEVENTHUB": "Last Event Hub",
             "LASTEVENTDATE": "Last Event Date",
             "LASTEVENTTIME": "Last Event Time",
+            # Pod agent and ocd reports
+            "DELIVERYAGENT": "Delivery Agent",
+            # Champion reports
+            "USERCODE": "User Code",
+            "NAME": "Name",
+            "EMAIL": "Email",
         }
         return df.rename(columns=column_mapping)
 
@@ -87,6 +155,18 @@ class DataManipulator:
         logger.info(f"Removed {initial_rows - len(df)} rows containing None values")
         return df
 
+    def _replace_none_values(
+        self, df: pd.DataFrame, columns: list[str]
+    ) -> pd.DataFrame:
+        [
+            logger.warning(f"Found {n} None values in column '{col}'")
+            for col, n in ((col, df[col].isna().sum()) for col in columns)
+            if n > 0
+        ]
+        for col in columns:
+            df[col] = df[col].fillna(f"No {col} specified")
+        return df
+
     def _convert_date_columns(
         self, df: pd.DataFrame, columns: list[str]
     ) -> pd.DataFrame:
@@ -94,16 +174,43 @@ class DataManipulator:
             df[col] = df[col].apply(DatetimeHelper.safe_to_date)
         return df
 
+    def _extract_agent_name_for_ocd(self, df: pd.DataFrame) -> pd.DataFrame:
+        def _parse_agent_name(agent_str: str) -> str:
+            if not isinstance(agent_str, str) or not agent_str.strip():
+                logger.warning("Missing or invalid delivery agent: %r", agent_str)
+                return "No Delivery Agent"
+
+            parts = [p.strip() for p in agent_str.split(" - ") if p.strip()]
+            agent = parts[-1] if parts else ""
+            agent = re.sub(r"[\/\-]+", " ", agent)
+            agent = re.sub(r"\s+", " ", agent).strip()
+
+            if not agent:
+                logger.warning("Could not extract agent from: %r", agent_str)
+                return "No Delivery Agent"
+            return agent
+
+        df["Delivery Agent"] = df["Delivery Agent"].apply(_parse_agent_name)
+        return df
+
     @log_execution_time
     @retry(max_attempts=3, delay=5, backoff=2)
-    def manipulate_data(self) -> dict[str, pd.DataFrame]:
-        for key, value in self.df_mapping.items():
-            specific_funcs = self.specific_functions.get(key, [])
-            base_funcs = self.base_functions.get(key, [])
+    def manipulate_data(self) -> dict[str, dict[str, pd.DataFrame]]:
+        """Process dataframes grouped by report type and dataset key."""
+        for report_type, report_data in self.df_mapping.items():
+            for dataset_key, df in report_data.items():
+                transformations = self.transformations.get(report_type, {}).get(
+                    dataset_key, []
+                )
 
-            for func, kwargs in specific_funcs + base_funcs:
-                value = func(value, **kwargs)
+                for transformation in transformations:
+                    if isinstance(transformation, tuple):
+                        func, kwargs = transformation
+                    else:
+                        func, kwargs = transformation, {}
 
-            self.df_mapping[key] = value
+                    df = func(df, **kwargs) if kwargs else func(df)
+
+                report_data[dataset_key] = df
 
         return self.df_mapping

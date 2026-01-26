@@ -1,7 +1,10 @@
 from dotenv import load_dotenv
 import io
+import logging
 import os
 import zipfile
+
+logger = logging.getLogger(__name__)
 
 
 class OSHelper:
@@ -30,6 +33,17 @@ class OSHelper:
     def create_directories(paths: list[str]) -> None:
         for path in paths:
             os.makedirs(path, exist_ok=True)
+
+    @staticmethod
+    def get_files_in_directory(path: str) -> list[str]:
+        if not OSHelper.does_directory_exist(path):
+            logger.error(f"Directory does not exist: {path}")
+            return []
+        return [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+
+    @staticmethod
+    def join_path(directory: str, filename: str) -> str:
+        return os.path.join(directory, filename)
 
     @staticmethod
     def run_in_terminal(command: str) -> None:

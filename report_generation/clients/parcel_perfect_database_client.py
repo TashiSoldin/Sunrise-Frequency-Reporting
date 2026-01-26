@@ -1,5 +1,6 @@
 import firebirdsql
 import pandas as pd
+from utils.log_execution_time_decorator import log_execution_time
 
 
 class ParcelPerfectDatabaseClient:
@@ -30,6 +31,7 @@ class ParcelPerfectDatabaseClient:
             use_unicode=True,
         )
 
+    @log_execution_time
     def execute_query(self, query: str) -> pd.DataFrame:
         with self.connection.cursor() as cursor:
             cursor.execute(query)

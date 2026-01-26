@@ -1,3 +1,4 @@
+from datetime import timedelta
 from openpyxl import load_workbook
 import pandas as pd
 from tqdm import tqdm
@@ -8,9 +9,17 @@ from helpers.datetime_helper import DatetimeHelper
 
 
 class FrequencyReports:
-    def __init__(self, df: pd.DataFrame, output_file_path: str) -> None:
-        self.df = df
+    def __init__(self, data: dict, output_file_path: str) -> None:
+        self.df: pd.DataFrame = data.get("content")
+        self.contact_details: pd.DataFrame = data.get("contact_email")
+        self.contact_email_mapping: dict = self._get_contact_email_mapping()
         self.output_file_path = output_file_path
+
+    def _get_contact_email_mapping(self) -> dict:
+        return pd.Series(
+            self.contact_details["EMAIL"].values,
+            index=self.contact_details["ACCNUM"],
+        ).to_dict()
 
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
         df["Last Event"] = pd.Categorical(
@@ -38,6 +47,15 @@ class FrequencyReports:
             completed_deliveries_df = df_account[completed_mask]
             current_deliveries_df = df_account[~completed_mask]
 
+            # If current deliveries is empty and the last completed delivery is more than 7 days ago, continue
+            valid_dates = completed_deliveries_df["Last Event Date"].dropna()
+            max_last_event_date = valid_dates.max() if not valid_dates.empty else pd.NaT
+            if current_deliveries_df.empty and (
+                max_last_event_date is pd.NaT
+                or max_last_event_date < DatetimeHelper.get_today() - timedelta(days=7)
+            ):
+                continue
+
             template_path = OSHelper.load_template(
                 "assets/", "frequency_report_template.xlsx"
             )
@@ -53,15 +71,19 @@ class FrequencyReports:
                 ("Current deliveries", current_deliveries_df),
                 ("Completed deliveries", completed_deliveries_df),
             ]:
-                ExcelHelper.append_df_to_sheet(
+                ExcelHelper.append_df_to_sheet_with_styling(
                     wb[sheet_name], sheet_df, wb[sheet_name].max_row + 2
                 )
 
-            file_path = f"{self.output_file_path}/{account}.xlsx"
+            ExcelHelper.autofit_workbook_columns(wb)
+
+            file_path = f"{self.output_file_path}/{account}-{DatetimeHelper.get_current_datetime()}.xlsx"
             wb.save(file_path)
+
             summary[account] = {
                 "file_path": file_path,
                 "client_name": df_account["Customer"].iloc[0],
+                "email": self.contact_email_mapping.get(account),
             }
 
         return summary

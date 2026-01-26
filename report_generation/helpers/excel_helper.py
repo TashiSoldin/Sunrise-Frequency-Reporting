@@ -1,11 +1,21 @@
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.styles import Font, Border, Side, PatternFill
 import pandas as pd
 
 
 class ExcelHelper:
+    @staticmethod
+    def update_template_placeholders_sheet(
+        worksheet: Worksheet, replacements: dict
+    ) -> None:
+        for row in worksheet.iter_rows():
+            for cell in row:
+                if cell.value in replacements:
+                    cell.value = replacements[cell.value]
+
     @staticmethod
     def update_template_placeholders(workbook: Workbook, replacements: dict) -> None:
         for sheet in workbook.sheetnames:
@@ -17,6 +27,16 @@ class ExcelHelper:
 
     @staticmethod
     def append_df_to_sheet(
+        worksheet: Worksheet, df: pd.DataFrame, start_row: int
+    ) -> None:
+        for r_idx, row in enumerate(
+            dataframe_to_rows(df, index=False, header=True), start=start_row
+        ):
+            for c_idx, value in enumerate(row, 1):
+                worksheet.cell(row=r_idx, column=c_idx, value=value)
+
+    @staticmethod
+    def append_df_to_sheet_with_styling(
         worksheet: Worksheet, df: pd.DataFrame, start_row: int
     ) -> None:
         thin = Side(border_style="thin", color="000000")
@@ -71,3 +91,49 @@ class ExcelHelper:
                     cell_to_style.fill = PatternFill(
                         start_color=color, end_color=color, fill_type="solid"
                     )
+
+    @staticmethod
+    def autofit_worksheet_columns(worksheet: Worksheet) -> None:
+        """
+        Autofit all columns in a specific worksheet.
+        """
+        try:
+            for col in worksheet.columns:
+                if not col:
+                    continue
+                max_length = max(
+                    (len(str(cell.value or "")) for cell in col), default=8
+                )
+                col_letter = get_column_letter(col[0].column)
+                worksheet.column_dimensions[col_letter].width = min(max_length + 2, 50)
+        except Exception:
+            pass
+
+    @staticmethod
+    def autofit_workbook_columns(workbook: Workbook) -> None:
+        """
+        Autofit all columns in all sheets of the given openpyxl Workbook.
+        """
+        for ws in workbook.worksheets:
+            try:
+                for col in ws.columns:
+                    if not col:
+                        continue
+                    max_length = max(
+                        (len(str(cell.value or "")) for cell in col), default=8
+                    )
+                    col_letter = get_column_letter(col[0].column)
+                    ws.column_dimensions[col_letter].width = min(max_length + 2, 50)
+            except Exception:
+                continue
+
+    @staticmethod
+    def autofit_excel_file(file_path: str) -> None:
+        """
+        Open an Excel file, autofit all columns in all sheets, and save it.
+        """
+        from openpyxl import load_workbook
+
+        wb = load_workbook(file_path)
+        ExcelHelper.autofit_workbook_columns(wb)
+        wb.save(file_path)

@@ -3,6 +3,10 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 import smtplib
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class OutlookEmailClient:
     def __init__(
@@ -39,6 +43,7 @@ class OutlookEmailClient:
     def send_email(
         self,
         recipient_email: str,
+        cc_recipients: list[str],
         subject: str,
         body: str,
         attachments: list[str] | None,
@@ -48,6 +53,7 @@ class OutlookEmailClient:
 
         Args:
             recipient_email (str): Email address of the recipient
+            cc_recipients (list[str]): List of email addresses to CC
             subject (str): Email subject line
             body (str): Email body content
             attachments (list[str], optional): List of file paths to attach
@@ -56,6 +62,10 @@ class OutlookEmailClient:
         msg["From"] = self.sender_email
         msg["To"] = recipient_email
         msg["Subject"] = subject
+
+        if cc_recipients:
+            msg["Cc"] = ", ".join(cc_recipients)
+
         msg.attach(MIMEText(body, "html"))
 
         if attachments:
@@ -76,6 +86,7 @@ class OutlookEmailClient:
     def send_email_with_memory_attachment(
         self,
         recipient_email: str,
+        cc_recipients: list[str],
         subject: str,
         body: str,
         attachment_data: bytes,
@@ -86,6 +97,7 @@ class OutlookEmailClient:
 
         Args:
             recipient_email (str): Email address of the recipient
+            cc_recipients (list[str]): List of email addresses to CC
             subject (str): Email subject line
             body (str): Email body content
             attachment_data (bytes): The attachment data in bytes
@@ -95,6 +107,10 @@ class OutlookEmailClient:
         msg["From"] = self.sender_email
         msg["To"] = recipient_email
         msg["Subject"] = subject
+
+        if cc_recipients:
+            msg["Cc"] = ", ".join(cc_recipients)
+
         msg.attach(MIMEText(body, "html"))
 
         attachment = MIMEApplication(attachment_data, _subtype="zip")

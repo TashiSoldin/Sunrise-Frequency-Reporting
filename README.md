@@ -4,10 +4,12 @@ This system generates booking and frequency reports for the Sunrise application.
 
 ## Setup
 
-1. Ensure Python 3.x is installed on your system
-2. Install required dependencies:
+1. Ensure Python 3.13 is installed on your system, inline with the python version file
+2. Install required dependencies using uv package manager
    ```
-   pip install -r requirements.txt
+   uv python install 3.13
+   uv venv --python 3.13
+   uv sync
    ```
 
 ## Running Reports
@@ -25,6 +27,15 @@ make generate-booking-report
 
 # Generate only frequency reports
 make generate-frequency-report
+
+# Generate only pod agent reports
+make generate-pod-agent-report
+
+# Generate only pod ocd reports
+make generate-pod-ocd-report
+
+# Generate only pod summary reports
+make generate-pod-summary-report
 ```
 
 You can specify a custom output directory:
@@ -39,19 +50,28 @@ Use the provided `run_reports.bat` file:
 
 ```cmd
 # Generate both booking and frequency reports
-run_reports.bat --all
+./run_reports.bat --all
 
 # Generate only booking reports
-run_reports.bat --booking
+./run_reports.bat --booking
 
 # Generate only frequency reports
-run_reports.bat --frequency
+./run_reports.bat --frequency
+
+# Generate only pod agent reports
+./run_reports.bat --pod_agent
+
+# Generate only pod ocd reports
+./run_reports.bat --pod_ocd
+
+# Generate only pod summary reports
+./run_reports.bat --pod_summary
 ```
 
 You can specify a custom output directory:
 
 ```cmd
-run_reports.bat --booking --output-dir "C:\reports"
+./run_reports.bat --booking --output-dir "C:\reports"
 ```
 
 ### Direct Python Execution
@@ -59,22 +79,16 @@ run_reports.bat --booking --output-dir "C:\reports"
 You can also run the Python script directly:
 
 ```bash
-python report_generation/report_generation.py --output-dir data --report-types booking frequency
+uv run report_generation/report_generation.py --output-dir data --report-types booking frequency
 ```
 
 ## CRON Job Setup (Windows Task Scheduler)
 
 Create two scheduled tasks in Windows Task Scheduler:
 
-1. **Frequency Report (11am on weekdays)**:
-   - Program/script: `C:\path\to\run_reports.bat`
-   - Arguments: `--frequency --output-dir "C:\path\to\reports"`
-   - Schedule: Daily, Monday-Friday at 11:00 AM
-
-2. **All Reports (4pm on weekdays)**:
-   - Program/script: `C:\path\to\run_reports.bat`
-   - Arguments: `--all --output-dir "C:\path\to\reports"`
-   - Schedule: Daily, Monday-Friday at 4:00 PM
+1. **Booking, POD agent, POD ocd and POD summary report (6am on weekdays)**
+2. **Frequency Report (11am on weekdays)**:
+3. **Frequency Reports (4pm on weekdays)**:
 
 ## Logging and Error Handling
 
