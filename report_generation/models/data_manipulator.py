@@ -31,6 +31,24 @@ class DataManipulator:
                     ),
                 ],
             },
+            ReportTypes.FREQUENCY_NLE.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._filter_out_none_values, {"columns": ["Account"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                                "POD Date",
+                                "Booking Date",
+                                "Last Event Date",
+                            ]
+                        },
+                    ),
+                ]
+            },
             ReportTypes.BOOKING.value: {
                 "content": [
                     self._rename_frequency_report_view_columns,

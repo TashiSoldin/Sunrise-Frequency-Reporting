@@ -12,6 +12,7 @@ from models.data_manipulator import DataManipulator
 from models.email_sender import EmailSender
 from reports.booking_reports import BookingReports
 from reports.frequency_reports import FrequencyReports
+from reports.frequency_nle_reports import FrequencyNleReports
 from reports.pod_agent_reports import PodAgentReports
 from reports.pod_ocd_reports import PodOcdReports
 from reports.pod_summary_pytd_reports import PodSummaryPytdReports
@@ -63,6 +64,12 @@ class ReportGeneration:
                 f"{self.output_file_path}/frequency-reports-{current_date_time}"
             )
             OSHelper.create_directories([self.output_file_path_frequency])
+
+        if ReportTypes.FREQUENCY_NLE.value in report_types:
+            self.output_file_path_frequency_nle = (
+                f"{self.output_file_path}/frequency-nle-reports-{current_date_time}"
+            )
+            OSHelper.create_directories([self.output_file_path_frequency_nle])
 
         if ReportTypes.POD_AGENT.value in report_types:
             self.output_file_path_pod_agent = (
@@ -130,6 +137,26 @@ class ReportGeneration:
             report_summary=frequency_report_summary,
         ).send_emails()
         logger.info("Frequency report emails sent successfully")
+
+    def _generate_and_send_frequency_nle_reports(
+        self, data: dict, email_config: EmailConfig
+    ) -> None:
+        logger.info("Generating frequency NLE report")
+        frequency_nle_report_summary = FrequencyNleReports(
+            data, self.output_file_path_frequency_nle
+        ).generate_report()
+
+        if not frequency_nle_report_summary:
+            logger.info("No frequency NLE report data found")
+            return
+
+        logger.info("Sending frequency NLE report emails")
+        EmailSender(
+            email_secrets=self._email_secrets,
+            email_config=email_config,
+            report_summary=frequency_nle_report_summary,
+        ).send_emails()
+        logger.info("Last event report emails sent successfully")
 
     def _generate_and_send_pod_agent_reports(
         self, data: dict, email_config: EmailConfig
@@ -239,6 +266,12 @@ class ReportGeneration:
                     EmailConfigs.get_config(ReportTypes.FREQUENCY.value),
                 )
 
+            if ReportTypes.FREQUENCY_NLE.value in report_types:
+                self._generate_and_send_frequency_nle_reports(
+                    df_mapping.get(ReportTypes.FREQUENCY_NLE.value),
+                    EmailConfigs.get_config(ReportTypes.FREQUENCY_NLE.value),
+                )
+
             if ReportTypes.POD_AGENT.value in report_types:
                 self._generate_and_send_pod_agent_reports(
                     df_mapping.get(ReportTypes.POD_AGENT.value),
@@ -309,6 +342,7 @@ def main() -> None:
         choices=[
             "booking",
             "frequency",
+            "frequency_nle",
             "pod_agent",
             "pod_ocd",
             "pod_summary",
@@ -317,7 +351,7 @@ def main() -> None:
             "all",
         ],
         default=["all"],
-        help="Types of reports to generate: booking, frequency, pod_agent, pod_ocd, pod_summary, champion, or all",
+        help="Types of reports to generate: booking, frequency, frequency_nle, pod_agent, pod_ocd, pod_summary, pod_summary_pytd, champion, or all",
     )
 
     args = parser.parse_args()

@@ -94,6 +94,37 @@ class EmailConfigs:
             """,
     )
 
+    FREQUENCY_NLE_REPORT = EmailConfig(
+        recipient_type=EmailRecipientType.INTERNAL,  # TODO: Check if this should be EXTERNAL instead
+        cc_recipients=[],
+        default_recipients=[
+            "raeesa@sunriselogistics.net",
+        ],
+        default_ccs=[],
+        subject=f"Last Event Report {DatetimeHelper.get_current_datetime()}",
+        body="""
+            <html>
+            <head>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        font-size: 14px;
+                        line-height: 1.6;
+                        color: #333333;
+                    }
+                </style>
+            </head>
+            <body>
+            <p>Dear recipient,</p>
+    
+            <p>Please find attached the last event report showing all waybills with no last event recorded.</p>
+    
+            <p>Kind regards,<br>
+            </body>
+            </html>
+            """,
+    )
+
     POD_AGENT_REPORT = EmailConfig(
         recipient_type=EmailRecipientType.EXTERNAL,
         cc_recipients=[
@@ -291,6 +322,7 @@ class EmailConfigs:
         config_map = {
             ReportTypes.BOOKING.value: cls.BOOKING_REPORT,
             ReportTypes.FREQUENCY.value: cls.FREQUENCY_REPORT,
+            ReportTypes.FREQUENCY_NLE.value: cls.FREQUENCY_NLE_REPORT,
             ReportTypes.POD_AGENT.value: cls.POD_AGENT_REPORT,
             ReportTypes.POD_OCD.value: cls.POD_OCD_REPORT,
             ReportTypes.POD_SUMMARY.value: cls.POD_SUMMARY_REPORT,

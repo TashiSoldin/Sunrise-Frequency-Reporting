@@ -26,6 +26,16 @@ class ExcelHelper:
                         cell.value = replacements[cell.value]
 
     @staticmethod
+    def update_template_sheet(
+        workbook: Workbook, sheet: str, replacements: dict
+    ) -> None:
+        ws = workbook[sheet]
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.value in replacements:
+                    cell.value = replacements[cell.value]
+
+    @staticmethod
     def append_df_to_sheet(
         worksheet: Worksheet, df: pd.DataFrame, start_row: int
     ) -> None:

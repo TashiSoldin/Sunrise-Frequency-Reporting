@@ -27,6 +27,22 @@ class DataExtractor:
             AND wba.STATUS <> 'Cancelled';
         """
 
+    def _get_frequency_nle_report_view(self) -> str:
+        return """
+            SELECT CUSTNAME, ACCNUM, WAYDATE, WAYBILL, SERVICE, REFERENCE, 
+            ORIGPERS, DESTPERS, ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, PIECES, 
+            CHARGEMASS, DUEDATE, PODDATE, PODTIME, PODRECIPIENT, PODIMGPRESENT, BOOKDATE, 
+            BOOKSTARTTIME, BOOKENDTIME, EVENTNAME, LASTEVENTHUB, LASTEVENTDATE, 
+            LASTEVENTTIME
+            FROM VIEW_WBANALYSE wba
+            WHERE wba.WAYDATE >= DATEADD(-60 DAY TO CURRENT_DATE)
+            AND wba.WAYDATE <= CURRENT_DATE
+            AND wba.WAYBILL NOT LIKE '%~%'
+            AND wba.WAYBILL NOT LIKE 'COL%'
+            AND wba.STATUS <> 'Cancelled'
+            AND EVENTNAME IS NULL;
+        """
+
     def _get_contact_details(self) -> str:
         return """
         SELECT ACCNUM, EMAIL 
@@ -116,6 +132,17 @@ class DataExtractor:
             if ReportTypes.FREQUENCY.value in report_types:
                 wba_df = client.execute_query(self._get_frequency_report_view())
                 result["frequency"] = {
+                    "content": wba_df,
+                    "contact_email": client.execute_query(self._get_contact_details()),
+                }
+
+            if ReportTypes.FREQUENCY_NLE.value in report_types:
+                if ReportTypes.FREQUENCY.value in result:
+                    wba_df = result["frequency"]["content"]
+                else:
+                    wba_df = client.execute_query(self._get_frequency_nle_report_view())
+
+                result["frequency_nle"] = {
                     "content": wba_df,
                     "contact_email": client.execute_query(self._get_contact_details()),
                 }

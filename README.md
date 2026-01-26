@@ -28,6 +28,9 @@ make generate-booking-report
 # Generate only frequency reports
 make generate-frequency-report
 
+# Generate only frequency no last event reports
+make generate-frequency-nle-report
+
 # Generate only pod agent reports
 make generate-pod-agent-report
 
@@ -61,6 +64,9 @@ Use the provided `run_reports.bat` file:
 # Generate only frequency reports
 ./run_reports.bat --frequency
 
+# Generate only frequency no last event reports
+./run_reports.bat --frequency_nle
+
 # Generate only pod agent reports
 ./run_reports.bat --pod_agent
 
@@ -92,7 +98,7 @@ uv run report_generation/report_generation.py --output-dir data --report-types b
 
 Create two scheduled tasks in Windows Task Scheduler:
 
-1. **Booking, POD agent, POD ocd and POD summary report (6am on weekdays)**
+1. **Booking, last event, POD agent, POD ocd, POD summary and previous year POD summary report (6am on weekdays)**
 2. **Frequency Report (11am on weekdays)**:
 3. **Frequency Reports (4pm on weekdays)**:
 
