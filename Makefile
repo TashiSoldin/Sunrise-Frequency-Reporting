@@ -22,6 +22,9 @@ generate-pod-ocd-report:
 generate-pod-summary-report:
 	@$(PYTHON) $(SCRIPT) --output-dir "$(if $(DATA_DIR),$(DATA_DIR),$(OUTPUT_DIR))" --report-types pod_summary
 
+generate-pod-summary-pytd-report:
+    @$(PYTHON) $(SCRIPT) --output-dir "$(if $(DATA_DIR),$(DATA_DIR),$(OUTPUT_DIR))" --report-types pod_summary_pytd
+
 generate-champion-report:
 	@$(PYTHON) $(SCRIPT) --output-dir "$(if $(DATA_DIR),$(DATA_DIR),$(OUTPUT_DIR))" --report-types champion
 	
@@ -33,6 +36,7 @@ help:
 	@echo "  make generate-pod-agent-report [DATA_DIR='/path/to/output']"
 	@echo "  make generate-pod-ocd-report [DATA_DIR='/path/to/output']"
 	@echo "  make generate-pod-summary-report [DATA_DIR='/path/to/output']"
+	@echo "  make generate-pod-summary-pytd-report [DATA_DIR='/path/to/output']"
 	@echo "  make generate-champion-report [DATA_DIR='/path/to/output']"
 	@echo ""
 	@echo "Arguments:"

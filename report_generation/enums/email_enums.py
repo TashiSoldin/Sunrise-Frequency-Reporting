@@ -211,6 +211,38 @@ class EmailConfigs:
             """,
     )
 
+    POD_SUMMARY_PYTD_REPORT = EmailConfig(
+        recipient_type=EmailRecipientType.INTERNAL,
+        cc_recipients=[],
+        default_recipients=[
+            "raeesa@sunriselogistics.net",
+            "mirika@sunriselogistics.net",
+        ],
+        default_ccs=[],
+        subject=f"POD Summary for Previous Year Report {DatetimeHelper.get_current_datetime()}",
+        body="""
+            <html>
+            <head>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        font-size: 14px;
+                        line-height: 1.6;
+                        color: #333333;
+                    }
+                </style>
+            </head>
+            <body>
+            <p>Dear recipient,</p>
+    
+            <p>Please find attached the POD summary report showing missing images and verbals from the previous year.</p>
+    
+            <p>Kind regards,<br>
+            </body>
+            </html>
+            """,
+    )
+
     CHAMPION_REPORT = EmailConfig(
         recipient_type=EmailRecipientType.EXTERNAL,
         cc_recipients=[
@@ -262,6 +294,7 @@ class EmailConfigs:
             ReportTypes.POD_AGENT.value: cls.POD_AGENT_REPORT,
             ReportTypes.POD_OCD.value: cls.POD_OCD_REPORT,
             ReportTypes.POD_SUMMARY.value: cls.POD_SUMMARY_REPORT,
+            ReportTypes.POD_SUMMARY_PYTD.value: cls.POD_SUMMARY_PYTD_REPORT,
             ReportTypes.CHAMPION.value: cls.CHAMPION_REPORT,
         }
         if report_type not in config_map:

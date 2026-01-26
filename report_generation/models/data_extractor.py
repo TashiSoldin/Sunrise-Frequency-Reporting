@@ -75,6 +75,21 @@ class DataExtractor:
         AND wba.WAYDATE <= DATEADD(-3 DAY TO CURRENT_DATE);
         """
 
+    def _get_pod_summary_pytd_view(self) -> str:
+        return """
+        SELECT WAYBILL, WAYDATE, DUEDATE, ACCNUM, SERVICE, ORIGPERS, DESTPERS, 
+        ORIGHUB, ORIGTOWN, DESTHUB, DESTTOWN, DELIVERYAGENT, PODDATE, PODTIME, 
+        PODRECIPIENT, PODIMGPRESENT, EVENTNAME, LASTEVENTHUB, LASTEVENTDATE, 
+        LASTEVENTTIME
+        FROM VIEW_WBANALYSE wba
+        WHERE wba.PODIMGPRESENT IN ('Y', 'N')
+        AND wba.WAYBILL NOT LIKE '%~%'
+        AND (wba.DELIVERYAGENT IS NULL OR TRIM(UPPER(wba.DELIVERYAGENT)) NOT LIKE 'XXX%')
+        AND wba.STATUS <> 'Cancelled'
+        AND wba.WAYDATE >= CAST(CAST(EXTRACT(YEAR FROM CURRENT_DATE) - 1 AS VARCHAR(4)) || '-01-01' AS DATE)
+        AND wba.WAYDATE <= CAST(CAST(EXTRACT(YEAR FROM CURRENT_DATE) - 1 AS VARCHAR(4)) || '-12-31' AS DATE);
+        """
+
     def _get_champion_view(self) -> str:
         return """
         SELECT wba.WAYDATE, wba.WAYBILL, wba.SERVICE, wba.ACCNUM, wba.ORIGPERS, wba.DESTPERS, wba.ORIGHUB, wba.ORIGTOWN,
@@ -124,6 +139,11 @@ class DataExtractor:
             if ReportTypes.POD_OCD.value in report_types:
                 result["pod_ocd"] = {
                     "content": client.execute_query(self._get_pod_ocd_view()),
+                }
+
+            if ReportTypes.POD_SUMMARY_PYTD.value in report_types:
+                result["pod_summary_pytd"] = {
+                    "content": client.execute_query(self._get_pod_summary_pytd_view()),
                 }
 
             if ReportTypes.CHAMPION.value in report_types:

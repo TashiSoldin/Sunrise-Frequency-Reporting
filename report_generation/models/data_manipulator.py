@@ -84,6 +84,23 @@ class DataManipulator:
                     self._extract_agent_name_for_ocd,
                 ]
             },
+            ReportTypes.POD_SUMMARY_PYTD.value: {
+                "content": [
+                    self._rename_frequency_report_view_columns,
+                    (self._replace_none_values, {"columns": ["Delivery Agent"]}),
+                    (
+                        self._convert_date_columns,
+                        {
+                            "columns": [
+                                "Waybill Date",
+                                "Due Date",
+                                "POD Date",
+                                "Last Event Date",
+                            ]
+                        },
+                    ),
+                ]
+            },
             ReportTypes.CHAMPION.value: {
                 "content": [
                     self._rename_frequency_report_view_columns,

@@ -19,6 +19,8 @@ if /i "%~1"=="--booking" (
     set "REPORT_TYPES=!REPORT_TYPES! pod_ocd"
 ) else if /i "%~1"=="--pod_summary" (
     set "REPORT_TYPES=!REPORT_TYPES! pod_summary"
+) else if /i "%~1"=="--pod_summary_pytd" (
+    set "REPORT_TYPES=!REPORT_TYPES! pod_summary_pytd"
 ) else if /i "%~1"=="--champion" (
     set "REPORT_TYPES=!REPORT_TYPES! champion"
 ) else if /i "%~1"=="--all" (

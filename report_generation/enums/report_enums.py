@@ -7,6 +7,7 @@ class ReportTypes(Enum):
     POD_AGENT = "pod_agent"
     POD_OCD = "pod_ocd"
     POD_SUMMARY = "pod_summary"
+    POD_SUMMARY_PYTD = "pod_summary_pytd"
     CHAMPION = "champion"
 
     @classmethod
