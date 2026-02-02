@@ -22,11 +22,26 @@ class FrequencyReports:
         ).to_dict()
 
     def sort_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        # 1. Start with your predefined priority order
+        priority_order = LastEventTypes.get_ordered_values()
+
+        # 2. Find unique events in the data that are NOT in your priority list
+        actual_events = df["Last Event"].unique()
+        extra_events = [
+            e for e in actual_events if e not in priority_order and pd.notna(e)
+        ]
+
+        # 3. Combine them: Priority items first, then everything else alphabetically
+        full_categories = priority_order + sorted(extra_events)
+
+        # 4. Convert to Categorical using the full list
+        # This ensures NO data is converted to NaN or "Other"
         df["Last Event"] = pd.Categorical(
             df["Last Event"],
-            categories=LastEventTypes.get_ordered_values(),
+            categories=full_categories,
             ordered=True,
         )
+
         return df.sort_values(
             by=["Last Event", "Waybill Date"], ascending=[True, False]
         )
