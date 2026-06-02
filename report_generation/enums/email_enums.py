@@ -100,7 +100,7 @@ class EmailConfigs:
             "larry@sunriselogistics.net",
             "mirika@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
-            "arlene@sunriselogitics.net",
+            "arlene@sunriselogistics.net",
             "anneline@sunriselogistics.net",
         ],
         default_recipients=[
