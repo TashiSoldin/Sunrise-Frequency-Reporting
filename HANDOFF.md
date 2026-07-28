@@ -8,7 +8,7 @@ material decision/discovery, update the **"Sunrise Logistics" doc in Akha's Coda
 workspace** (via the Superhuman Docs/Coda MCP — search for "Sunrise"): the
 Overview status line, the Project Tasks table on the Tasks page, and the
 Decisions & Open Questions page (28 Jul update pattern). Also update the Status
-table below and commit. Email Akha via Spark on completions and blockers only.
+table below and commit. Email Akha via Spark on completions and blockers only (send from amanjezi@gmail.com).
 
 ## Workstream A — Phase 0 (report builders)
 
@@ -24,7 +24,7 @@ table below and commit. Email Akha via Spark on completions and blockers only.
 > standalone credit-notes report the same way. As you complete pieces, keep
 > `HANDOFF.md` current (commit), update the "Sunrise Logistics" doc in my Coda
 > workspace (Overview status, Project Tasks table, Decisions & Open Questions),
-> and email me via Spark on completions and blockers.
+> and email me via Spark on completions and blockers (send from amanjezi@gmail.com).
 
 ## Workstream B — Phases 1–2 (DB extraction)
 
@@ -48,7 +48,7 @@ chat or dropped in the Claude General folder).
 > on the BI server and paste results back. As you complete pieces, keep
 > `HANDOFF.md` current (commit), update the "Sunrise Logistics" doc in my Coda
 > workspace (Overview status, Project Tasks table, Decisions & Open Questions),
-> and email me via Spark on completions and blockers.
+> and email me via Spark on completions and blockers (send from amanjezi@gmail.com).
 
 Context the new session needs: the manual export the extraction replaces is a full
 dump of the "Analyze Waybills" screen (= VIEW_WBANALYSE), 1 March FY start onward,
@@ -94,10 +94,10 @@ in `report_generation/`.
 
 ## Session blockers
 
-- **Spark email**: the resume prompts say "email progress via Spark", but the Spark
-  connection has no akha@manjezi.com account and all connected accounts are read-only
-  (drafting needs "triage" access — Spark Desktop → Settings). 28 Jul progress email was
-  composed in-chat instead.
+- **Spark email**: designated sender is **amanjezi@gmail.com** (connected), but all
+  Spark accounts are currently exposed read-only — sending/drafting fails until Akha
+  raises the access level for that account in Spark Desktop → Settings. Until then,
+  deliver progress notes in-chat and flag the blocker.
 
 ## Environment notes
 
