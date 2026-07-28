@@ -21,7 +21,10 @@ table below and commit. Email Akha via Spark on completions and blockers only.
 > Diff the output cell-by-cell against `Revenue Dashboard.xlsx` in the Dashboards
 > folder and iterate to ~0 diffs (allow live-DB drift). Then build the unbilled
 > report (reference: `Unbilled Waybills Report FY27 - 27 Jul 2026.xlsx`) and a
-> standalone credit-notes report the same way. Email me progress/blockers via Spark.
+> standalone credit-notes report the same way. As you complete pieces, keep
+> `HANDOFF.md` current (commit), update the "Sunrise Logistics" doc in my Coda
+> workspace (Overview status, Project Tasks table, Decisions & Open Questions),
+> and email me via Spark on completions and blockers.
 
 ## Workstream B — Phases 1–2 (DB extraction)
 
@@ -42,7 +45,10 @@ chat or dropped in the Claude General folder).
 > builders and Larry's current process expect; (3) from the smoke test's
 > credit-notes table scan plus the Parcel Perfect manuals in the Claude General
 > folder, write the credit-notes extraction query. I'll test each query iteration
-> on the BI server and paste results back.
+> on the BI server and paste results back. As you complete pieces, keep
+> `HANDOFF.md` current (commit), update the "Sunrise Logistics" doc in my Coda
+> workspace (Overview status, Project Tasks table, Decisions & Open Questions),
+> and email me via Spark on completions and blockers.
 
 Context the new session needs: the manual export the extraction replaces is a full
 dump of the "Analyze Waybills" screen (= VIEW_WBANALYSE), 1 March FY start onward,
