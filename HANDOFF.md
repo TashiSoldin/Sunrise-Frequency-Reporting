@@ -3,6 +3,13 @@
 Two workstreams, resumable independently. Connect this repo + "Dashboards and
 Data Analysis" + "Claude General" folders first, then paste the relevant prompt.
 
+**Standing instruction for every session:** when you complete a phase or make a
+material decision/discovery, update the **"Sunrise Logistics" doc in Akha's Coda
+workspace** (via the Superhuman Docs/Coda MCP — search for "Sunrise"): the
+Overview status line, the Project Tasks table on the Tasks page, and the
+Decisions & Open Questions page (28 Jul update pattern). Also update the Status
+table below and commit. Email Akha via Spark on completions and blockers only.
+
 ## Workstream A — Phase 0 (report builders)
 
 **Prompt:**
