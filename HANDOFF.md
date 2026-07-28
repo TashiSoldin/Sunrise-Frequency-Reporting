@@ -53,9 +53,18 @@ in `report_generation/`.
 | Phase 1 DB smoke test (`research/revenue_extraction_test.py`) | written; Akha to run on BI server over RDC (needs `.env` creds from Alex) |
 | Flash builder | done, reconciled vs 27 Jul ref (drift-only diffs; "typical weekday" formula flagged as assumption) |
 | Billing detail builder | done, 3/5 tabs zero diffs; flash-comparison arithmetically corrected vs ref; consolidation ordering cosmetic |
-| Dashboard | fully specced in `revenue_reports/DASHBOARD_SPEC.md`, builder not yet written |
-| Unbilled + standalone credit notes | not started; references in Dashboards folder |
+| Dashboard builder (`build_dashboard.py`) | done, reconciled vs 28 Jul ref (`--inv-asof 2026-07-24 --wb-asof 2026-07-27`): 6 of 10 tabs zero diffs incl. all month tabs + YTD + Daily-Invoice; rest is live-DB drift + cosmetic tie-ordering in memo buckets (ref's MTD closed-block order is a non-deterministic artifact of its generator) + 1 stale-text bug in ref credit-notes footnote ("14 Jul"). Diff tool: `revenue_reports/diff_workbooks.py` |
+| Unbilled builder (`build_unbilled.py`) | done; rule reverse-engineered from ref (PP invoice status ≤ 0, billing-frontier cutoff). Structure exact vs 27 Jul ref; row deltas are pure PP drift (29 waybills billed since ref snapshot, 5 status/rate changes) |
+| Credit-notes builder (`build_credit_notes.py`) | done (no ref existed — new standalone report: Overview w/ FY27 monthly trend + by-reason, By Customer, Detail). KPIs/reason table reconcile exactly to dashboard MTD Credit Notes tab |
 | Phases 2–4 (extraction, scheduling, delivery) | not started |
+
+### Dashboard reconciliation subtleties (learned the hard way, encoded in build_dashboard.py)
+
+- Trading days actually used by ref: Mar 22, **Apr 22**, May 21, Jun 22 (YTD 87), Jul 23/18 elapsed — spec's "Apr 21(est)" is wrong.
+- Fold ONLY budget DEDI-group accounts into parents; separately-budgeted DED codes (J33DED) stay their own rows.
+- Non-budget accounts per window: invoice rows → their salesrep section; credit-only activity → Closed; nets-to-zero → dropped. LY-only accounts (incl. credit-only, e.g. G59) → Closed when LY net ≠ 0. Universe must include credits-file-only accounts.
+- Sort keys: budgeted by (−target, −max(actual, LY)); zero-target and month/YTD closed by (−max(actual, LY), budget-order, −LY, actual); house by (−max(actual,0), budget order). MTD tab's closed block uses the older cur/LY/rest decomposition.
+- MTD tab displays LY = FULL July FY26 but tab 1 row 19 uses like-for-like (first 18 trading days).
 
 ## Environment notes
 
