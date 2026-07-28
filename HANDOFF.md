@@ -1,7 +1,11 @@
 # Session Handoff — Sunrise Revenue Automation
 
-**Prompt to resume in a fresh Cowork session** (connect this repo + "Dashboards and
-Data Analysis" + "Claude General" folders first):
+Two workstreams, resumable independently. Connect this repo + "Dashboards and
+Data Analysis" + "Claude General" folders first, then paste the relevant prompt.
+
+## Workstream A — Phase 0 (report builders)
+
+**Prompt:**
 
 > Continue Phase 0 of the Sunrise revenue automation on branch
 > `feature/revenue-extraction`. Read `PLAN.md`, then build `build_dashboard.py`
@@ -11,6 +15,35 @@ Data Analysis" + "Claude General" folders first):
 > folder and iterate to ~0 diffs (allow live-DB drift). Then build the unbilled
 > report (reference: `Unbilled Waybills Report FY27 - 27 Jul 2026.xlsx`) and a
 > standalone credit-notes report the same way. Email me progress/blockers via Spark.
+
+## Workstream B — Phases 1–2 (DB extraction)
+
+Use when Akha returns with output from `research/revenue_extraction_test.py`
+(run on the BI server over RDC; output text + `revenue_sample_*.csv` pasted in
+chat or dropped in the Claude General folder).
+
+**Prompt:**
+
+> Continue Phases 1–2 of the Sunrise revenue automation on branch
+> `feature/revenue-extraction`. Read `PLAN.md` and `HANDOFF.md`. I've run the DB
+> smoke test — output is [pasted below / in the Claude General folder]. Using the
+> discovered VIEW_WBANALYSE schema: (1) reconcile the sample CSV against the
+> matching date range of the manual export in "Dashboards and Data Analysis/2.
+> Revenue Data" (row counts + Subtotal sums must match); (2) write the production
+> extraction module in `revenue_reports/` producing the three daily files (WB-date
+> FY dump, INV-date FY dump, credits) with the exact columns/format the report
+> builders and Larry's current process expect; (3) from the smoke test's
+> credit-notes table scan plus the Parcel Perfect manuals in the Claude General
+> folder, write the credit-notes extraction query. I'll test each query iteration
+> on the BI server and paste results back.
+
+Context the new session needs: the manual export the extraction replaces is a full
+dump of the "Analyze Waybills" screen (= VIEW_WBANALYSE), 1 March FY start onward,
+tilde (`~`) waybills excluded, saved once keyed on waybill date and once on invoice
+date. Credits come from a different data pool (receipts/debtors side — table name
+unknown; the smoke test scan + manuals are the lead). Extraction must be schedulable
+later on the BI server via Task Scheduler (Phase 4), same pattern as Alex's reports
+in `report_generation/`.
 
 ## Status (28 Jul 2026)
 
