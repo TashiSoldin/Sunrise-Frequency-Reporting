@@ -73,6 +73,26 @@ in `report_generation/`.
 - Sort keys: budgeted by (−target, −max(actual, LY)); zero-target and month/YTD closed by (−max(actual, LY), budget-order, −LY, actual); house by (−max(actual,0), budget order). MTD tab's closed block uses the older cur/LY/rest decomposition.
 - MTD tab displays LY = FULL July FY26 but tab 1 row 19 uses like-for-like (first 18 trading days).
 
+### Open questions for Larry (beyond DASHBOARD_SPEC.md's open items)
+
+- **Bad debt**: "Bad Debt" is confirmed to be a credits *Type* (497 rows) — the guide's
+  type-level exclusion is what the reference and our builders implement. BUT rows *typed*
+  "Credit Note" with *reason* `CNB - Bad Debt` (~R763k across the credits file, R36,783 in
+  Jul) DO reduce revenue in both. Intended, or miscaptured write-offs?
+- **Unbilled**: waybills with status "Approved for Invoicing" (positive PP code) are
+  excluded from the unbilled report (reference behaviour). They're pre-invoice though —
+  should they be listed? Also confirm the billing-frontier cutoff rule (day after last
+  invoiced waybill date) vs. e.g. last trading day.
+- Trading-day calendar ownership + counts, flash "typical weekday" definition, standalone
+  credit-notes layout sign-off — see DASHBOARD_SPEC.md open items / PLAN.md.
+
+## Session blockers
+
+- **Spark email**: the resume prompts say "email progress via Spark", but the Spark
+  connection has no akha@manjezi.com account and all connected accounts are read-only
+  (drafting needs "triage" access — Spark Desktop → Settings). 28 Jul progress email was
+  composed in-chat instead.
+
 ## Environment notes
 
 - OneDrive files are cloud placeholders; sandbox bash gets "Resource deadlock avoided"
