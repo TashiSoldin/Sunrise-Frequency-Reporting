@@ -58,7 +58,13 @@ unknown; the smoke test scan + manuals are the lead). Extraction must be schedul
 later on the BI server via Task Scheduler (Phase 4), same pattern as Alex's reports
 in `report_generation/`.
 
-## Status (28 Jul 2026)
+## Status (29 Jul 2026)
+
+**Next action (Akha, on the BI server):** `uv run research/revenue_extract_verify.py`
+→ paste output + drop `verify_columns_*.csv` in the Claude General folder. That
+one run (a) confirms/corrects every VERIFY-marked column mapping in
+`extract_revenue.py`, (b) hunts the "Consolidated" flag source, (c) maps
+SURCHARGE1..9 to display names, (d) finds the credits/receipts table.
 
 | Item | State |
 |---|---|
@@ -69,7 +75,11 @@ in `report_generation/`.
 | Dashboard builder (`build_dashboard.py`) | done, reconciled vs 28 Jul ref (`--inv-asof 2026-07-24 --wb-asof 2026-07-27`): 6 of 10 tabs zero diffs incl. all month tabs + YTD + Daily-Invoice; rest is live-DB drift + cosmetic tie-ordering in memo buckets (ref's MTD closed-block order is a non-deterministic artifact of its generator) + 1 stale-text bug in ref credit-notes footnote ("14 Jul"). Diff tool: `revenue_reports/diff_workbooks.py` |
 | Unbilled builder (`build_unbilled.py`) | done; rule reverse-engineered from ref (PP invoice status ≤ 0, billing-frontier cutoff). Structure exact vs 27 Jul ref; row deltas are pure PP drift (29 waybills billed since ref snapshot, 5 status/rate changes) |
 | Credit-notes builder (`build_credit_notes.py`) | done (no ref existed — new standalone report: Overview w/ FY27 monthly trend + by-reason, By Customer, Detail). KPIs/reason table reconcile exactly to dashboard MTD Credit Notes tab |
-| Phases 2–4 (extraction, scheduling, delivery) | not started |
+| Phase 2 reconciliation (sample vs manual export) | **passed 29 Jul** — 22–27 Jul window vs 28 Jul manual WB export: same-status rows 2,431 with **zero** subtotal diffs; all 360 mismatches were status-transition drift (re-rated between pulls); row deltas = 36 Cancelled (export filters them) + 5 new/2 gone drift. Export rules confirmed: exclude tilde + `STATUS <> 'Cancelled'`, include all other statuses, **no upper date cap** (manual export contains future-dated waybills, e.g. 31 Jul in a 28 Jul pull) |
+| Production extraction (`revenue_reports/extract_revenue.py`) | **written, verification-gated** — emits the exact 157-header manual-export layout (verified header-identical); 114/157 columns mapped from VIEW_WBANALYSE incl. every builder-consumed column except `Consolidated` (source unknown — %CONSOL% hunt queued). VERIFY-marked guesses (SURCHARGE1..9→Fuel/Chainstore/…, CARTAGE→Basic Charge, CCNAME, VATDESCRIPTION, COLSTATUS, NOTEPRESENT, PODDETAILS, ROUTING_FAILTYPE) are checked by the verify run's per-column diff before production use. Writes `WB Date - …..xlsx` / `INV Date - …..xlsx` with Larry's exact filenames |
+| Phase 3 credit notes | **data pool identified**: credits export is receipts-side (col 1 = negative Receipt numbers; Allocated/Unallocated/Bank/Cash cols; PP Accounts manual: credit notes processed via Process → Credit Notes "similar to the receipts"). Smoke scan missed it (%RECEIPT% not scanned). `CREDITS_SQL_TEMPLATE` drafted in extract_revenue.py (negative-receipt filter, ALL types dumped — builders do type exclusions); table/column names finalised after the verify run's receipt hunt. NB credits target file is `.xls` — decide: write `.xlsx` + adapt readers (preferred) vs xlwt |
+| Phase 2 verify iteration (`research/revenue_extract_verify.py`) | **ready to run** — see Next action above |
+| Phase 4 (scheduling, delivery) | not started |
 
 ### Dashboard reconciliation subtleties (learned the hard way, encoded in build_dashboard.py)
 
