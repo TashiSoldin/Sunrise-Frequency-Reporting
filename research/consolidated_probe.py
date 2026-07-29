@@ -28,10 +28,12 @@ from research.revenue_extraction_test import connect, list_columns, query_df  # 
 from research.revenue_extract_verify import _Tee  # noqa: E402
 from revenue_reports.extract_revenue import CREDITS_SQL  # noqa: E402
 
-CONSOL_YES = ["BSC3254638", "BSC3254926", "BSC3254931", "BSC3254932",
-              "BSC3254936", "BSC3254940"]
-CONSOL_NO = ["DKS318310", "BSC3255359", "EZF318290", "102154273",
-             "32781737", "SL0282952"]
+# Iteration 5 sample: DIVERSE account/service pairs — each Yes has a No from
+# the SAME account + service (first sample was confounded: one account/invoice).
+CONSOL_YES = ["32755097", "HFX050626050", "260624-132759", "32745911",
+              "80428858", "102154157", "102154149", "46248360"]
+CONSOL_NO = ["32802147", "COL0308439", "260715-094431", "32787419",
+             "61279", "SL0288439C", "102154318", "46241679"]
 
 
 def show(conn, title: str, sql: str) -> None:

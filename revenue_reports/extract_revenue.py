@@ -260,8 +260,11 @@ _TRUTHY = {"1", "1.0", "Y", "T", "TRUE"}
 # Unallocated = AMOUNT + DISCOUNT − ALLOCATED (PP manual's discount rule).
 # Export's Reference <-> r.REFERENCE (free text) and Comment <-> r.COMMENT
 # (invoice-waybill refs) map directly — confirmed against DB sample.
-# Pending lookups (research/consolidated_probe.py): BRANCH + COSTCNTR name
-# tables (codes written raw meanwhile); Capture Date/Time source unknown
+# RECONCILED 29 Jul vs the manual credits export (357 common receipts since
+# 1 Jun): every field 100% — account, customer, date, subtotal/amount
+# arithmetic, type, reason, user, rep, credit controller, reference, comment,
+# allocated/unallocated, cost centre, branch. Trial-only rows were credits
+# captured after the export pull (drift). Capture Date/Time source unknown
 # (no RECEIPT column; not consumed by any report builder — left blank).
 # The dump includes ALL types — type-level exclusions happen in the builders.
 RECTYPE_MAP = {"N": "Credit Note", "J": "Journal Credit",
@@ -279,14 +282,17 @@ CREDITS_SQL = """
 SELECT r.RECEIPT, r.ACCNUM, c.CUSTNAME, r.RECDATE, r.AMOUNT, r.DISCOUNT,
        r.REFERENCE, r.RECTYPE, nt.DESCRIPTION AS REASON, r.ALLOCATED,
        r.COMMENT, r.AIF, vu.NAME AS USERNAME, r.EXPORT, r.VAT, r.VATTYPE,
-       r.BRANCH, r.BANK, r.CUSTOMSVAT, r.CUSTOMSDUTIES,
-       rep.NAME AS REPNAME, c.COSTCNTR, cc.NAME AS CREDCONTROLLER
+       b.NAME AS BRANCHNAME, r.BANK, r.CUSTOMSVAT, r.CUSTOMSDUTIES,
+       rep.NAME AS REPNAME, cn.NAME AS COSTCNTRNAME,
+       cc.NAME AS CREDCONTROLLER
 FROM RECEIPT r
 LEFT JOIN CUSTOMER c ON c.ACCNUM = r.ACCNUM
 LEFT JOIN NOTETYPE nt ON nt.NOTETYPE = r.NOTETYPE
 LEFT JOIN VIEW_USERCODE vu ON vu.USERCODE = r.USERCODE
 LEFT JOIN REP rep ON rep.REP = c.REP
 LEFT JOIN VIEW_USERCODE cc ON cc.USERCODE = c.CREDCONT
+LEFT JOIN BRANCH b ON b.BRANCH = r.BRANCH
+LEFT JOIN COSTCNTR cn ON cn.COSTCNTR = c.COSTCNTR
 WHERE r.RECDATE >= DATE '{start}'
   AND r.RECEIPT < 0;  -- credits appear as negative receipt numbers
 """
@@ -311,11 +317,11 @@ def write_credits_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None
         ws.append([
             g(r, "RECEIPT"), g(r, "ACCNUM"), g(r, "CUSTNAME"), g(r, "RECDATE"),
             round(amount - vat - cvat - cdut, 2), vat, cdut, cvat, amount,
-            disc, g(r, "REFERENCE"), g(r, "COSTCNTR"),
+            disc, g(r, "REFERENCE"), g(r, "COSTCNTRNAME"),
             RECTYPE_MAP.get(str(g(r, "RECTYPE") or "").strip(), ""),
             alloc, round(amount + disc - alloc, 2), g(r, "AIF"), g(r, "EXPORT"),
             g(r, "USERNAME"), g(r, "COMMENT"), g(r, "REPNAME"), g(r, "REASON"),
-            g(r, "BANK"), None, None, g(r, "BRANCH"), g(r, "VATTYPE"),
+            g(r, "BANK"), None, None, g(r, "BRANCHNAME"), g(r, "VATTYPE"),
             False, g(r, "CREDCONTROLLER"),
         ])
     wb.save(path)
