@@ -60,13 +60,29 @@ in `report_generation/`.
 
 ## Status (29 Jul 2026)
 
-**Next action (Akha, on the BI server):** full-FY trial run —
-`uv run revenue_reports/extract_revenue.py --out-dir <somewhere safe>` (NOT the
-live "2. Revenue Data" folder yet) and drop the three output files in Claude
-General for a final full-file reconciliation against that day's manual
-exports. After that passes: adapt the two credits readers (.xls → .xlsx),
-then Phase 4 (Task Scheduler on the BI server + delivery into the shared
-folder, retiring the manual morning export).
+**Next action (Akha, on the BI server):** `git pull`, then rerun the trial —
+`python revenue_reports/extract_revenue.py --out-dir exports` — and drop the
+three files in Claude General again. This validates the two new VERIFY joins
+(Receipt User via RECEIPT→VIEW_USERCODE; Total Surch. via WAYBILL.TOTSURCHARGE)
+plus the totals rows and presentation fixes. Ideally same day as the ~15:00
+staff exports for a clean same-day diff. After that passes: adapt the two
+credits readers (.xls → .xlsx), then Phase 4 (Task Scheduler + delivery,
+retiring the manual morning export).
+
+**Full-FY trial reconciliation, 29 Jul (first pass) — PASSED with fixes:**
+WB 85,691 rows vs manual 84,206 / INV 84,112 vs 83,256 (deltas = 1.5 days'
+drift + manual totals row). Same-status subtotal diffs: WB −R401.25 = exactly
+3 re-rated drift rows; INV +R59.41 similar. Consolidated mismatched on
+exactly the 9 predicted residuals. Fixed from the diff: PIF / POD Image
+Present emit raw Y/N; Collection is the collection number (was wrongly
+boolean); POD Discrepancy blank-when-falsy; Collect Status code X=Cancelled;
+Avg R per kg now ROUND_HALF_UP (353 half-cent diffs); cp1252 transcode
+(en-dashes etc., matches manual mojibake byte-for-byte); totals rows appended
+to all three files (Waybill/Receipt = count, money-column sums, MinShip =
+count, Avg R per kg weighted). Known unfixed-but-harmless: ~40 unmapped
+display columns emitted blank (manual has values; no builder reads them);
+First Ref differs on 0.16% of rows (combined-vs-first WAYREF ordering);
+credits Cash flag (60 rows) + Bank name lookup (1 row) unmapped.
 
 | Item | State |
 |---|---|
