@@ -37,7 +37,26 @@ from revenue_reports.extract_revenue import DB_COLS  # noqa: E402
 WINDOW = ("2026-07-22", "2026-07-27")
 
 
+class _Tee:
+    """Duplicate stdout to a file so the whole run lands on disk too."""
+
+    def __init__(self, path: str):
+        self.file = open(path, "w", encoding="utf-8")  # noqa: SIM115
+        self.stdout = sys.stdout
+
+    def write(self, s):
+        self.stdout.write(s)
+        self.file.write(s)
+
+    def flush(self):
+        self.stdout.flush()
+        self.file.flush()
+
+
 def main() -> None:
+    log = f"verify_output_{date.today().isoformat()}.txt"
+    sys.stdout = _Tee(log)
+    print(f"(also writing this output to {log})\n")
     conn = connect()
 
     print("== 1. Column-verification dump ==")
