@@ -235,7 +235,9 @@ COLUMN_MAP: list[tuple[str, object]] = [
 # need none of these except "Consolidated" (billing-detail consolidations tab).
 UNRESOLVED = [h for h, src in COLUMN_MAP if src is None]
 
-DB_COLS = sorted({src for _, src in COLUMN_MAP if isinstance(src, str)})
+# CUSTOMSGROUP feeds the "Customs Group" calc but has no direct map entry.
+DB_COLS = sorted({src for _, src in COLUMN_MAP if isinstance(src, str)}
+                 | {"CUSTOMSGROUP"})
 SURCHARGE_COLS = [f"SURCHARGE{i}" for i in range(1, 10)]
 
 # Code -> display-name maps (from the 29 Jul per-column diff).
