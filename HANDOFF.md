@@ -60,13 +60,14 @@ in `report_generation/`.
 
 ## Status (29 Jul 2026)
 
-**Next action (Akha, on the BI server):** `uv run research/credits_discovery.py`
-→ paste output + drop `credits_discovery_*.txt` and `scanbatch_*.csv` in the
-Claude General folder. That run finalises the credits column maps (RECTYPE →
-Type, NOTETYPE → Reason, USERCODE → User Name, capture date/time source),
-resolves "Consolidated" (WAYREF/WAYREFTYPE probe with known Yes/No waybills),
-and settles "Scan Batch" (IMAGEBATCH1 vs PAGEEVENTBATCH). After that: wire the
-credits writer, then a full-FY trial run of `extract_revenue.py` reconciled
+**Next action (Akha, on the BI server):** `uv run research/consolidated_probe.py`
+→ drop `consolidated_probe_*.txt`, `waybill_probe_*.csv` and
+`credits_trial_*.csv` in the Claude General folder. That run (a) dumps
+WAYBILL.* for known Consolidated=Yes/No waybills so the source field can be
+spotted by direct comparison (last unmapped builder-consumed column),
+(b) fetches BRANCH/COSTCNTR name lookups for the credits file, and (c) trial-
+runs the production CREDITS_SQL for local reconciliation vs the manual
+credits export. After that: full-FY trial of `extract_revenue.py` reconciled
 against the day's manual exports → Phase 4 scheduling.
 
 | Item | State |
@@ -80,9 +81,10 @@ against the day's manual exports → Phase 4 scheduling.
 | Credit-notes builder (`build_credit_notes.py`) | done (no ref existed — new standalone report: Overview w/ FY27 monthly trend + by-reason, By Customer, Detail). KPIs/reason table reconcile exactly to dashboard MTD Credit Notes tab |
 | Phase 2 reconciliation (sample vs manual export) | **passed 29 Jul** — 22–27 Jul window vs 28 Jul manual WB export: same-status rows 2,431 with **zero** subtotal diffs; all 360 mismatches were status-transition drift (re-rated between pulls); row deltas = 36 Cancelled (export filters them) + 5 new/2 gone drift. Export rules confirmed: exclude tilde + `STATUS <> 'Cancelled'`, include all other statuses, **no upper date cap** (manual export contains future-dated waybills, e.g. 31 Jul in a 28 Jul pull) |
 | Production extraction (`revenue_reports/extract_revenue.py`) | **column map VERIFIED 29 Jul** — per-column diff vs manual export (2,431 same-status waybills): all money/mass/count columns 100%. Fixes applied from the diff: surcharge order per `VIEW_SURCHARGES` (S1=Sameday…S6=Fuel…S9=Townships); cost-centre headers are crossed in PP's export (Waybill CC=CCNAME, Customer CC=COSTCNTRNAME); export's "Last Delivery Driver" duplicates Delivery Agent (both ← DELIVERYAGENT); INPUTMETHOD/COLSTATUS code→name maps; flags → Excel booleans; times truncated to seconds; Customs Group default-fills "Documents". 112/157 mapped. Remaining gaps: `Consolidated` (WAYREF probe queued) + `Scan Batch` (not PODBATCH; IMAGEBATCH1/PAGEEVENTBATCH queued); rest of the diff deltas were pure POD/receipt drift between the 28 Jul export and 29 Jul DB |
-| Phase 3 credit notes | **table CONFIRMED = `RECEIPT`** (verify run 29 Jul): credits are negative RECEIPT numbers. `CREDITS_SQL` in extract_revenue.py now queries RECEIPT + CUSTOMER join. Outstanding lookups (in `research/credits_discovery.py`): RECTYPE→Type codes, NOTETYPE table→Reason, USERCODE→User Name, capture date/time source, Rep/Cost Centre/Credit Controller joins. Subtotal = AMOUNT−VAT−customs (checks out vs credits file); Unallocated = AMOUNT+DISCOUNT−ALLOCATED per PP manual. NB credits target file is `.xls` — decide: write `.xlsx` + adapt readers (preferred) vs xlwt |
-| Verify iteration 2 (`research/revenue_extract_verify.py`) | **done 29 Jul** — surcharge names via VIEW_SURCHARGES; RECEIPT table found; %CONSOL% only hit AGENT.CONSOLIDATE (not waybill-level) |
-| Discovery iteration 3 (`research/credits_discovery.py`) | **ready to run** — see Next action above |
+| Phase 3 credit notes | **writer WIRED** (`write_credits_xlsx`, exact 28-header staff layout): RECTYPE codes confirmed by exact count match vs credits file (N=5718 Credit Note, B=497 Bad Debt, X=249 Cancelled, J=1 Journal Credit); Reason = NOTETYPE lookup (descriptions match verbatim); User Name + Credit Controller via VIEW_USERCODE; Rep via CUSTOMER.REP→REP.NAME; Reference↔r.REFERENCE and Comment↔r.COMMENT confirmed against DB sample. Branch/Cost Centre written as raw codes pending BRANCH/COSTCNTR lookups (iteration 4); Capture Date/Time source unknown (no builder consumes them — blank). Output is `.xlsx` (staff file is `.xls`) — credits readers in build_credit_notes.py / build_dashboard.py to be adapted before switchover. Reconciliation of the trial dump = next session |
+| Verify iteration 2 (`revenue_extract_verify.py`) | **done 29 Jul** — surcharge names via VIEW_SURCHARGES; RECEIPT table found; %CONSOL% only hit AGENT.CONSOLIDATE (not waybill-level) |
+| Discovery iteration 3 (`credits_discovery.py`) | **done 29 Jul** — RECTYPE/NOTETYPE/joins resolved (above); USERCODE table SELECT-denied for BI role → use VIEW_USERCODE; Scan Batch = IMAGEBATCH1 (verified via scanbatch dump; ~6% both-populated conflicts = re-scan drift); Consolidated STILL unresolved: not account-level (20 mixed accounts), not First Ref group-size (82%), not ref-points-at-waybill (89%) — WAYBILL.* probe queued |
+| Probe iteration 4 (`consolidated_probe.py`) | **ready to run** — see Next action above |
 | Phase 4 (scheduling, delivery) | not started |
 
 ### Dashboard reconciliation subtleties (learned the hard way, encoded in build_dashboard.py)

@@ -101,8 +101,9 @@ COLUMN_MAP: list[tuple[str, object]] = [
     ("POD Recipient", "PODRECIPIENT"),
     ("POD Date", "PODDATE"),
     ("POD Time", "PODTIME"),
-    ("Scan Batch", None),  # NOT PODBATCH (diff: 0% on populated rows);
-    #   candidates IMAGEBATCH1 / PAGEEVENTBATCH — next verify run
+    ("Scan Batch", "IMAGEBATCH1"),  # verified 29 Jul (scanbatch dump):
+    #   best candidate by far; residual both-populated conflicts (~6%) are
+    #   re-scan drift (newer batch numbers DB-side). NOT PODBATCH.
     ("POD Capture Date", "PODCAPTUREDATE"),
     ("POD Capture Time", "PODCAPTURETIME"),  # truncated to seconds on write
     ("POD Discrepancy", "PODDISCREPANCY"),
@@ -248,33 +249,76 @@ BOOL_HEADERS = {"Insurance", "Notes", "Special Quote", "Non Dox", "MinShip",
 _TRUTHY = {"1", "1.0", "Y", "T", "TRUE"}
 
 # --- Credit notes (Phase 3) -------------------------------------------------
-# CONFIRMED (verify run, 29 Jul): the credits pool is the RECEIPT table —
-# credits are negative RECEIPT numbers. RECEIPT columns:
-#   RECEIPT, ACCNUM, RECDATE, AMOUNT, DISCOUNT, REFERENCE, RECTYPE,
-#   ALLOCATED, COMMENT, AIF, USERCODE, EXPORT, VAT, VATTYPE, BRANCH,
-#   EXPHEAD, BANK, NOTETYPE, CUSTOMSVAT, CUSTOMSDUTIES, APPROVED
-# Export-header hypotheses (gated on research/credits_discovery.py):
-#   Type   <- RECTYPE code map (sample 'N' = Credit Note; expect codes for
-#             Journal Credit / Bad Debt / Cancelled — distribution pending)
-#   Reason <- NOTETYPE -> NOTETYPE lookup table (codes like 'CNC - Damages')
-#   Subtotal = AMOUNT - VAT - CUSTOMSVAT - CUSTOMSDUTIES (credits-file sample:
-#             573.56 - 74.81 = 498.75 checks out)
-#   Unallocated = AMOUNT + DISCOUNT - ALLOCATED (per PP manual's discount rule)
-#   Customer Name / Rep / Cost Centre / Credit Controller <- CUSTOMER (+ REP,
-#             VIEW_USERCODE) joins;  User Name <- USERCODE lookup
-#   Capture Date/Time — no RECEIPT column; source unknown (AUDIT? APPROVED?)
-# The dump includes ALL types (Credit Note / Journal Credit / Bad Debt /
-# Cancelled) — type-level exclusions happen in the report builders.
+# CONFIRMED (discovery run, 29 Jul): the credits pool is the RECEIPT table —
+# credits are negative RECEIPT numbers. RECTYPE distribution on negative
+# receipts since Mar-24 matches the credits export's Type counts exactly:
+#   N=5718 Credit Note, B=497 Bad Debt, X=249 Cancelled, J=1 Journal Credit.
+# Reason <- NOTETYPE lookup table (descriptions match export verbatim).
+# User Name / Credit Controller <- VIEW_USERCODE (USERCODE, NAME, EMAIL);
+# Rep <- CUSTOMER.REP -> REP.NAME (Alex's join pattern in report_generation).
+# Verified arithmetic: Subtotal = AMOUNT − VAT − CUSTOMSVAT − CUSTOMSDUTIES;
+# Unallocated = AMOUNT + DISCOUNT − ALLOCATED (PP manual's discount rule).
+# Export's Reference <-> r.REFERENCE (free text) and Comment <-> r.COMMENT
+# (invoice-waybill refs) map directly — confirmed against DB sample.
+# Pending lookups (research/consolidated_probe.py): BRANCH + COSTCNTR name
+# tables (codes written raw meanwhile); Capture Date/Time source unknown
+# (no RECEIPT column; not consumed by any report builder — left blank).
+# The dump includes ALL types — type-level exclusions happen in the builders.
+RECTYPE_MAP = {"N": "Credit Note", "J": "Journal Credit",
+               "B": "Bad Debt", "X": "Cancelled"}
+
+CREDITS_HEADERS = [
+    "Receipt", "Account", "Customer Name", "Date", "Subtotal", "Vat",
+    "Customs Duties", "Customs Vat", "Amount", "Discount", "Reference",
+    "Cost Centre", "Type", "Allocated", "Unallocated", "AIF", "Export",
+    "User Name", "Comment", "Rep", "Reason", "Bank", "Capture Date",
+    "Capture Time", "Branch", "VAT Type", "Cash", "Credit Controller",
+]
+
 CREDITS_SQL = """
 SELECT r.RECEIPT, r.ACCNUM, c.CUSTNAME, r.RECDATE, r.AMOUNT, r.DISCOUNT,
-       r.REFERENCE, r.RECTYPE, r.NOTETYPE, r.ALLOCATED, r.COMMENT, r.AIF,
-       r.USERCODE, r.EXPORT, r.VAT, r.VATTYPE, r.BRANCH, r.EXPHEAD, r.BANK,
-       r.CUSTOMSVAT, r.CUSTOMSDUTIES, r.APPROVED
+       r.REFERENCE, r.RECTYPE, nt.DESCRIPTION AS REASON, r.ALLOCATED,
+       r.COMMENT, r.AIF, vu.NAME AS USERNAME, r.EXPORT, r.VAT, r.VATTYPE,
+       r.BRANCH, r.BANK, r.CUSTOMSVAT, r.CUSTOMSDUTIES,
+       rep.NAME AS REPNAME, c.COSTCNTR, cc.NAME AS CREDCONTROLLER
 FROM RECEIPT r
 LEFT JOIN CUSTOMER c ON c.ACCNUM = r.ACCNUM
+LEFT JOIN NOTETYPE nt ON nt.NOTETYPE = r.NOTETYPE
+LEFT JOIN VIEW_USERCODE vu ON vu.USERCODE = r.USERCODE
+LEFT JOIN REP rep ON rep.REP = c.REP
+LEFT JOIN VIEW_USERCODE cc ON cc.USERCODE = c.CREDCONT
 WHERE r.RECDATE >= DATE '{start}'
   AND r.RECEIPT < 0;  -- credits appear as negative receipt numbers
 """
+
+
+def write_credits_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
+    ix = {c: i for i, c in enumerate(db_cols)}
+
+    def g(r, c):
+        return _clean(r[ix[c]])
+
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet()
+    ws.append(CREDITS_HEADERS)
+    for r in rows:
+        amount = float(g(r, "AMOUNT") or 0)
+        vat = float(g(r, "VAT") or 0)
+        cvat = float(g(r, "CUSTOMSVAT") or 0)
+        cdut = float(g(r, "CUSTOMSDUTIES") or 0)
+        disc = float(g(r, "DISCOUNT") or 0)
+        alloc = float(g(r, "ALLOCATED") or 0)
+        ws.append([
+            g(r, "RECEIPT"), g(r, "ACCNUM"), g(r, "CUSTNAME"), g(r, "RECDATE"),
+            round(amount - vat - cvat - cdut, 2), vat, cdut, cvat, amount,
+            disc, g(r, "REFERENCE"), g(r, "COSTCNTR"),
+            RECTYPE_MAP.get(str(g(r, "RECTYPE") or "").strip(), ""),
+            alloc, round(amount + disc - alloc, 2), g(r, "AIF"), g(r, "EXPORT"),
+            g(r, "USERNAME"), g(r, "COMMENT"), g(r, "REPNAME"), g(r, "REASON"),
+            g(r, "BANK"), None, None, g(r, "BRANCH"), g(r, "VATTYPE"),
+            False, g(r, "CREDCONTROLLER"),
+        ])
+    wb.save(path)
 
 
 def connect() -> firebirdsql.Connection:
@@ -375,7 +419,8 @@ def main() -> None:
     ap.add_argument("--out-dir", default=".", help="Where the export files land")
     ap.add_argument("--fy-start", default=None,
                     help="FY start date YYYY-MM-DD (default: most recent 1 March)")
-    ap.add_argument("--basis", choices=["wb", "inv", "both"], default="both")
+    ap.add_argument("--basis", choices=["wb", "inv", "credits", "all"],
+                    default="all")
     args = ap.parse_args()
 
     start = date.fromisoformat(args.fy_start) if args.fy_start else fy_start()
@@ -383,20 +428,24 @@ def main() -> None:
     conn = connect()
 
     try:
-        if args.basis in ("wb", "both"):
+        if args.basis in ("wb", "all"):
             cols, rows = fetch(conn, extraction_sql("wb", start))
             path = os.path.join(args.out_dir, f"WB Date - {label}..xlsx")
             write_xlsx(path, cols, rows)
             print(f"WB basis: {len(rows)} rows -> {path}")
-        if args.basis in ("inv", "both"):
+        if args.basis in ("inv", "all"):
             cols, rows = fetch(conn, extraction_sql("inv", start))
             path = os.path.join(args.out_dir, f"INV Date - {label}..xlsx")
             write_xlsx(path, cols, rows)
             print(f"INV basis: {len(rows)} rows -> {path}")
-        # Credits: RECEIPT table confirmed; Type/Reason/User lookups gated on
-        # research/credits_discovery.py output before wiring the writer.
-        print("Credits extraction pending lookup discovery "
-              "(run research/credits_discovery.py).")
+        if args.basis in ("credits", "all"):
+            cred_start = date(start.year - 2, 3, 1)  # credits span 3 FYs
+            cred_label = f"March{cred_start.year % 100} - Feb{(start.year + 1) % 100}"
+            cols, rows = fetch(conn, CREDITS_SQL.format(start=cred_start.isoformat()))
+            path = os.path.join(args.out_dir, f"Credits - {cred_label}.xlsx")
+            write_credits_xlsx(path, cols, rows)
+            print(f"Credits: {len(rows)} rows -> {path} "
+                  "(NB .xlsx — staff export is .xls; readers to be adapted)")
     finally:
         conn.close()
 
