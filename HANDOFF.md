@@ -63,7 +63,7 @@ in `report_generation/`.
 | Item | State |
 |---|---|
 | PLAN.md (phases 0–4) | done |
-| Phase 1 DB smoke test (`research/revenue_extraction_test.py`) | written; Akha to run on BI server over RDC (needs `.env` creds from Alex) |
+| Phase 1 DB smoke test | **passed 29 Jul** — output + sample CSV in Claude General folder root. VIEW_WBANALYSE = 134 cols; export headers are renames (REP→Salesrep, INVDATE→Invoice Date, INVOICE→Invoice #): build a DB→export-header column map. Raw view includes Cancelled rows — filter. Credits table not found by scan (only INVOICE/PROINVOICE); next lead: `%RECEIPT%` tables + PP manuals |
 | Flash builder | done, reconciled vs 27 Jul ref (drift-only diffs; "typical weekday" formula flagged as assumption) |
 | Billing detail builder | done, 3/5 tabs zero diffs; flash-comparison arithmetically corrected vs ref; consolidation ordering cosmetic |
 | Dashboard builder (`build_dashboard.py`) | done, reconciled vs 28 Jul ref (`--inv-asof 2026-07-24 --wb-asof 2026-07-27`): 6 of 10 tabs zero diffs incl. all month tabs + YTD + Daily-Invoice; rest is live-DB drift + cosmetic tie-ordering in memo buckets (ref's MTD closed-block order is a non-deterministic artifact of its generator) + 1 stale-text bug in ref credit-notes footnote ("14 Jul"). Diff tool: `revenue_reports/diff_workbooks.py` |
