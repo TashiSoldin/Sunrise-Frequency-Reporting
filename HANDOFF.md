@@ -60,14 +60,27 @@ in `report_generation/`.
 
 ## Status (29 Jul 2026)
 
-**Next action (Akha, on the BI server):** `git pull`, then rerun the trial —
-`python revenue_reports/extract_revenue.py --out-dir exports` — and drop the
-three files in Claude General again. This validates the two new VERIFY joins
-(Receipt User via RECEIPT→VIEW_USERCODE; Total Surch. via WAYBILL.TOTSURCHARGE)
-plus the totals rows and presentation fixes. Ideally same day as the ~15:00
-staff exports for a clean same-day diff. After that passes: adapt the two
-credits readers (.xls → .xlsx), then Phase 4 (Task Scheduler + delivery,
-retiring the manual morning export).
+**Next action:** when today's staff exports land in "2. Revenue Data"
+(~15:00; Larry WhatsApps), `git pull` on the BI server and rerun
+`python revenue_reports/extract_revenue.py --out-dir <Claude General>/extract_revenue_exports`
+for the definitive same-day acceptance diff (pass 3). Server writes straight
+into the SharePoint library via a local sync connection — note for Phase 4:
+a proper sync client on the BI server may make Graph API access unnecessary.
+After acceptance: adapt the two credits readers (.xls → .xlsx), then Phase 4
+(Task Scheduler + delivery, retiring the manual morning export).
+
+**Pass 2 (29 Jul, ~12:50 run) — joins + fixes validated:** Total Surch. via
+WAYBILL.TOTSURCHARGE now matches (only the 3 re-rated drift rows differ);
+Receipt User names populate via RECEIPT→VIEW_USERCODE (residual diffs =
+allocation drift — ours newer); Collection/Shipper/Consignee/Customer/Input
+Method all ZERO mismatches (cp1252 + raw fixes); totals rows verified on all
+three files; credits mojibake gone. PIF diffs (~4.6%) are real allocation
+drift, both directions (e.g. a waybill's receipt replaced by a credit note
+flips Y→N). Two last tweaks committed after pass 2: "POD Discrepancy" is raw
+FREE TEXT (blank-when-falsy dropped real values like "1 plt"); R/kg rounding
+reverted to banker's (half-up made the unreproducible-float32 last-cent diff
+worse: 655 vs 353 rows; display-only column). The 27-28 Jul manual exports
+are preserved in "2. Revenue Data/Baseline 27-28 Jul 2026/".
 
 **Full-FY trial reconciliation, 29 Jul (first pass) — PASSED with fixes:**
 WB 85,691 rows vs manual 84,206 / INV 84,112 vs 83,256 (deltas = 1.5 days'

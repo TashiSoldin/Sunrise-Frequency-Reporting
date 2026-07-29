@@ -52,7 +52,7 @@ import argparse
 import collections
 import os
 from datetime import date, time
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 import firebirdsql
 from dotenv import load_dotenv
@@ -255,9 +255,8 @@ VALUE_MAPS = {
 
 # Export renders these as Excel TRUE/FALSE; the view holds 0/1 or Y/N.
 # NB full-file diff: PIF and "POD Image Present" stay raw Y/N strings,
-# "Collection" is the collection NUMBER, "POD Discrepancy" is blank-when-falsy.
+# "Collection" is the collection NUMBER, "POD Discrepancy" is raw FREE TEXT.
 BOOL_HEADERS = {"Insurance", "Notes", "Special Quote", "Non Dox", "MinShip"}
-BLANK_WHEN_FALSY = {"POD Discrepancy"}
 _TRUTHY = {"1", "1.0", "Y", "T", "TRUE"}
 
 # Columns summed in the totals row the manual export appends. Waybill and
@@ -436,8 +435,11 @@ INTERNAL_ACCOUNTS = {"000"}
 
 
 def _round2(x: float) -> float:
-    """Round half UP to 2dp — the manual export doesn't use banker's rounding."""
-    return float(Decimal(str(x)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    """Plain 2dp rounding. Half-up was tried and made the R/kg diff WORSE
+    (655 vs 353 one-cent diffs) — the manual export divides PP's float32
+    values, so the last cent is unreproducible noise either way. Display-only
+    column; every builder computes its own R/kg."""
+    return round(x, 2)
 
 
 def write_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
@@ -474,8 +476,6 @@ def write_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
                     )
             elif hdr in BOOL_HEADERS:
                 out.append(_as_bool(r[ix[src]]))
-            elif hdr in BLANK_WHEN_FALSY:
-                out.append(_clean(r[ix[src]]) if _as_bool(r[ix[src]]) else None)
             elif hdr in VALUE_MAPS:
                 raw = str(_clean(r[ix[src]]) or "")
                 raw = raw.removesuffix(".0")
