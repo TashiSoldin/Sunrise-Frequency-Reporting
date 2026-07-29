@@ -216,9 +216,13 @@ COLUMN_MAP: list[tuple[str, object]] = [
     ("Volrate", "VOLRATE"),
     ("First Arrival Time", None),
     ("Delivery Driver Wait Time (Mins)", None),
-    ("Consolidated", None),  # source unknown — %CONSOL% column hunt pending.
-    #                          Builders consume this; must be resolved before
-    #                          the manual export is retired.
+    ("Consolidated", ("calc", "consolidated")),  # DERIVED — no stored DB flag
+    #   found (WAYBILL.*, WAYREF, merge tables all ruled out). PP's Analyze
+    #   screen marks the zero-charged children of billing consolidations:
+    #   Invoiced AND Subtotal=0 AND Service not in (NCH/SCH/N/C = no-charge
+    #   services) AND Account != '000' (internal). Verified 99.989% on BOTH
+    #   the WB and INV manual exports (8 residuals each: one-off manually
+    #   zeroed waybills; zero revenue impact — all zero-subtotal rows).
     ("Credit Controller", None),  # likely a CUSTOMER-table join — pending
     ("Orig Pers Email", None),
     ("Dest Pers Email", None),
@@ -385,11 +389,16 @@ def _as_bool(v) -> bool:
     return str(v).strip().upper() in _TRUTHY
 
 
+NO_CHARGE_SERVICES = {"NCH", "SCH", "N/C"}
+INTERNAL_ACCOUNTS = {"000"}
+
+
 def write_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
     ix = {c: i for i, c in enumerate(db_cols)}
     s_ix = [ix[c] for c in SURCHARGE_COLS]
     sub_i, kg_i = ix["SUBTOTAL"], ix["CHARGEMASS"]
     cg_i = ix["CUSTOMSGROUP"]
+    st_i, svc_i, acc_i = ix["STATUS"], ix["SERVICE"], ix["ACCNUM"]
 
     wb = Workbook(write_only=True)
     ws = wb.create_sheet()
@@ -408,6 +417,15 @@ def write_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
                 elif src[1] == "customs_group":
                     v = _clean(r[cg_i])
                     out.append(v if v else "Documents")
+                elif src[1] == "consolidated":
+                    out.append(
+                        "Yes"
+                        if (str(r[st_i]).strip() == "Invoiced"
+                            and float(r[sub_i] or 0) == 0
+                            and str(r[svc_i]).strip() not in NO_CHARGE_SERVICES
+                            and str(r[acc_i]).strip() not in INTERNAL_ACCOUNTS)
+                        else "No"
+                    )
             elif hdr in BOOL_HEADERS:
                 out.append(_as_bool(r[ix[src]]))
             elif hdr in VALUE_MAPS:

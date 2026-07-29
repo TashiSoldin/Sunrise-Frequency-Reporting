@@ -60,13 +60,13 @@ in `report_generation/`.
 
 ## Status (29 Jul 2026)
 
-**Next action (Akha, on the BI server):** `uv run research/consolidated_probe.py`
-(rerun — now with a DIVERSE Yes/No sample: 8 same-account/same-service pairs;
-the first sample was confounded, all Yes rows one account/invoice). Drop the
-txt + `waybill_probe_*.csv` in Claude General. Only "Consolidated" remains
-unmapped; everything else, credits included, is reconciled. After that: full-FY
-trial of `extract_revenue.py` reconciled against the day's manual exports →
-Phase 4 scheduling.
+**Next action (Akha, on the BI server):** full-FY trial run —
+`uv run revenue_reports/extract_revenue.py --out-dir <somewhere safe>` (NOT the
+live "2. Revenue Data" folder yet) and drop the three output files in Claude
+General for a final full-file reconciliation against that day's manual
+exports. After that passes: adapt the two credits readers (.xls → .xlsx),
+then Phase 4 (Task Scheduler on the BI server + delivery into the shared
+folder, retiring the manual morning export).
 
 | Item | State |
 |---|---|
@@ -82,8 +82,8 @@ Phase 4 scheduling.
 | Phase 3 credit notes | **writer WIRED** (`write_credits_xlsx`, exact 28-header staff layout): RECTYPE codes confirmed by exact count match vs credits file (N=5718 Credit Note, B=497 Bad Debt, X=249 Cancelled, J=1 Journal Credit); Reason = NOTETYPE lookup (descriptions match verbatim); User Name + Credit Controller via VIEW_USERCODE; Rep via CUSTOMER.REP→REP.NAME; Reference↔r.REFERENCE and Comment↔r.COMMENT confirmed against DB sample. Branch/Cost Centre written as raw codes pending BRANCH/COSTCNTR lookups (iteration 4); Capture Date/Time source unknown (no builder consumes them — blank). Output is `.xlsx` (staff file is `.xls`) — credits readers in build_credit_notes.py / build_dashboard.py to be adapted before switchover. **RECONCILED 29 Jul**: trial dump vs manual credits export, 357 common receipts since 1 Jun — all 16 checked fields 100% (incl. Branch/Cost Centre via BRANCH/COSTCNTR name joins, now in CREDITS_SQL); 18 trial-only rows = post-export drift |
 | Verify iteration 2 (`revenue_extract_verify.py`) | **done 29 Jul** — surcharge names via VIEW_SURCHARGES; RECEIPT table found; %CONSOL% only hit AGENT.CONSOLIDATE (not waybill-level) |
 | Discovery iteration 3 (`credits_discovery.py`) | **done 29 Jul** — RECTYPE/NOTETYPE/joins resolved (above); USERCODE table SELECT-denied for BI role → use VIEW_USERCODE; Scan Batch = IMAGEBATCH1 (verified via scanbatch dump; ~6% both-populated conflicts = re-scan drift); Consolidated STILL unresolved: not account-level (20 mixed accounts), not First Ref group-size (82%), not ref-points-at-waybill (89%) — WAYBILL.* probe queued |
-| Probe iteration 4 (`consolidated_probe.py`) | **done 29 Jul** — BRANCH/COSTCNTR lookups captured; credits trial reconciled 100%; Consolidated sample was confounded (single account/invoice/service): Service='KG' hypothesis rejected on full export (87%). Iteration 5 = same script, diverse pairs |
-| Probe iteration 5 (`consolidated_probe.py`, diverse sample) | **ready to run** — see Next action above |
+| Probe iteration 4 (`consolidated_probe.py`) | **done 29 Jul** — BRANCH/COSTCNTR lookups captured; credits trial reconciled 100%; Consolidated sample was confounded (single account/invoice/service): Service='KG' hypothesis rejected on full export (87%) |
+| Probe iterations 5–6 + Consolidated **RESOLVED** | **done 29 Jul** — diverse WAYBILL.* probe: no stored flag (merge tables are SELECT-denied report caches; manuals only cover ops-side manifest consolidation). Breakthrough: ALL Consolidated=Yes rows are zero-Subtotal invoiced rows (the guide's "R0 children"). Derivation shipped in extract_revenue.py: `Invoiced AND Subtotal=0 AND Service NOT IN (NCH,SCH,N/C) AND Account<>'000'` → **99.989% on both WB and INV exports** (8 residuals each = one-off manually-zeroed waybills; zero revenue impact). ALL builder-consumed columns now mapped |
 | Phase 4 (scheduling, delivery) | not started |
 
 ### Dashboard reconciliation subtleties (learned the hard way, encoded in build_dashboard.py)
