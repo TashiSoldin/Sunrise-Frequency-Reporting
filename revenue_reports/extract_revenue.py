@@ -25,18 +25,32 @@ Reconciliation contract (validated 29 Jul 2026 vs the 28 Jul manual export):
     2,431 rows); all remaining deltas were live-DB drift (re-rated rows whose
     status changed between pulls).
 
-Column mapping status: entries in COLUMN_MAP marked VERIFY are best-guess
-mappings pending the per-column diff from research/revenue_extract_verify.py.
-Headers mapped to None are emitted blank (no known source in VIEW_WBANALYSE;
-see UNRESOLVED below). Every column consumed by the report builders is mapped,
-except "Consolidated" (source unknown — under discovery).
+Column mapping status (verified 29 Jul against the manual export via
+research/revenue_extract_verify.py — per-column diff on 2,431 same-status
+waybills, 22-27 Jul window):
+  - Surcharge order comes from VIEW_SURCHARGES: S1=Sameday, S2=Tail-lift,
+    S3=Late/Early, S4=Sat/Sun, S5=Futile, S6=Fuel, S7=Chainstore,
+    S8=DC Chainstore, S9=Townships. Confirmed by the diff.
+  - Cost centres are crossed in PP's export: "Waybill Cost Centre"=CCNAME,
+    "Customer Cost Centre"=COSTCNTRNAME (both 100% after swap).
+  - Export's "Last Delivery Driver" duplicates "Delivery Agent" (equal in
+    all 3,287 window rows) — both map to DELIVERYAGENT. The view's
+    LASTDELDRIVER (person names) appears nowhere in the export.
+  - INPUTMETHOD and COLSTATUS are codes; VALUE_MAPS renders the export names.
+  - Flags are written as Excel booleans (export shows TRUE/FALSE).
+  - Times are truncated to whole seconds (export drops microseconds).
+  - All money/mass/count columns matched 100%.
+Headers mapped to None are emitted blank (no known source; see UNRESOLVED).
+Still open: "Consolidated" (not Ref Count>1 / First Ref — WAYREF/WAYREFTYPE
+hunt queued) and "Scan Batch" (not PODBATCH; candidates IMAGEBATCH1 /
+PAGEEVENTBATCH). Everything else the report builders read is verified.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 
 import firebirdsql
@@ -66,9 +80,9 @@ COLUMN_MAP: list[tuple[str, object]] = [
     ("Vol Mass", None),  # candidate: VOLCM x VOLRATE — confirm before mapping
     ("Chrg Mass", "CHARGEMASS"),
     ("Subtotal", "SUBTOTAL"),
-    ("Fuel", "SURCHARGE1"),  # VERIFY
-    ("Chainstore", "SURCHARGE2"),  # VERIFY
-    ("DC Chainstore", "SURCHARGE3"),  # VERIFY
+    ("Fuel", "SURCHARGE6"),  # verified (VIEW_SURCHARGES + diff)
+    ("Chainstore", "SURCHARGE7"),  # verified
+    ("DC Chainstore", "SURCHARGE8"),  # verified
     ("Handling", "HANDLING"),
     ("Insurance Amount", "INSURANCE"),
     ("VAT", "VAT"),
@@ -76,7 +90,7 @@ COLUMN_MAP: list[tuple[str, object]] = [
     ("Decl Value", "DECLAREDVALUE"),
     ("Insurance", "INSURANCEFLAG"),
     ("Insurance Type", "INSURANCEDESCRIPTION"),
-    ("Waybill Cost Centre", "COSTCNTRNAME"),
+    ("Waybill Cost Centre", "CCNAME"),  # verified — PP export crosses these two
     ("Orig Ring", "ORIGRING"),
     ("Dest Ring", "DESTRING"),
     ("Dest Ops Hub", "DESTOPSHUB"),
@@ -87,14 +101,15 @@ COLUMN_MAP: list[tuple[str, object]] = [
     ("POD Recipient", "PODRECIPIENT"),
     ("POD Date", "PODDATE"),
     ("POD Time", "PODTIME"),
-    ("Scan Batch", "PODBATCH"),
+    ("Scan Batch", None),  # NOT PODBATCH (diff: 0% on populated rows);
+    #   candidates IMAGEBATCH1 / PAGEEVENTBATCH — next verify run
     ("POD Capture Date", "PODCAPTUREDATE"),
-    ("POD Capture Time", "PODCAPTURETIME"),
+    ("POD Capture Time", "PODCAPTURETIME"),  # truncated to seconds on write
     ("POD Discrepancy", "PODDISCREPANCY"),
     ("SLA Transit Days", None),
     ("Ref Count", "WAYREF_COUNT"),
     ("First Ref", "WAYREF_FIRST"),
-    ("Notes", "NOTEPRESENT"),  # VERIFY
+    ("Notes", "NOTEPRESENT"),  # verified (Y/N → boolean)
     ("In Spec", None),
     ("Fail Type", "FAILTYPE_DESC"),
     ("Special Quote", "SPECQUOTEFLAG"),
@@ -104,12 +119,12 @@ COLUMN_MAP: list[tuple[str, object]] = [
     ("Start Time", "BOOKSTARTTIME"),
     ("End Time", "BOOKENDTIME"),
     ("Capture Date", "CAPTUREDATE"),
-    ("Sameday", "SURCHARGE4"),  # VERIFY
-    ("Tail - lift Truck", "SURCHARGE5"),  # VERIFY
-    ("Late / Early Collection", "SURCHARGE6"),  # VERIFY
-    ("Saturday / Sunday Morning", "SURCHARGE7"),  # VERIFY
-    ("Futile Trip", "SURCHARGE8"),  # VERIFY
-    ("Townships", "SURCHARGE9"),  # VERIFY
+    ("Sameday", "SURCHARGE1"),  # verified (VIEW_SURCHARGES + diff)
+    ("Tail - lift Truck", "SURCHARGE2"),  # verified
+    ("Late / Early Collection", "SURCHARGE3"),  # verified
+    ("Saturday / Sunday Morning", "SURCHARGE4"),  # verified
+    ("Futile Trip", "SURCHARGE5"),  # verified
+    ("Townships", "SURCHARGE9"),  # verified
     ("AWB", "AGENTWAYBILL"),
     ("Cust Group", "CUSTGROUP"),
     ("Customs Duties", "CUSTOMSDUTIES"),
@@ -126,8 +141,8 @@ COLUMN_MAP: list[tuple[str, object]] = [
     ("Quote Date", "QUOTEDATE"),
     ("Consignee Contact", "DESTPERCONTACT"),
     ("Inhouse", "INHOUSENAME"),
-    ("Customer Cost Centre", "CCNAME"),  # VERIFY
-    ("Basic Charge", "CARTAGE"),  # VERIFY
+    ("Customer Cost Centre", "COSTCNTRNAME"),  # verified — crossed, see above
+    ("Basic Charge", "CARTAGE"),  # verified
     ("Outlying Charge", "OUTLY"),
     ("Custom Waybill", None),
     ("Mass Ratio", None),
@@ -136,23 +151,25 @@ COLUMN_MAP: list[tuple[str, object]] = [
     ("Original Waybill", "WAYBILLORIG"),
     ("Last Delivery Date", "LASTDELDATE"),
     ("Status", "STATUS"),
-    ("Waybill Input Method", "INPUTMETHOD"),
-    ("Last Delivery Driver", "LASTDELDRIVER"),
+    ("Waybill Input Method", "INPUTMETHOD"),  # code → name via VALUE_MAPS
+    ("Last Delivery Driver", "DELIVERYAGENT"),  # verified — export duplicates
+    #   Delivery Agent here; the view's LASTDELDRIVER is not in the export
     ("Receipt", "RECEIPT"),
     ("Receipt User", "RECEIPTUSER"),
     ("PIF", "PIF"),
     ("Collection Agent", "COLLECTIONAGENT"),
     ("Customs Value", "CUSTOMSVALUE"),
-    ("Customs Group", "CUSTOMSGROUP"),
+    ("Customs Group", ("calc", "customs_group")),  # VERIFY: window showed
+    #   constant 'Documents' while CUSTOMSGROUP was blank — default-fill
     ("Invoice Date", "INVDATE"),
     ("Handover Batch", None),  # candidate: PAGEEVENTBATCH / IMAGEBATCH1
     ("First Manifesting Agent", "FIRST_TT_AGENT"),
-    ("VAT Type", "VATDESCRIPTION"),  # VERIFY (alt: VATTYPE)
+    ("VAT Type", "VATDESCRIPTION"),  # verified
     ("Early Del Time", "EARLYDELTIME"),
     ("Collection", "COLLECT"),
     ("Collection Date", "COLLECTIONDATE"),
-    ("Collect Status", "COLSTATUS"),  # VERIFY (alt: COLLECTIONSTATUS)
-    ("Any Other Details", "PODDETAILS"),  # VERIFY
+    ("Collect Status", "COLSTATUS"),  # code → name via VALUE_MAPS
+    ("Any Other Details", "PODDETAILS"),  # verified
     ("POD Image Present", "PODIMGPRESENT"),
     ("Del AWB", None),
     ("Col Agent", None),
@@ -169,7 +186,8 @@ COLUMN_MAP: list[tuple[str, object]] = [
     ("Dest Hub Type", None),
     ("POD Debrief Status", None),
     ("Customer Sector", None),
-    ("Last Manifest Failtype", "ROUTING_FAILTYPE"),  # VERIFY
+    ("Last Manifest Failtype", None),  # ROUTING_FAILTYPE holds codes, not
+    #   the export's descriptions — unmapped pending a better source
     ("Orig Zone", None),
     ("Dest Zone", None),
     ("Chrg Unit", "CHARGEUNIT"),
@@ -215,23 +233,46 @@ UNRESOLVED = [h for h, src in COLUMN_MAP if src is None]
 DB_COLS = sorted({src for _, src in COLUMN_MAP if isinstance(src, str)})
 SURCHARGE_COLS = [f"SURCHARGE{i}" for i in range(1, 10)]
 
+# Code -> display-name maps (from the 29 Jul per-column diff).
+VALUE_MAPS = {
+    "Waybill Input Method": {"": "Parcel Perfect", "0": "Parcel Perfect",
+                             "1": "PPOnline", "2": "PPMobile"},
+    "Collect Status": {"": "Unknown", "W": "Unknown", "F": "Checked In",
+                       "C": "Collected", "U": "Unassigned",
+                       "A": "Assigned to Agent"},
+}
+
+# Export renders these as Excel TRUE/FALSE; the view holds 0/1 or Y/N.
+BOOL_HEADERS = {"Insurance", "Notes", "Special Quote", "Non Dox", "MinShip",
+                "PIF", "POD Image Present", "POD Discrepancy", "Collection"}
+_TRUTHY = {"1", "1.0", "Y", "T", "TRUE"}
+
 # --- Credit notes (Phase 3) -------------------------------------------------
-# The credits export is receipts-side data: its first column is a (negative)
-# Receipt number, and the PP Accounts manual processes credit notes via
-# Process -> Credit Notes "similar to the receipts". The smoke-test scan
-# (%CREDIT%/%CNOTE%/%JOURNAL%/%INVOICE%/%DEBTOR%) found no credits table —
-# research/revenue_extract_verify.py hunts %RECEIPT% relations next.
-# This query is a TEMPLATE: table/column names pending that discovery.
-# The dump must include ALL types (Credit Note / Journal Credit / Bad Debt /
+# CONFIRMED (verify run, 29 Jul): the credits pool is the RECEIPT table —
+# credits are negative RECEIPT numbers. RECEIPT columns:
+#   RECEIPT, ACCNUM, RECDATE, AMOUNT, DISCOUNT, REFERENCE, RECTYPE,
+#   ALLOCATED, COMMENT, AIF, USERCODE, EXPORT, VAT, VATTYPE, BRANCH,
+#   EXPHEAD, BANK, NOTETYPE, CUSTOMSVAT, CUSTOMSDUTIES, APPROVED
+# Export-header hypotheses (gated on research/credits_discovery.py):
+#   Type   <- RECTYPE code map (sample 'N' = Credit Note; expect codes for
+#             Journal Credit / Bad Debt / Cancelled — distribution pending)
+#   Reason <- NOTETYPE -> NOTETYPE lookup table (codes like 'CNC - Damages')
+#   Subtotal = AMOUNT - VAT - CUSTOMSVAT - CUSTOMSDUTIES (credits-file sample:
+#             573.56 - 74.81 = 498.75 checks out)
+#   Unallocated = AMOUNT + DISCOUNT - ALLOCATED (per PP manual's discount rule)
+#   Customer Name / Rep / Cost Centre / Credit Controller <- CUSTOMER (+ REP,
+#             VIEW_USERCODE) joins;  User Name <- USERCODE lookup
+#   Capture Date/Time — no RECEIPT column; source unknown (AUDIT? APPROVED?)
+# The dump includes ALL types (Credit Note / Journal Credit / Bad Debt /
 # Cancelled) — type-level exclusions happen in the report builders.
-CREDITS_SQL_TEMPLATE = """
-SELECT r.RECEIPT, r.ACCNUM, r.CUSTNAME, r.RDATE, r.SUBTOTAL, r.VAT,
-       r.CUSTOMSDUTIES, r.CUSTOMSVAT, r.AMOUNT, r.DISCOUNT, r.REFERENCE,
-       r.COSTCENTRE, r.RTYPE, r.ALLOCATED, r.UNALLOCATED, r.AIF, r.EXPORT,
-       r.USERNAME, r.COMMENT, r.REP, r.REASON, r.BANK, r.CAPTUREDATE,
-       r.CAPTURETIME, r.BRANCH, r.VATTYPE, r.CASH
-FROM {table} r
-WHERE r.RDATE >= DATE '{start}'
+CREDITS_SQL = """
+SELECT r.RECEIPT, r.ACCNUM, c.CUSTNAME, r.RECDATE, r.AMOUNT, r.DISCOUNT,
+       r.REFERENCE, r.RECTYPE, r.NOTETYPE, r.ALLOCATED, r.COMMENT, r.AIF,
+       r.USERCODE, r.EXPORT, r.VAT, r.VATTYPE, r.BRANCH, r.EXPHEAD, r.BANK,
+       r.CUSTOMSVAT, r.CUSTOMSDUTIES, r.APPROVED
+FROM RECEIPT r
+LEFT JOIN CUSTOMER c ON c.ACCNUM = r.ACCNUM
+WHERE r.RECDATE >= DATE '{start}'
   AND r.RECEIPT < 0;  -- credits appear as negative receipt numbers
 """
 
@@ -283,22 +324,29 @@ def fetch(conn, sql: str) -> tuple[list[str], list[tuple]]:
 def _clean(v):
     if isinstance(v, Decimal):
         return float(v)
+    if isinstance(v, time) and v.microsecond:
+        return v.replace(microsecond=0)  # export truncates to whole seconds
     if isinstance(v, str):
         return v.strip()
     return v
+
+
+def _as_bool(v) -> bool:
+    return str(v).strip().upper() in _TRUTHY
 
 
 def write_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
     ix = {c: i for i, c in enumerate(db_cols)}
     s_ix = [ix[c] for c in SURCHARGE_COLS]
     sub_i, kg_i = ix["SUBTOTAL"], ix["CHARGEMASS"]
+    cg_i = ix["CUSTOMSGROUP"]
 
     wb = Workbook(write_only=True)
     ws = wb.create_sheet()
     ws.append([h for h, _ in COLUMN_MAP])
     for r in rows:
         out = []
-        for _, src in COLUMN_MAP:
+        for hdr, src in COLUMN_MAP:
             if src is None:
                 out.append(None)
             elif isinstance(src, tuple):
@@ -307,6 +355,15 @@ def write_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
                 elif src[1] == "r_per_kg":
                     kg = float(r[kg_i] or 0)
                     out.append(round(float(r[sub_i] or 0) / kg, 2) if kg else None)
+                elif src[1] == "customs_group":
+                    v = _clean(r[cg_i])
+                    out.append(v if v else "Documents")
+            elif hdr in BOOL_HEADERS:
+                out.append(_as_bool(r[ix[src]]))
+            elif hdr in VALUE_MAPS:
+                raw = str(_clean(r[ix[src]]) or "")
+                raw = raw.removesuffix(".0")
+                out.append(VALUE_MAPS[hdr].get(raw, raw))
             else:
                 out.append(_clean(r[ix[src]]))
         ws.append(out)
@@ -336,9 +393,10 @@ def main() -> None:
             path = os.path.join(args.out_dir, f"INV Date - {label}..xlsx")
             write_xlsx(path, cols, rows)
             print(f"INV basis: {len(rows)} rows -> {path}")
-        # Credits: blocked on receipts-table discovery — see CREDITS_SQL_TEMPLATE.
-        print("Credits extraction pending table discovery "
-              "(run research/revenue_extract_verify.py).")
+        # Credits: RECEIPT table confirmed; Type/Reason/User lookups gated on
+        # research/credits_discovery.py output before wiring the writer.
+        print("Credits extraction pending lookup discovery "
+              "(run research/credits_discovery.py).")
     finally:
         conn.close()
 
