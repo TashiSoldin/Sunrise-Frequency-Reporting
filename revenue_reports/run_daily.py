@@ -69,8 +69,12 @@ def latest_dates(wb_file: Path, inv_file: Path) -> tuple[date, date]:
                     default=today)
     h, rows = load_export(str(inv_file))
     iid = col(h, "Invoice Date")
+    # Guard: never build a billing detail for a day still being invoiced —
+    # today's invoice runs land through the day, so a same-day billing detail
+    # would be a partial. Use the newest fully-elapsed invoiced day.
     inv_latest = max((norm(r[iid]) for r in rows
-                      if isinstance(norm(r[iid]), date)), default=today)
+                      if isinstance(norm(r[iid]), date) and norm(r[iid]) < today),
+                     default=today)
     return wb_latest, inv_latest
 
 
