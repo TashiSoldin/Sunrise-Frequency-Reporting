@@ -12,7 +12,9 @@ dependencies = [
     "passlib>=1.7.4",
     "pillow>=11.0.0",
     "pre-commit>=4.0.1",
+    "python-calamine>=0.3.1",
     "python-dotenv>=1.0.1",
     "tqdm>=4.67.0",
+    "xlrd>=2.0.1",
     "xlsxwriter>=3.2.3",
 ]
