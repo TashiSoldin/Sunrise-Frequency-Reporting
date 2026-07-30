@@ -60,14 +60,28 @@ in `report_generation/`.
 
 ## Status (29 Jul 2026)
 
-**Next action:** when today's staff exports land in "2. Revenue Data"
-(~15:00; Larry WhatsApps), `git pull` on the BI server and rerun
-`python revenue_reports/extract_revenue.py --out-dir <Claude General>/extract_revenue_exports`
-for the definitive same-day acceptance diff (pass 3). Server writes straight
-into the SharePoint library via a local sync connection — note for Phase 4:
-a proper sync client on the BI server may make Graph API access unnecessary.
-After acceptance: adapt the two credits readers (.xls → .xlsx), then Phase 4
-(Task Scheduler + delivery, retiring the manual morning export).
+**ACCEPTANCE PASSED — 30 Jul 2026 (pass 3, same-day diff vs Larry's fresh
+07:36 exports):**
+
+- **INV basis: R0.00 subtotal diff** across all 84,106 common rows, 100%
+  same-status. The invoice basis (dashboard/billing detail money) is exact.
+- **WB basis:** entire −R52,486 delta = 3 "Ready for Approval" waybills being
+  actively edited between the two pulls (one changed depot AND customer
+  mid-edit). Every other money column zero-diff across 84,099 rows. Remaining
+  classes all drift (PODs, receipts, collections progressing — ours newer)
+  or known cosmetics (R/kg float32 last-cent ~0.4%, First Ref ordering 0.16%,
+  Consolidated's 9 fixed residuals).
+- **Credits: R0.00 subtotal diff** (R12,288,202.87 both sides), all 6,466
+  manual rows matched; sole mismatch = the 1 known Bank-code lookup row.
+- One fix from the diff: Collect Status codes N/V → "Unknown" (committed).
+
+**Phase 4 remaining:** (1) adapt the two credits readers (.xls → .xlsx) +
+end-to-end builder run off extracted files; (2) Task Scheduler job on the BI
+server → extract into the synced SharePoint folder (the sync-client route may
+make Graph API access unnecessary — check account/reboot survival);
+(3) switchover with Larry (delivery format, timing, retire manual export);
+(4) commercials: send QT-000003 (drafted, R17,000), convert QT-000002 to
+invoice on Phase 1 completion (bank details on invoice).
 
 **Pass 2 (29 Jul, ~12:50 run) — joins + fixes validated:** Total Surch. via
 WAYBILL.TOTSURCHARGE now matches (only the 3 re-rated drift rows differ);

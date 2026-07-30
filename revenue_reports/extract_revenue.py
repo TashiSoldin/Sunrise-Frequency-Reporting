@@ -248,7 +248,8 @@ DB_COLS = sorted(({src for _, src in COLUMN_MAP if isinstance(src, str)}
 VALUE_MAPS = {
     "Waybill Input Method": {"": "Parcel Perfect", "0": "Parcel Perfect",
                              "1": "PPOnline", "2": "PPMobile"},
-    "Collect Status": {"": "Unknown", "W": "Unknown", "F": "Checked In",
+    "Collect Status": {"": "Unknown", "W": "Unknown", "N": "Unknown",
+                       "V": "Unknown", "F": "Checked In",
                        "C": "Collected", "U": "Unassigned",
                        "A": "Assigned to Agent", "X": "Cancelled"},
 }
