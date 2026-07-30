@@ -75,13 +75,27 @@ in `report_generation/`.
   manual rows matched; sole mismatch = the 1 known Bank-code lookup row.
 - One fix from the diff: Collect Status codes N/V → "Unknown" (committed).
 
-**Phase 4 remaining:** (1) adapt the two credits readers (.xls → .xlsx) +
-end-to-end builder run off extracted files; (2) Task Scheduler job on the BI
-server → extract into the synced SharePoint folder (the sync-client route may
-make Graph API access unnecessary — check account/reboot survival);
-(3) switchover with Larry (delivery format, timing, retire manual export);
-(4) commercials: send QT-000003 (drafted, R17,000), convert QT-000002 to
-invoice on Phase 1 completion (bank details on invoice).
+**Credits readers adapted + END-TO-END PASSED (30 Jul):** new
+`data.load_credit_sheet()` reads both the staff `.xls` and extract_revenue's
+`.xlsx` (dispatches on extension; converts Date cells; drops the totals row
+via the negative-receipt rule); build_billing_detail / build_dashboard /
+build_credit_notes all refactored onto it (xlrd now used only inside the
+loader). Proof: billing detail built with ONLY the credits file swapped
+(.xls → our .xlsx) is 100% identical (440/440 cells); Credit Notes tab
+234/234. All five builders run cleanly off the extracted files (flash,
+billing detail, dashboard incl. all tabs, unbilled, credit notes); remaining
+build diffs vs Larry's-file builds are pure pull-time drift — including an
+~881-invoice run backdated to 28 Jul that landed between Larry's 07:36 pull
+and ours at 08:10.
+
+**Phase 4 remaining:** (1) Task Scheduler job on the BI server → extract into
+the synced SharePoint folder (the sync-client route may make Graph API access
+unnecessary — check which account it runs under and reboot survival);
+(2) decide where the report builders run (BI server via uv is natural — uv
+already there; Mac has no uv); (3) switchover with Larry (delivery format,
+timing, retire manual export); (4) commercials: send QT-000003 (drafted,
+R17,000), convert QT-000002 to invoice on Phase 1 completion (bank details
+on invoice).
 
 **Pass 2 (29 Jul, ~12:50 run) — joins + fixes validated:** Total Surch. via
 WAYBILL.TOTSURCHARGE now matches (only the 3 re-rated drift rows differ);

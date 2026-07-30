@@ -28,32 +28,25 @@ FY_START = date(2026, 3, 1)  # FY27
 
 
 def load_credits(path):
-    import xlrd
-    from datetime import datetime, timedelta
-    book = xlrd.open_workbook(path)
-    sh = book.sheet_by_index(0)
-    hdr = [str(sh.cell_value(0, c)).strip() for c in range(sh.ncols)]
+    from data import load_credit_sheet
+    hdr, rows = load_credit_sheet(path)
     ic = {n: hdr.index(n) for n in
           ["Receipt", "Account", "Customer Name", "Date", "Subtotal", "Reference",
            "Type", "Rep", "Reason", "Branch", "Credit Controller"]}
     out = []
-    for i in range(1, sh.nrows):
-        if str(sh.cell_value(i, ic["Type"])) not in CREDIT_TYPES:
-            continue
-        try:
-            d = (datetime(1899, 12, 30) + timedelta(days=sh.cell_value(i, ic["Date"]))).date()
-        except (TypeError, ValueError):
+    for r in rows:
+        if str(r[ic["Type"]]) not in CREDIT_TYPES or r[ic["Date"]] is None:
             continue
         out.append(dict(
-            date=d, acct=str(sh.cell_value(i, ic["Account"])).strip(),
-            customer=str(sh.cell_value(i, ic["Customer Name"])).strip(),
-            value=sh.cell_value(i, ic["Subtotal"]) or 0,
-            ref=str(sh.cell_value(i, ic["Reference"])).strip(),
-            reason=str(sh.cell_value(i, ic["Reason"])).strip() or "(unspecified)",
-            rep=str(sh.cell_value(i, ic["Rep"])).strip(),
-            branch=str(sh.cell_value(i, ic["Branch"])).strip(),
-            controller=str(sh.cell_value(i, ic["Credit Controller"])).strip(),
-            type=str(sh.cell_value(i, ic["Type"])).strip(),
+            date=r[ic["Date"]], acct=str(r[ic["Account"]]).strip(),
+            customer=str(r[ic["Customer Name"]]).strip(),
+            value=r[ic["Subtotal"]] or 0,
+            ref=str(r[ic["Reference"]]).strip(),
+            reason=str(r[ic["Reason"]]).strip() or "(unspecified)",
+            rep=str(r[ic["Rep"]]).strip(),
+            branch=str(r[ic["Branch"]]).strip(),
+            controller=str(r[ic["Credit Controller"]]).strip(),
+            type=str(r[ic["Type"]]).strip(),
         ))
     return out
 

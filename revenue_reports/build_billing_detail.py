@@ -25,10 +25,9 @@ from collections import defaultdict
 from datetime import date
 
 import openpyxl
-import xlrd
 import xlsxwriter
 
-from data import col, excel_serial_to_date, load_export
+from data import col, load_credit_sheet, load_export
 from style import ALT, NAVY, NAVY2, ORANGE, RED, RED_LIGHT, YELLOW, NUM, NUM1, NUM2, DEC2, PCT1, Styles, title_block
 
 BRANCH_MAP = {
@@ -366,36 +365,26 @@ def _consolidations(wb, st, th, day_rows, ix, short_date):
 
 
 def _credit_notes(wb, st, day, credits_file, dm, short_date):
-    book = xlrd.open_workbook(credits_file)
-    sh = book.sheet_by_index(0)
-    hdr = [str(sh.cell_value(0, c)).strip() for c in range(sh.ncols)]
+    hdr, rows = load_credit_sheet(credits_file)
     ic = {n: hdr.index(n) for n in ["Receipt", "Account", "Customer Name", "Date", "Subtotal", "Reference", "Type", "Rep", "Reason", "Branch", "Credit Controller"]}
-    notes = []
-    for i in range(1, sh.nrows):
-        if str(sh.cell_value(i, ic["Type"])) not in CREDIT_TYPES:
-            continue
-        try:
-            d = excel_serial_to_date(sh.cell_value(i, ic["Date"]))
-        except (TypeError, ValueError):
-            continue
-        if d == day:
-            notes.append(i)
+    notes = [r for r in rows
+             if str(r[ic["Type"]]) in CREDIT_TYPES and r[ic["Date"]] == day]
 
     ws = wb.add_worksheet(f"Credit Notes {dm}")
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 10, 9, 28, 16, 13, 22, 12, 26]):
         ws.set_column(i, i, w)
-    total = sum(sh.cell_value(i, ic["Subtotal"]) or 0 for i in notes)
+    total = sum(r[ic["Subtotal"]] or 0 for r in notes)
     title_block(ws, st, "I", "SUNRISE LOGISTICS",
                 f"Credit Notes Passed — {short_date}",
                 f"Credit notes processed on {short_date} · {len(notes)} notes · total R{total:,.0f} (reduces revenue) · ex-VAT · ZAR")
     ws.merge_range("B7:I7", "BY REASON", st.get(bold=True, font_size=11, font_color="white", bg_color=NAVY))
     rr = 7
     reasons = defaultdict(lambda: [0, 0.0])
-    for i in notes:
-        rs = str(sh.cell_value(i, ic["Reason"])) or "(no reason)"
+    for r in notes:
+        rs = str(r[ic["Reason"]]) or "(no reason)"
         reasons[rs][0] += 1
-        reasons[rs][1] += sh.cell_value(i, ic["Subtotal"]) or 0
+        reasons[rs][1] += r[ic["Subtotal"]] or 0
     for rs, (n, val) in sorted(reasons.items(), key=lambda kv: -kv[1][1]):
         bg = ALT if rr % 2 == 1 else "white"
         ws.write(rr, 1, rs, st.get(font_size=9, bg_color=bg))
@@ -407,14 +396,14 @@ def _credit_notes(wb, st, day, credits_file, dm, short_date):
     for j, h in enumerate(["CN #", "Account", "Customer", "Rep", "Branch", "Reason", "Value", "Credit Controller"]):
         ws.write(rr, 1 + j, h, th2)
     rr += 1
-    for i in notes:
+    for r in notes:
         bg = ALT if rr % 2 == 0 else "white"
-        rcpt = sh.cell_value(i, ic["Receipt"])
+        rcpt = r[ic["Receipt"]]
         vals = [str(int(rcpt)) if isinstance(rcpt, float) else str(rcpt),
-                str(sh.cell_value(i, ic["Account"])), str(sh.cell_value(i, ic["Customer Name"])),
-                str(sh.cell_value(i, ic["Rep"])), str(sh.cell_value(i, ic["Branch"])),
-                str(sh.cell_value(i, ic["Reason"])), sh.cell_value(i, ic["Subtotal"]) or 0,
-                str(sh.cell_value(i, ic["Credit Controller"]))]
+                str(r[ic["Account"]]), str(r[ic["Customer Name"]]),
+                str(r[ic["Rep"]]), str(r[ic["Branch"]]),
+                str(r[ic["Reason"]]), r[ic["Subtotal"]] or 0,
+                str(r[ic["Credit Controller"]])]
         for j, v in enumerate(vals):
             kw = {"font_size": 9, "bg_color": bg}
             if j == 6:

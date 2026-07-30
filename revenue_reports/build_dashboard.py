@@ -23,11 +23,10 @@ import calendar
 from collections import defaultdict
 from datetime import date, datetime
 
-import xlrd
 import xlsxwriter
 from python_calamine import CalamineWorkbook
 
-from data import col, excel_serial_to_date, load_export
+from data import col, load_credit_sheet, load_export
 from style import ALT, BLUE, NAVY, NAVY2, ORANGE, YELLOW, NUM, DEC2, PCT1, Styles, title_block
 
 CREDIT_TYPES = ("Credit Note", "Journal Credit")
@@ -239,33 +238,28 @@ def load_pools(inv_file, py_inv_file, wb_file, budget: Budget):
 
 class Credits:
     def __init__(self, path, fold):
-        book = xlrd.open_workbook(path)
-        sh = book.sheet_by_index(0)
-        hdr = [str(sh.cell_value(0, c)).strip() for c in range(sh.ncols)]
+        hdr, rows = load_credit_sheet(path)
         ic = {n: hdr.index(n) for n in
               ["Receipt", "Account", "Customer Name", "Date", "Subtotal", "Reference",
                "Type", "Rep", "Reason", "Branch", "Credit Controller"]}
         self.day = defaultdict(lambda: defaultdict(float))  # acct -> day -> value
         self.rows = []  # (date, acct, dicts) for the credit-notes tab
-        for i in range(1, sh.nrows):
-            if str(sh.cell_value(i, ic["Type"])) not in CREDIT_TYPES:
+        for r in rows:
+            if str(r[ic["Type"]]) not in CREDIT_TYPES or r[ic["Date"]] is None:
                 continue
-            try:
-                d = excel_serial_to_date(sh.cell_value(i, ic["Date"]))
-            except (TypeError, ValueError):
-                continue
-            a = fold(acct_str(sh.cell_value(i, ic["Account"])))
-            v = sh.cell_value(i, ic["Subtotal"]) or 0
+            d = r[ic["Date"]]
+            a = fold(acct_str(r[ic["Account"]]))
+            v = r[ic["Subtotal"]] or 0
             self.day[a][d] += v
             self.rows.append(dict(
                 date=d, acct=a, value=v,
-                ref=str(sh.cell_value(i, ic["Reference"])).strip(),
-                reason=str(sh.cell_value(i, ic["Reason"])).strip(),
-                rep=str(sh.cell_value(i, ic["Rep"])).strip(),
-                branch=str(sh.cell_value(i, ic["Branch"])).strip(),
-                controller=str(sh.cell_value(i, ic["Credit Controller"])).strip(),
-                customer=str(sh.cell_value(i, ic["Customer Name"])).strip(),
-                receipt=sh.cell_value(i, ic["Receipt"]),
+                ref=str(r[ic["Reference"]]).strip(),
+                reason=str(r[ic["Reason"]]).strip(),
+                rep=str(r[ic["Rep"]]).strip(),
+                branch=str(r[ic["Branch"]]).strip(),
+                controller=str(r[ic["Credit Controller"]]).strip(),
+                customer=str(r[ic["Customer Name"]]).strip(),
+                receipt=r[ic["Receipt"]],
             ))
 
     def win(self, acct, a, b):
