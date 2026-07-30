@@ -5,7 +5,7 @@ REM OneDrive/SharePoint sync root for the "Claude General" library.
 
 REM For a TEST run, point SYNCED at a scratch folder (see TESTING below)
 REM instead of the live library, so the staff's files are not overwritten.
-set SYNCED=C:\Users\AkhaM\Sunrise Express\Claude General - Documents
+set SYNCED=C:\Users\AkhaM\OneDrive - Sunrise Express\Claude General - Documents
 cd /d C:\Users\AkhaM\Sunrise-Frequency-Reporting
 if not exist logs mkdir logs
 
