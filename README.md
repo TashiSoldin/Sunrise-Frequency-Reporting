@@ -158,14 +158,18 @@ The system logs all activities to the `logs` directory with automatic rotation:
 - Daily rotation at midnight
 - Detailed information about execution time and errors
 
-The revenue pipeline writes one dated log per run, one folder per job:
+The revenue pipeline logs the same way, via `run_daily.py` — one rotating file
+covering both scheduled runs, rolled at midnight and kept for 30 days:
 
 ```
-logs\run_revenue_flash\run_revenue_flash.log.2026-07-31
-logs\run_revenue_pm\run_revenue_pm.log.2026-07-31
+logs\run_revenue\run_revenue.log
+logs\run_revenue\run_revenue.log.2026-07-30
 ```
 
-Each .bat prunes its own folder to the last 60 days.
+The batch files do no log management of their own. They redirect only stderr to
+`logs\run_revenue\bootstrap.log`, which catches failures that happen before
+logging is configured (uv missing, import errors), and return the pipeline's
+exit code so a failed run shows as failed in Task Scheduler.
 
 ## Troubleshooting
 
