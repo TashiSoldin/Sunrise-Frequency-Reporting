@@ -17,6 +17,7 @@ than editing this file.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from datetime import date
@@ -28,6 +29,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "report_generation"))
 
 from clients.outlook_email_client import OutlookEmailClient  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 # The exco distribution list — same convention as EmailConfigs in
 # report_generation/enums/email_enums.py.
@@ -65,26 +68,28 @@ def send_reports(subject: str, intro: str, attachments: list[str],
     paths = [Path(p) for p in attachments]
     missing = [str(p) for p in paths if not p.exists()]
     if missing:
-        raise SystemExit(f"Refusing to send — missing report(s): {missing}")
+        logger.error(f"Refusing to send — missing report(s): {missing}")
+        raise SystemExit(1)
 
     to = to or list(RECIPIENTS)
     items = "".join(f"<li>{p.name}</li>" for p in paths)
     body = BODY.format(intro=intro, items=items)
 
     if dry_run:
-        print(f"[dry-run] would email {to}: {subject}")
+        logger.info(f"Dry run — would email {', '.join(to)}: {subject}")
         for p in paths:
-            print(f"[dry-run]   attach {p.name}")
+            logger.info(f"Dry run — would attach {p.name}")
         return
 
     load_dotenv()
     sender = os.getenv("SENDER_EMAIL_ADDRESS")
     password = os.getenv("SENDER_EMAIL_PASSWORD")
     if not sender or not password:
-        raise SystemExit(
+        logger.error(
             "SENDER_EMAIL_ADDRESS / SENDER_EMAIL_PASSWORD missing from .env — "
             "the reports were built but not emailed."
         )
+        raise SystemExit(1)
 
     client = OutlookEmailClient(sender_email=sender, sender_password=password)
     with client:
@@ -95,7 +100,7 @@ def send_reports(subject: str, intro: str, attachments: list[str],
             body=body,
             attachments=[str(p) for p in paths],
         )
-    print(f"Emailed {len(paths)} report(s) to {', '.join(to)}", flush=True)
+    logger.info(f"Emailed {len(paths)} report(s) to {', '.join(to)}")
 
 
 def flash_subject(day: date) -> str:

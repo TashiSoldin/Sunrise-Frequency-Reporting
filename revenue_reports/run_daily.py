@@ -22,6 +22,10 @@ Other flags:
     --dry-run-email  print what would be sent, send nothing
     --to a@b.com     override recipients for a test send
 
+Logging follows the same pattern as report_generation.py: one rotating file
+under logs/run_revenue/, rolled at midnight and kept for 30 days, plus the
+console. The batch files therefore do no log management of their own.
+
 Dates are auto-derived and never include today, because today's data is still
 being captured while the reports run:
   - flash          -> latest waybill date strictly before today
@@ -38,17 +42,41 @@ remains the tool for changing formats, not producing dailies.
 from __future__ import annotations
 
 import argparse
+import logging
 import subprocess
 import sys
 import time
 from datetime import date, datetime
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+REPO_ROOT = HERE.parent
 
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(REPO_ROOT / "report_generation"))
+
 from data import col, load_export  # noqa: E402
 from mailer import flash_subject, pm_subject, send_reports  # noqa: E402
+from utils.log_execution_time_decorator import log_execution_time  # noqa: E402
+
+LOGS_DIR = REPO_ROOT / "logs" / "run_revenue"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        TimedRotatingFileHandler(
+            LOGS_DIR / "run_revenue.log",
+            when="midnight",
+            interval=1,
+            backupCount=30,  # Keep logs for 30 days
+        ),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger(__name__)
 
 PY_INV_NAME = "INV Date - March25 - Feb26..xlsx"
 BUDGET_NAME = "FY26-27_Budget_v30_Sunrise.xlsx"
@@ -65,26 +93,32 @@ def fy_label(start: date) -> str:
     return f"March{start.year % 100} - Feb{(start.year + 1) % 100}"
 
 
-def stamp() -> str:
-    """Wall-clock time for the log — the runs are scheduled, so knowing when a
-    step actually started matters as much as knowing that it did."""
-    return datetime.now().strftime("%H:%M:%S")
-
-
 def run(step: str, args: list[str]) -> str:
     """Run a builder and return the workbook path it printed on its last line."""
-    print(f"== {step} == {stamp()}", flush=True)
-    t0 = time.monotonic()
-    proc = subprocess.run([sys.executable, *args], check=True, cwd=HERE,
+    logger.info(f"Running {step}")
+    start_time = time.perf_counter()
+    proc = subprocess.run([sys.executable, *args], cwd=HERE,
                           capture_output=True, text=True)
-    if proc.stdout:
-        print(proc.stdout, end="", flush=True)
-    if proc.stderr:
-        print(proc.stderr, end="", file=sys.stderr, flush=True)
+
+    for line in proc.stdout.splitlines():
+        if line.strip():
+            logger.info(line.rstrip())
+
+    if proc.returncode != 0:
+        logger.error(f"{step} failed with exit code {proc.returncode}")
+        if proc.stderr.strip():
+            logger.error(proc.stderr.rstrip())
+        raise SystemExit(proc.returncode)
+
+    if proc.stderr.strip():
+        logger.warning(proc.stderr.rstrip())
+
     lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
     if not lines:
-        raise SystemExit(f"{step}: builder printed no output path")
-    print(f"-- {step} done in {time.monotonic() - t0:.1f}s", flush=True)
+        logger.error(f"{step} printed no output path")
+        raise SystemExit(1)
+
+    logger.info(f"{step} took {time.perf_counter() - start_time:.6f} seconds")
     return lines[-1]
 
 
@@ -117,33 +151,14 @@ def latest_dates(wb_file: Path, inv_file: Path) -> tuple[date, date]:
     return wb_latest, inv_latest
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--data-dir", required=True,
-                    help='The "2. Revenue Data" folder (extracts land here)')
-    ap.add_argument("--report-dir", required=True,
-                    help="Where the report workbooks are written")
-    ap.add_argument("--only", choices=["all", "flash", "pm"], default="all",
-                    help="flash = 07:00 run; pm = 16:30 run; all = both")
-    ap.add_argument("--skip-extract", action="store_true",
-                    help="Rebuild reports from the existing files only")
-    ap.add_argument("--no-email", action="store_true",
-                    help="Build and save the reports but send no email")
-    ap.add_argument("--dry-run-email", action="store_true",
-                    help="Print what would be emailed without sending")
-    ap.add_argument("--to", default=None,
-                    help="Comma-separated recipient override (test sends)")
-    args = ap.parse_args()
-
-    started = datetime.now()
-    print(f"=== run_daily --only {args.only} started "
-          f"{started:%Y-%m-%d %H:%M:%S} ===", flush=True)
-
+@log_execution_time
+def generate_reports(args: argparse.Namespace) -> None:
     data_dir, report_dir = Path(args.data_dir), Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
     to = [a.strip() for a in args.to.split(",")] if args.to else None
 
     if not args.skip_extract:
+        logger.info("Extracting data from database")
         run("extract (WB / INV / credits)",
             ["extract_revenue.py", "--out-dir", str(data_dir)])
 
@@ -151,20 +166,26 @@ def main() -> None:
     wb_file = data_dir / f"WB Date - {label}..xlsx"
     inv_file = data_dir / f"INV Date - {label}..xlsx"
     cred_start = fy_start().year - 2
-    credits_file = data_dir / f"Credits - March{cred_start % 100} - Feb{(fy_start().year + 1) % 100}.xlsx"
+    credits_file = (data_dir /
+                    f"Credits - March{cred_start % 100} - "
+                    f"Feb{(fy_start().year + 1) % 100}.xlsx")
     py_inv = data_dir / PY_INV_NAME
     budget = data_dir / BUDGET_NAME
     for f in (wb_file, inv_file, credits_file, py_inv, budget):
         if not f.exists():
-            raise SystemExit(f"Missing input: {f}")
+            logger.error(f"Missing input: {f}")
+            raise SystemExit(1)
 
     wb_day, inv_day = latest_dates(wb_file, inv_file)
-    print(f"flash day (waybill basis): {wb_day} | billing day (invoice basis): {inv_day}")
+    logger.info(f"Flash day (waybill basis): {wb_day}; "
+                f"billing day (invoice basis): {inv_day}")
 
     if args.only in ("all", "flash"):
         flash = run("flash", ["build_flash.py", "--date", wb_day.isoformat(),
-                              "--wb-file", str(wb_file), "--out-dir", str(report_dir)])
+                              "--wb-file", str(wb_file),
+                              "--out-dir", str(report_dir)])
         if not args.no_email:
+            logger.info("Sending flash revenue email")
             send_reports(
                 subject=flash_subject(wb_day),
                 intro=("Please find attached the Flash Revenue report for "
@@ -191,6 +212,7 @@ def main() -> None:
                       ["build_credit_notes.py", "--credits-file", str(credits_file),
                        "--out-dir", str(report_dir)])
         if not args.no_email:
+            logger.info("Sending daily revenue reports email")
             send_reports(
                 subject=pm_subject(inv_day),
                 intro=("Please find attached the daily revenue reports for "
@@ -198,8 +220,34 @@ def main() -> None:
                 attachments=[dashboard, billing, unbilled, credits],
                 to=to, dry_run=args.dry_run_email)
 
-    elapsed = (datetime.now() - started).total_seconds()
-    print(f"Daily pipeline complete at {stamp()} ({elapsed:.1f}s total).", flush=True)
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--data-dir", required=True,
+                    help='The "2. Revenue Data" folder (extracts land here)')
+    ap.add_argument("--report-dir", required=True,
+                    help="Where the report workbooks are written")
+    ap.add_argument("--only", choices=["all", "flash", "pm"], default="all",
+                    help="flash = 07:00 run; pm = 16:30 run; all = both")
+    ap.add_argument("--skip-extract", action="store_true",
+                    help="Rebuild reports from the existing files only")
+    ap.add_argument("--no-email", action="store_true",
+                    help="Build and save the reports but send no email")
+    ap.add_argument("--dry-run-email", action="store_true",
+                    help="Print what would be emailed without sending")
+    ap.add_argument("--to", default=None,
+                    help="Comma-separated recipient override (test sends)")
+    args = ap.parse_args()
+
+    logger.info(f"Starting revenue pipeline: {args.only}")
+    try:
+        generate_reports(args)
+    except SystemExit:
+        raise
+    except Exception as e:
+        logger.error(f"Revenue pipeline failed: {str(e)}")
+        raise SystemExit(1)
+    logger.info("Revenue pipeline completed successfully")
 
 
 if __name__ == "__main__":
