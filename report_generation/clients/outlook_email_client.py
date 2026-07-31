@@ -72,7 +72,10 @@ class OutlookEmailClient:
             for file_path in attachments:
                 with open(file_path, "rb") as f:
                     attachment = MIMEApplication(f.read(), _subtype="xlsx")
-                    filename = file_path.split("/")[-1]
+                    # Handle both separators — on Windows the caller may pass a
+                    # backslash path, which a plain "/" split would leave intact
+                    # and send as an attachment named after the full path.
+                    filename = file_path.replace("\\", "/").split("/")[-1]
                     attachment.add_header(
                         "Content-Disposition", "attachment", filename=filename
                     )
