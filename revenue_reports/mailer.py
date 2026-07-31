@@ -52,7 +52,6 @@ BODY = """
     <ul>{items}</ul>
     <p>These are generated automatically from Parcel Perfect. Please flag
        anything that looks off.</p>
-    <p>Kind regards,<br>Sunrise Reporting Automation</p>
   </body>
 </html>
 """
