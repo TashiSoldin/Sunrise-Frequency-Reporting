@@ -88,6 +88,61 @@ You can also run the Python script directly:
 uv run report_generation/report_generation.py --output-dir data --report-types booking frequency
 ```
 
+## Revenue Reports
+
+A second pipeline (`revenue_reports/`) extracts from Parcel Perfect and builds the
+five daily revenue workbooks — Flash Revenue, Revenue Dashboard, Billing Detail,
+Unbilled and Credit Notes — then emails them to `exco@sunriselogistics.net`.
+
+Everything is one day in arrears: today's waybills and invoices are still being
+captured while the reports run, so a same-day report is always a partial. The
+flash uses the latest waybill date *before* today, which rolls back over
+weekends and public holidays rather than reporting a day with no trading.
+
+### Schedule
+
+| Time  | Command | Reports | Email |
+|-------|---------|---------|-------|
+| 07:00 | `run_revenue_flash.bat` | Flash Revenue | 1 attachment |
+| 16:30 | `run_revenue_pm.bat` | Dashboard, Billing Detail, Unbilled, Credit Notes | 4 attachments |
+
+Register both as Windows Task Scheduler jobs on the BI server, weekdays, "Run
+whether user is logged on or not". Edit `SYNCED` in each .bat to match the local
+OneDrive/SharePoint sync root for the "Claude General" library.
+
+### Running by hand
+
+```cmd
+uv run revenue_reports/run_daily.py --only flash ^
+    --data-dir  "<synced>\Dashboards and Data Analysis\2. Revenue Data" ^
+    --report-dir "<synced>\Dashboards and Data Analysis"
+```
+
+| Flag | Effect |
+|------|--------|
+| `--only {all,flash,pm}` | Which set of reports to build |
+| `--skip-extract` | Rebuild from the existing export files, no DB hit |
+| `--no-email` | Build and save only — nothing is sent |
+| `--dry-run-email` | Print what would be sent, send nothing |
+| `--to a@b.com` | Send to someone else instead of exco (test runs) |
+
+Use `--no-email` or `--to` for any test run. Without them, exco gets the mail.
+
+### Email configuration
+
+Recipients are in code (`revenue_reports/mailer.py`), matching the convention in
+`report_generation/enums/email_enums.py` — they are config, not secrets. Sending
+reuses the existing SMTP client, so it needs the same two keys already in the
+server `.env`:
+
+```
+SENDER_EMAIL_ADDRESS=...
+SENDER_EMAIL_PASSWORD=...    # app password
+```
+
+If either is missing the run fails after the workbooks are written, so the files
+still land in SharePoint even when mail is misconfigured.
+
 ## CRON Job Setup (Windows Task Scheduler)
 
 Create two scheduled tasks in Windows Task Scheduler:
@@ -102,6 +157,15 @@ The system logs all activities to the `logs` directory with automatic rotation:
 - Logs are kept for 30 days
 - Daily rotation at midnight
 - Detailed information about execution time and errors
+
+The revenue pipeline writes one dated log per run, one folder per job:
+
+```
+logs\run_revenue_flash\run_revenue_flash.log.2026-07-31
+logs\run_revenue_pm\run_revenue_pm.log.2026-07-31
+```
+
+Each .bat prunes its own folder to the last 60 days.
 
 ## Troubleshooting
 
