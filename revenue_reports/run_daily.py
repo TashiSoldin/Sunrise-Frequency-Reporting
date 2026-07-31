@@ -11,7 +11,7 @@ folder so everything lands in "Claude General" automatically.
         [--skip-extract]   # rebuild reports from existing files only
 
 Dates are auto-derived, mirroring Larry's daily rhythm:
-  - flash          -> latest waybill date in the WB file (today's early read)
+  - flash          -> latest waybill date strictly before today
   - billing detail -> last fully invoiced day (max invoice date in INV file)
   - dashboard      -> builders' own defaults (latest data in the files)
   - unbilled       -> billing-frontier rule inside build_unbilled
@@ -56,7 +56,13 @@ def run(step: str, args: list[str]) -> None:
 
 
 def latest_dates(wb_file: Path, inv_file: Path) -> tuple[date, date]:
-    """(latest waybill date not in the future, last invoiced day)."""
+    """(latest waybill date before today, last fully invoiced day).
+
+    Both exclude today. The 07:00 flash asked for "the day preceding" — taking
+    the latest waybill date strictly before today gives yesterday on a normal
+    weekday and rolls back to Friday on a Monday (or over a public holiday),
+    so the report is never built for a day with no trading.
+    """
     today = date.today()
 
     def norm(v):
@@ -65,7 +71,7 @@ def latest_dates(wb_file: Path, inv_file: Path) -> tuple[date, date]:
     h, rows = load_export(str(wb_file))
     iwd = col(h, "Waybill Date")
     wb_latest = max((norm(r[iwd]) for r in rows
-                     if isinstance(norm(r[iwd]), date) and norm(r[iwd]) <= today),
+                     if isinstance(norm(r[iwd]), date) and norm(r[iwd]) < today),
                     default=today)
     h, rows = load_export(str(inv_file))
     iid = col(h, "Invoice Date")
