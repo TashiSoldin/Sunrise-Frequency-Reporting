@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import time
 from datetime import date, datetime
 from pathlib import Path
 
@@ -64,9 +65,16 @@ def fy_label(start: date) -> str:
     return f"March{start.year % 100} - Feb{(start.year + 1) % 100}"
 
 
+def stamp() -> str:
+    """Wall-clock time for the log — the runs are scheduled, so knowing when a
+    step actually started matters as much as knowing that it did."""
+    return datetime.now().strftime("%H:%M:%S")
+
+
 def run(step: str, args: list[str]) -> str:
     """Run a builder and return the workbook path it printed on its last line."""
-    print(f"== {step} ==", flush=True)
+    print(f"== {step} == {stamp()}", flush=True)
+    t0 = time.monotonic()
     proc = subprocess.run([sys.executable, *args], check=True, cwd=HERE,
                           capture_output=True, text=True)
     if proc.stdout:
@@ -76,6 +84,7 @@ def run(step: str, args: list[str]) -> str:
     lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
     if not lines:
         raise SystemExit(f"{step}: builder printed no output path")
+    print(f"-- {step} done in {time.monotonic() - t0:.1f}s", flush=True)
     return lines[-1]
 
 
@@ -125,6 +134,10 @@ def main() -> None:
     ap.add_argument("--to", default=None,
                     help="Comma-separated recipient override (test sends)")
     args = ap.parse_args()
+
+    started = datetime.now()
+    print(f"=== run_daily --only {args.only} started "
+          f"{started:%Y-%m-%d %H:%M:%S} ===", flush=True)
 
     data_dir, report_dir = Path(args.data_dir), Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -185,7 +198,8 @@ def main() -> None:
                 attachments=[dashboard, billing, unbilled, credits],
                 to=to, dry_run=args.dry_run_email)
 
-    print("Daily pipeline complete.", flush=True)
+    elapsed = (datetime.now() - started).total_seconds()
+    print(f"Daily pipeline complete at {stamp()} ({elapsed:.1f}s total).", flush=True)
 
 
 if __name__ == "__main__":

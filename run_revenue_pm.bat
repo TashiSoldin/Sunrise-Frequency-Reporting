@@ -13,6 +13,10 @@ for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd"') d
 set LOGDIR=logs\run_revenue_pm
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"
 
+REM Banner so successive runs on the same day are separable in one log file.
+echo.>> "%LOGDIR%\run_revenue_pm.log.%TODAY%"
+echo ---------- run_revenue_pm %DATE% %TIME% ---------->> "%LOGDIR%\run_revenue_pm.log.%TODAY%"
+
 uv run revenue_reports/run_daily.py --only pm ^
     --data-dir "%SYNCED%\Dashboards and Data Analysis\2. Revenue Data" ^
     --report-dir "%SYNCED%\Dashboards and Data Analysis" ^
