@@ -17,8 +17,18 @@ uv run revenue_reports/run_daily.py --only flash ^
     --report-dir "%SYNCED%\Dashboards and Data Analysis" ^
     >> "%LOGDIR%\run_revenue_flash.log.%TODAY%" 2>&1
 
+REM Capture the pipeline's exit code before anything else overwrites it.
+set RC=%ERRORLEVEL%
+
 REM Keep 60 days of logs.
 forfiles /p "%LOGDIR%" /m *.log.* /d -60 /c "cmd /c del @path" 2>nul
+
+if not "%RC%"=="0" (
+    echo [%DATE% %TIME%] FAILED - exit code %RC% >> "%LOGDIR%\run_revenue_flash.log.%TODAY%"
+)
+
+REM Hand the real result to Task Scheduler, so a failed run shows as failed.
+exit /b %RC%
 
 REM Add --no-email for a build-only test run, or
 REM --to you@sunriselogistics.net to send a test to yourself instead of exco.

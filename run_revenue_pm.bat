@@ -18,8 +18,18 @@ uv run revenue_reports/run_daily.py --only pm ^
     --report-dir "%SYNCED%\Dashboards and Data Analysis" ^
     >> "%LOGDIR%\run_revenue_pm.log.%TODAY%" 2>&1
 
+REM Capture the pipeline's exit code before anything else overwrites it.
+set RC=%ERRORLEVEL%
+
 REM Keep 60 days of logs.
 forfiles /p "%LOGDIR%" /m *.log.* /d -60 /c "cmd /c del @path" 2>nul
+
+if not "%RC%"=="0" (
+    echo [%DATE% %TIME%] FAILED - exit code %RC% >> "%LOGDIR%\run_revenue_pm.log.%TODAY%"
+)
+
+REM Hand the real result to Task Scheduler, so a failed run shows as failed.
+exit /b %RC%
 
 REM TESTING (safe, end to end):
 REM   1. mkdir C:\revtest\2rd  and copy these two static inputs into it:
