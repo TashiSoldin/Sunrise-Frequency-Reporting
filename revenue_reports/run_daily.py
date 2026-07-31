@@ -73,7 +73,9 @@ logging.basicConfig(
             interval=1,
             backupCount=30,  # Keep logs for 30 days
         ),
-        logging.StreamHandler(),
+        # stdout, not StreamHandler's stderr default — the bats trap stderr in
+        # bootstrap.log for failures that predate logging.
+        logging.StreamHandler(sys.stdout),
     ],
 )
 logger = logging.getLogger(__name__)
