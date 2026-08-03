@@ -827,9 +827,9 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
 
     # --- row 7/8: assumptions
     ye = dict(font_size=10, bg_color=YELLOW)
-    ws.merge_range("B7:D7", "Trading days elapsed:", F(st, bold=True, **ye))
+    ws.merge_range("B7:D7", "Trading days elapsed:", F(st, bold=True, font_color=NAVY, **ye))
     ws.write("E7", elapsed, F(st, font_color=BLUE, bold=True, **ye))
-    ws.merge_range("F7:G7", "Trading days in period:", F(st, bold=True, **ye))
+    ws.merge_range("F7:G7", "Trading days in period:", F(st, bold=True, font_color=NAVY, **ye))
     ws.write("H7", period, F(st, font_color=BLUE, bold=True, **ye))
     ws.write("I7", "← assumptions (editable)", F(st, font_size=8, font_color="#595959"))
     ws.merge_range("B8:S8", "KPIs cover the rep-allocated selling book. Non-budget accounts "
@@ -873,7 +873,10 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
             f2 = fmt["pct"] if letter in "ILMPS" else (fmt["dec"] if letter in "QR" else fmt["num"])
             V.f(r - 1, 4 + i, f"={letter}{ref_row}", f2, value=agg[ref_row][4 + i])
 
-    def mk_fmt(bg, bold=False, fc="black", size=10):
+    def mk_fmt(bg, bold=False, fc=None, size=10):
+        # Bold subtotal and total rows carry NAVY text in the reference, not
+        # black; the plain summary rows above them stay black.
+        fc = fc or (NAVY if bold else "black")
         base = dict(font_size=size, bg_color=bg, bold=bold, font_color=fc)
         return dict(txt=F(st, **base), num=F(st, num_format=NUM, **base),
                     pct=F(st, num_format=PCT1, **base), dec=F(st, num_format=DEC2, **base))
@@ -1106,7 +1109,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
     total_row = rr
 
     ye = dict(font_size=10, bg_color=YELLOW)
-    ws.write("B7", "Trading days in month:", F(st, bold=True, **ye))
+    ws.write("B7", "Trading days in month:", F(st, bold=True, font_color=NAVY, **ye))
     ws.merge_range("C7:D7", "", F(st, **ye))
     days = month_trading_days(fy_start_year(day), day.month)
     ws.write("E7", days, F(st, font_color=BLUE, bold=True, **ye))
@@ -1139,7 +1142,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
         ws.write(13, 1 + i, h, th)
 
     rep_hdr_fmt = F(st, bold=True, font_size=10, font_color="white", bg_color=NAVY2)
-    sub_base = dict(font_size=9, bold=True, bg_color=ORANGE)
+    sub_base = dict(font_size=9, bold=True, bg_color=ORANGE, font_color=NAVY)
     lab_fmt = F(st, font_size=9, bold=True, italic=True)
 
     def tgt_str(a):
@@ -1198,7 +1201,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
                 r += 1
         write_sub(srow, f"{c} subtotal", first, last)
 
-    sbf = dict(font_size=10, bold=True, bg_color=YELLOW)
+    sbf = dict(font_size=10, bold=True, bg_color=YELLOW, font_color=NAVY)
     ws.merge_range(sb_row - 1, 1, sb_row - 1, 3, "SUBTOTAL — Rep-allocated (billed today)", F(st, **sbf))
     subrefs = [s[4] for s in sections]
     sbd = daily_derived(*[sum(dv[sr][cl] for sr in subrefs) for cl in (4, 5, 8)])

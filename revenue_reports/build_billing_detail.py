@@ -115,12 +115,22 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
     numfmts = [None, None, None, None, None, None, None, None, None, None, None, None,
                NUM, NUM1, NUM1, NUM2, NUM2, NUM2, NUM2, NUM2, NUM2, DEC2]
 
+    BLUE = "#0000FF"
+
     def cellfmt(j, bg, bold=False):
         kw = {"font_size": 9, "bg_color": bg}
         if bold:
             kw["bold"] = True
         if numfmts[j]:
             kw["num_format"] = numfmts[j]
+        # Source figures — Pcs through Sub-Total — are blue in the reference,
+        # the same convention the dashboard uses; R/kg is derived, so black.
+        # Bold subtotal and total rows override both with NAVY, as they do on
+        # the dashboard.
+        if bold:
+            kw["font_color"] = NAVY
+        elif 12 <= j <= 20:
+            kw["font_color"] = BLUE
         return st.get(**kw)
 
     def intstr(v):
@@ -156,7 +166,7 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
         def totals_row(label, tvals, bg):
             # Fill the whole row first: the reference bands B..W solid, and
             # writing only the populated columns leaves gaps at B-E and G-M.
-            band = st.get(font_size=9, bg_color=bg, bold=True)
+            band = st.get(font_size=9, bg_color=bg, bold=True, font_color=NAVY)
             for c in range(1, 23):
                 ws.write_blank(r_, c, None, band)
             ws.write(r_, 5, label, cellfmt(4, bg, True))
@@ -168,7 +178,7 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
         gtot = [a + b for a, b in zip(gtot, stot)]
         r_ += 1
     totals_row_label = "GRAND TOTAL — all customers"
-    grand_band = st.get(font_size=9, bg_color=ORANGE, bold=True)
+    grand_band = st.get(font_size=9, bg_color=ORANGE, bold=True, font_color=NAVY)
     for c in range(1, 23):
         ws.write_blank(r_, c, None, grand_band)
     ws.write(r_, 5, totals_row_label, cellfmt(4, ORANGE, True))
