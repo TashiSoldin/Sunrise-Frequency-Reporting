@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # The exco distribution list — same convention as EmailConfigs in
 # report_generation/enums/email_enums.py.
 RECIPIENTS = ["exco@sunriselogistics.net"]
-CC_RECIPIENTS = ["akha@sunriselogistics.net"]
+CC_RECIPIENTS: list[str] = ["akha@sunriselogistics.net"]
 
 BODY = """
 <html>
