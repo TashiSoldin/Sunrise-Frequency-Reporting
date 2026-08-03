@@ -44,9 +44,6 @@ REP_DISPLAY = {
 }
 SUFFIXES = ("DED", "CDE", "DE")
 MONTHS_FY = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2]  # Mar..Feb
-# Trading-day calendar (fixed inputs per run — Larry-editable assumptions)
-TRADING_DAYS = {3: 22, 4: 22, 5: 21, 6: 22, 7: 23}
-FY = 2026  # FY27 starts Mar 2026
 
 
 def acct_str(v):
@@ -68,6 +65,33 @@ def trading_days_between(a: date, b: date) -> int:
             n += 1
         d += timedelta(days=1)
     return n
+
+
+def fy_start_year(d: date) -> int:
+    """Calendar year of the 1 March opening the financial year that contains d."""
+    return d.year if d.month >= 3 else d.year - 1
+
+
+def fy_label(fy: int) -> str:
+    """FY27 for the year beginning March 2026."""
+    return f"FY{(fy + 1) % 100}"
+
+
+def cal_year(fy: int, m: int) -> int:
+    """Calendar year of FY month m — Jan and Feb fall in the following year."""
+    return fy if m >= 3 else fy + 1
+
+
+def month_trading_days(fy: int, m: int) -> int:
+    """Trading days in an FY month.
+
+    Plain Mon-Fri with public holidays left in. Reproduces the hardcoded table
+    this replaced (Mar 22, Apr 22, May 21, Jun 22, Jul 23) and matches Larry's
+    own reference workbook, whose assumption cells read the same. Deliberately
+    NOT weekdays-minus-SA-public-holidays, which would give Apr 19 / May 20 /
+    Jun 21 and restate figures already circulated.
+    """
+    return trading_days_between(*month_win(cal_year(fy, m), m))
 
 
 def nth_trading_day(y, m, n) -> date:
@@ -362,13 +386,36 @@ def build_tab1(wb, st, M: Model, p):
         ws.set_column(i, i, w)
 
     mtd = p["mtd_max"]
-    elapsed, injul = p["jul_elapsed"], TRADING_DAYS[7]
+    elapsed, injul = p["elapsed"], p["cur_days"]
+    FY, fyl, ly = p["fy"], p["fyl"], p["ly"]
+    cur, complete = p["cur"], p["complete"]
+    ab, mn = calendar.month_abbr, calendar.month_name
+    cur_ab, cur_name = ab[cur], mn[cur]
+    cur_y = cal_year(FY, cur)
+    span = f"{ab[complete[0]]}–{ab[complete[-1]]}"
+    # Row anchors: the month block grows with the number of completed months,
+    # so everything below it shifts rather than sitting at fixed rows.
+    #
+    # When the latest invoiced day is a month-end, that month is complete and
+    # has its own row, so there is no part-month to report. The MTD and
+    # "YTD incl." rows are then skipped and their anchors point at rows that
+    # already say the same thing - otherwise the month is counted twice.
+    has_mtd = cur not in complete
+    R_YTD = 14 + len(complete)   # completed-months total
+    if has_mtd:
+        R_MTD = R_YTD + 1        # current part-month
+        R_INC = R_MTD + 1        # YTD including the part-month
+    else:
+        R_MTD = 14 + complete.index(cur)   # the month's own completed row
+        R_INC = R_YTD                      # YTD already includes it
+    R_SEC = max(R_YTD, R_INC) + 2          # momentum block header
+    R_P0 = R_SEC + 1                       # first momentum row
     title_block(ws, st, "P", "SUNRISE LOGISTICS",
-                "YTD Revenue Analysis  —  FY27 vs FY26 (Prior Year)",
+                f"YTD Revenue Analysis  —  {fyl} vs {ly} (Prior Year)",
                 f"Net revenue after credit notes · Invoice-date basis · ZAR · Financial year Mar–Feb · "
                 f"Data through {mtd.day} {mtd.strftime('%b %Y')} ({elapsed} trading days)")
     note8 = F(st, font_size=8, font_color="#595959")
-    ws.merge_range("B7:P7", "Net revenue, YTD Mar–Jun completed months", note8)
+    ws.merge_range("B7:P7", f"Net revenue, YTD {span} completed months", note8)
 
     # KPI band
     kl_navy = F(st, bold=True, font_size=8, font_color="white", bg_color=NAVY)
@@ -380,12 +427,12 @@ def build_tab1(wb, st, M: Model, p):
         return F(st, bold=True, font_size=16, font_color=fc, bg_color=bg,
                  num_format=fmt, align="left", valign="vcenter")
 
-    ws.merge_range("B8:C8", "NET REVENUE  FY27", kl_navy)
-    ws.merge_range("D8:E8", "NET REVENUE  FY26 (PY)", kl_navy)
+    ws.merge_range("B8:C8", f"NET REVENUE  {fyl}", kl_navy)
+    ws.merge_range("D8:E8", f"NET REVENUE  {ly} (PY)", kl_navy)
     ws.merge_range("F8:G8", "VARIANCE  (R)", kl_or)
     ws.merge_range("H8:J8", "YoY GROWTH", kl_ye)
-    ws.merge_range("K8:M8", "NET R/kg  FY27", kl_navy)
-    ws.merge_range("N8:P8", "NET R/kg  FY26  (Δ% in table)", kl_navy2)
+    ws.merge_range("K8:M8", f"NET R/kg  {fyl}", kl_navy)
+    ws.merge_range("N8:P8", f"NET R/kg  {ly}  (Δ% in table)", kl_navy2)
     # KPI values are written once row 18 has been computed, below — merged cells
     # take their position from the range, not from write order.
 
@@ -394,16 +441,16 @@ def build_tab1(wb, st, M: Model, p):
     th2 = F(st, bold=True, font_size=9, font_color=YELLOW, bg_color=NAVY2, align="center")
     tho = F(st, bold=True, font_size=9, font_color="white", bg_color=ORANGE, align="center")
     ws.merge_range("B12:B13", "Month", th)
-    ws.merge_range("C12:E12", "FY27", th)
-    ws.merge_range("F12:H12", "FY26 (PY)", th2)
+    ws.merge_range("C12:E12", fyl, th)
+    ws.merge_range("F12:H12", f"{ly} (PY)", th2)
     ws.merge_range("I12:J12", "Variance (Net)", tho)
     ws.merge_range("K12:P12", "Chargeable weight (kg) & rate per kg", th)
     subs = ["Gross", "Credit Notes", "Net", "Gross", "Credit Notes", "Net", "Var R",
-            "Var %", "kg FY27", "kg FY26", "kg Δ%", "R/kg FY27", "R/kg FY26", "R/kg Δ%"]
+            "Var %", f"kg {fyl}", f"kg {ly}", "kg Δ%", f"R/kg {fyl}", f"R/kg {ly}", "R/kg Δ%"]
     for i, s in enumerate(subs):
         ws.write(12, 2 + i, s, F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY2, align="center"))
 
-    months = [(3, "Mar"), (4, "Apr"), (5, "May"), (6, "Jun")]
+    months = [(m, ab[m]) for m in complete]
 
     def rowvals(w27, wpy):
         g, kg = M.inv.total(*w27)
@@ -431,7 +478,7 @@ def build_tab1(wb, st, M: Model, p):
 
     def write_month_row(r, label, vals, label_fmt, blue_bg, bold=False, d=None):
         g, c, gp, cp, kg, kgp = vals
-        guarded = label not in ("Jul MTD", "_sum")
+        guarded = not label.startswith(cur_ab) and label != "_sum"
         if d is None:
             d = month_derived(g, c, gp, cp, kg, kgp, guarded)
         rowv[r] = d
@@ -460,118 +507,118 @@ def build_tab1(wb, st, M: Model, p):
     for j, (m, lab) in enumerate(months):
         r = 14 + j
         bg = ALT if j % 2 == 0 else "white"
-        write_month_row(r, lab, rowvals(month_win(FY, m), month_win(FY - 1, m)),
+        write_month_row(r, lab, rowvals(month_win(cal_year(FY, m), m),
+                                       month_win(cal_year(FY, m) - 1, m)),
                         F(st, font_size=10, bg_color=bg), bg)
 
-    # YTD row 18
-    r = 18
+    r = R_YTD
     ob = dict(font_size=10, bold=True, bg_color=ORANGE)
-    mrows = [14 + j for j in range(len(months))]
+    mrows = list(range(14, R_YTD))
     ytd = month_derived(*[sum(rowv[rr][cl] for rr in mrows)
                           for cl in (2, 3, 5, 6, 10, 11)], guarded=False)
-    rowv[18] = ytd
-    ws.write(r - 1, 1, "YTD  (Mar–Jun)", F(st, **ob))
+    rowv[R_YTD] = ytd
+    ws.write(r - 1, 1, f"YTD  ({span})", F(st, **ob))
     for cl, letter in [(2, "C"), (3, "D"), (5, "F"), (6, "G"), (10, "K"), (11, "L")]:
-        V.f(r - 1, cl, f"=SUM({letter}14:{letter}17)",
+        V.f(r - 1, cl, f"=SUM({letter}14:{letter}{R_YTD - 1})",
             F(st, num_format=NUM if letter not in "DG" else "(#,##0)", **ob), value=ytd[cl])
-    V.f(r - 1, 4, "=C18-D18", F(st, num_format=NUM, **ob), value=ytd[4])
-    V.f(r - 1, 7, "=F18-G18", F(st, num_format=NUM, **ob), value=ytd[7])
-    V.f(r - 1, 8, "=E18-H18", F(st, num_format="#,##0;(#,##0)", **ob), value=ytd[8])
-    V.f(r - 1, 9, "=I18/H18", F(st, num_format=PCT1, **ob), value=ytd[9])
-    V.f(r - 1, 12, '=IF(L18=0,"",K18/L18-1)', F(st, num_format=PCT1, **ob), value=ytd[12])
-    V.f(r - 1, 13, '=IF(K18=0,"",E18/K18)', F(st, num_format=DEC2, **ob), value=ytd[13])
-    V.f(r - 1, 14, '=IF(L18=0,"",H18/L18)', F(st, num_format=DEC2, **ob), value=ytd[14])
-    V.f(r - 1, 15, '=IF(OR(K18=0,L18=0,H18=0),"",(E18/K18)/(H18/L18)-1)',
+    V.f(r - 1, 4, f"=C{R_YTD}-D{R_YTD}", F(st, num_format=NUM, **ob), value=ytd[4])
+    V.f(r - 1, 7, f"=F{R_YTD}-G{R_YTD}", F(st, num_format=NUM, **ob), value=ytd[7])
+    V.f(r - 1, 8, f"=E{R_YTD}-H{R_YTD}", F(st, num_format="#,##0;(#,##0)", **ob), value=ytd[8])
+    V.f(r - 1, 9, f"=I{R_YTD}/H{R_YTD}", F(st, num_format=PCT1, **ob), value=ytd[9])
+    V.f(r - 1, 12, f'=IF(L{R_YTD}=0,"",K{R_YTD}/L{R_YTD}-1)', F(st, num_format=PCT1, **ob), value=ytd[12])
+    V.f(r - 1, 13, f'=IF(K{R_YTD}=0,"",E{R_YTD}/K{R_YTD})', F(st, num_format=DEC2, **ob), value=ytd[13])
+    V.f(r - 1, 14, f'=IF(L{R_YTD}=0,"",H{R_YTD}/L{R_YTD})', F(st, num_format=DEC2, **ob), value=ytd[14])
+    V.f(r - 1, 15, f'=IF(OR(K{R_YTD}=0,L{R_YTD}=0,H{R_YTD}=0),"",(E{R_YTD}/K{R_YTD})/(H{R_YTD}/L{R_YTD})-1)',
         F(st, num_format=PCT1, **ob), value=ytd[15])
 
     # KPI band (rows 9-10), deferred until row 18 exists
-    V.mf("B9:C10", "=E18", kv(NAVY, "white", NUM), value=ytd[4])
-    V.mf("D9:E10", "=H18", kv(NAVY, "white", NUM), value=ytd[7])
-    V.mf("F9:G10", "=I18", kv(ORANGE, NAVY, "#,##0;(#,##0)"), value=ytd[8])
-    V.mf("H9:J10", "=J18", kv(YELLOW, NAVY, "0.0%"), value=ytd[9])
-    V.mf("K9:M10", "=E18/K18", kv(NAVY, "white", DEC2),
+    V.mf("B9:C10", f"=E{R_YTD}", kv(NAVY, "white", NUM), value=ytd[4])
+    V.mf("D9:E10", f"=H{R_YTD}", kv(NAVY, "white", NUM), value=ytd[7])
+    V.mf("F9:G10", f"=I{R_YTD}", kv(ORANGE, NAVY, "#,##0;(#,##0)"), value=ytd[8])
+    V.mf("H9:J10", f"=J{R_YTD}", kv(YELLOW, NAVY, "0.0%"), value=ytd[9])
+    V.mf("K9:M10", f"=E{R_YTD}/K{R_YTD}", kv(NAVY, "white", DEC2),
          value=div(ytd[4], ytd[10], blank=0))
-    V.mf("N9:P10", "=H18/L18", kv(NAVY2, "white", DEC2),
+    V.mf("N9:P10", f"=H{R_YTD}/L{R_YTD}", kv(NAVY2, "white", DEC2),
          value=div(ytd[7], ytd[11], blank=0))
 
-    # Jul MTD row 19
-    w27 = (date(FY, 7, 1), mtd)
-    wpy = (date(FY - 1, 7, 1), p["ly_mtd_max"])
+    w27 = (date(cur_y, cur, 1), mtd)
+    wpy = (date(cur_y - 1, cur, 1), p["ly_mtd_max"])
     g, c, gp, cp, kg, kgp = rowvals(w27, wpy)
-    r = 19
+    r = R_MTD
     jul = month_derived(g, c, gp, cp, kg, kgp, guarded=False)
-    rowv[19] = jul
+    if has_mtd:
+        rowv[R_MTD] = jul
     base = dict(font_size=10, bg_color="white")
     blue = dict(font_size=10, font_color=BLUE, bg_color="white")
-    ws.write(r - 1, 1, f"Jul MTD ({elapsed} trading days) ¹", F(st, **base))
-    ws.write(r - 1, 2, g, F(st, num_format=NUM, **blue))
-    ws.write(r - 1, 3, c, F(st, num_format="(#,##0)", **blue))
-    V.f(r - 1, 4, "=C19-D19", F(st, num_format=NUM, **base), value=jul[4])
-    ws.write(r - 1, 5, gp, F(st, num_format=NUM, **blue))
-    ws.write(r - 1, 6, cp, F(st, num_format="(#,##0)", **blue))
-    V.f(r - 1, 7, "=F19-G19", F(st, num_format=NUM, **base), value=jul[7])
-    V.f(r - 1, 8, "=E19-H19", F(st, num_format="#,##0;(#,##0)", **base), value=jul[8])
-    V.f(r - 1, 9, "=I19/H19", F(st, num_format=PCT1, **base), value=jul[9])
-    ws.write(r - 1, 10, kg, F(st, num_format=NUM, **blue))
-    ws.write(r - 1, 11, kgp, F(st, num_format=NUM, **blue))
-    V.f(r - 1, 12, '=IF(L19=0,"",K19/L19-1)', F(st, num_format=PCT1, **base), value=jul[12])
-    V.f(r - 1, 13, '=IF(K19=0,"",E19/K19)', F(st, num_format=DEC2, **base), value=jul[13])
-    V.f(r - 1, 14, '=IF(L19=0,"",H19/L19)', F(st, num_format=DEC2, **base), value=jul[14])
-    V.f(r - 1, 15, '=IF(OR(K19=0,L19=0,H19=0),"",(E19/K19)/(H19/L19)-1)',
-        F(st, num_format=PCT1, **base), value=jul[15])
+    if has_mtd:
+        ws.write(r - 1, 1, f"{cur_ab} MTD ({elapsed} trading days) ¹", F(st, **base))
+        ws.write(r - 1, 2, g, F(st, num_format=NUM, **blue))
+        ws.write(r - 1, 3, c, F(st, num_format="(#,##0)", **blue))
+        V.f(r - 1, 4, f"=C{R_MTD}-D{R_MTD}", F(st, num_format=NUM, **base), value=jul[4])
+        ws.write(r - 1, 5, gp, F(st, num_format=NUM, **blue))
+        ws.write(r - 1, 6, cp, F(st, num_format="(#,##0)", **blue))
+        V.f(r - 1, 7, f"=F{R_MTD}-G{R_MTD}", F(st, num_format=NUM, **base), value=jul[7])
+        V.f(r - 1, 8, f"=E{R_MTD}-H{R_MTD}", F(st, num_format="#,##0;(#,##0)", **base), value=jul[8])
+        V.f(r - 1, 9, f"=I{R_MTD}/H{R_MTD}", F(st, num_format=PCT1, **base), value=jul[9])
+        ws.write(r - 1, 10, kg, F(st, num_format=NUM, **blue))
+        ws.write(r - 1, 11, kgp, F(st, num_format=NUM, **blue))
+        V.f(r - 1, 12, f'=IF(L{R_MTD}=0,"",K{R_MTD}/L{R_MTD}-1)', F(st, num_format=PCT1, **base), value=jul[12])
+        V.f(r - 1, 13, f'=IF(K{R_MTD}=0,"",E{R_MTD}/K{R_MTD})', F(st, num_format=DEC2, **base), value=jul[13])
+        V.f(r - 1, 14, f'=IF(L{R_MTD}=0,"",H{R_MTD}/L{R_MTD})', F(st, num_format=DEC2, **base), value=jul[14])
+        V.f(r - 1, 15, f'=IF(OR(K{R_MTD}=0,L{R_MTD}=0,H{R_MTD}=0),"",(E{R_MTD}/K{R_MTD})/(H{R_MTD}/L{R_MTD})-1)',
+            F(st, num_format=PCT1, **base), value=jul[15])
 
-    # YTD incl Jul MTD row 20
-    r = 20
-    incl = month_derived(*[rowv[18][cl] + rowv[19][cl] for cl in (2, 3, 5, 6, 10, 11)],
-                         guarded=False)
-    rowv[20] = incl
-    yb = dict(font_size=10, bold=True, bg_color=YELLOW)
-    ws.write(r - 1, 1, "YTD incl. Jul MTD", F(st, **yb))
-    for cl, letter in [(2, "C"), (3, "D"), (5, "F"), (6, "G"), (10, "K"), (11, "L")]:
-        V.f(r - 1, cl, f"={letter}18+{letter}19",
-            F(st, num_format=NUM if letter not in "DG" else "(#,##0)", **yb), value=incl[cl])
-    V.f(r - 1, 4, "=C20-D20", F(st, num_format=NUM, **yb), value=incl[4])
-    V.f(r - 1, 7, "=F20-G20", F(st, num_format=NUM, **yb), value=incl[7])
-    V.f(r - 1, 8, "=E20-H20", F(st, num_format="#,##0;(#,##0)", **yb), value=incl[8])
-    V.f(r - 1, 9, "=I20/H20", F(st, num_format=PCT1, **yb), value=incl[9])
-    V.f(r - 1, 12, '=IF(L20=0,"",K20/L20-1)', F(st, num_format=PCT1, **yb), value=incl[12])
-    V.f(r - 1, 13, '=IF(K20=0,"",E20/K20)', F(st, num_format=DEC2, **yb), value=incl[13])
-    V.f(r - 1, 14, '=IF(L20=0,"",H20/L20)', F(st, num_format=DEC2, **yb), value=incl[14])
-    V.f(r - 1, 15, '=IF(OR(K20=0,L20=0,H20=0),"",(E20/K20)/(H20/L20)-1)',
-        F(st, num_format=PCT1, **yb), value=incl[15])
+        r = R_INC
+        incl = month_derived(*[rowv[R_YTD][cl] + rowv[R_MTD][cl] for cl in (2, 3, 5, 6, 10, 11)],
+                             guarded=False)
+        rowv[R_INC] = incl
+        yb = dict(font_size=10, bold=True, bg_color=YELLOW)
+        ws.write(r - 1, 1, f"YTD incl. {cur_ab} MTD", F(st, **yb))
+        for cl, letter in [(2, "C"), (3, "D"), (5, "F"), (6, "G"), (10, "K"), (11, "L")]:
+            V.f(r - 1, cl, f"={letter}{R_YTD}+{letter}{R_MTD}",
+                F(st, num_format=NUM if letter not in "DG" else "(#,##0)", **yb), value=incl[cl])
+        V.f(r - 1, 4, f"=C{R_INC}-D{R_INC}", F(st, num_format=NUM, **yb), value=incl[4])
+        V.f(r - 1, 7, f"=F{R_INC}-G{R_INC}", F(st, num_format=NUM, **yb), value=incl[7])
+        V.f(r - 1, 8, f"=E{R_INC}-H{R_INC}", F(st, num_format="#,##0;(#,##0)", **yb), value=incl[8])
+        V.f(r - 1, 9, f"=I{R_INC}/H{R_INC}", F(st, num_format=PCT1, **yb), value=incl[9])
+        V.f(r - 1, 12, f'=IF(L{R_INC}=0,"",K{R_INC}/L{R_INC}-1)', F(st, num_format=PCT1, **yb), value=incl[12])
+        V.f(r - 1, 13, f'=IF(K{R_INC}=0,"",E{R_INC}/K{R_INC})', F(st, num_format=DEC2, **yb), value=incl[13])
+        V.f(r - 1, 14, f'=IF(L{R_INC}=0,"",H{R_INC}/L{R_INC})', F(st, num_format=DEC2, **yb), value=incl[14])
+        V.f(r - 1, 15, f'=IF(OR(K{R_INC}=0,L{R_INC}=0,H{R_INC}=0),"",(E{R_INC}/K{R_INC})/(H{R_INC}/L{R_INC})-1)',
+            F(st, num_format=PCT1, **yb), value=incl[15])
 
     # July momentum block
     sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY)
-    ws.merge_range("B22:E22", "JULY MOMENTUM (MTD, net)", sect)
-    ws.merge_range("G22:J22", "CREDIT NOTES % OF GROSS", sect)
-    jul_full_py = round(M.py.total(*month_win(FY - 1, 7))[0]
-                        - M.credits.total(*month_win(FY - 1, 7)))
+    ws.merge_range(R_SEC - 1, 1, R_SEC - 1, 4, f"{cur_name.upper()} MOMENTUM (MTD, net)", sect)
+    ws.merge_range(R_SEC - 1, 6, R_SEC - 1, 9, "CREDIT NOTES % OF GROSS", sect)
+    jul_full_py = round(M.py.total(*month_win(cur_y - 1, cur))[0]
+                        - M.credits.total(*month_win(cur_y - 1, cur)))
     # E23..E30 chain: each rung feeds the next, so evaluate as we go
     e23, e24 = elapsed, injul
-    e25 = rowv[19][4] / e23 if e23 else 0          # net FY27 per trading day
-    e26 = rowv[19][7] / e23 if e23 else 0          # net FY26 per day, same window
+    e25 = rowv[R_MTD][4] / e23 if e23 else 0          # net FY27 per trading day
+    e26 = rowv[R_MTD][7] / e23 if e23 else 0          # net FY26 per day, same window
     e27 = e25 / e26 - 1 if e26 else 0
     e28 = e25 * e24
     e29 = jul_full_py
     e30 = e28 / e29 - 1 if e29 else 0
     pairs = [
         ("Trading days elapsed", elapsed, True, NUM, e23),
-        ("Trading days in July", injul, True, NUM, e24),
-        ("Net FY27 avg / trading day", "=E19/E23", False, NUM, e25),
-        ("Net FY26 avg / day (same window)", "=H19/E23", False, NUM, e26),
-        ("Daily growth vs PY", "=E25/E26-1", False, PCT1, e27),
-        ("Projected full July FY27 (net)", "=E25*E24", False, NUM, e28),
-        ("FY26 full July net (actual)", jul_full_py, True, NUM, e29),
-        ("Projected July growth vs PY", "=E28/E29-1", False, PCT1, e30),
+        (f"Trading days in {cur_name}", injul, True, NUM, e24),
+        (f"Net {fyl} avg / trading day", f"=E{R_MTD}/E{R_P0}", False, NUM, e25),
+        (f"Net {ly} avg / day (same window)", f"=H{R_MTD}/E{R_P0}", False, NUM, e26),
+        ("Daily growth vs PY", f"=E{R_P0 + 2}/E{R_P0 + 3}-1", False, PCT1, e27),
+        (f"Projected full {cur_name} {fyl} (net)", f"=E{R_P0 + 2}*E{R_P0 + 1}", False, NUM, e28),
+        (f"{ly} full {cur_name} net (actual)", jul_full_py, True, NUM, e29),
+        (f"Projected {cur_name} growth vs PY", f"=E{R_P0 + 5}/E{R_P0 + 6}-1", False, PCT1, e30),
     ]
     right = [
-        ("FY27 (YTD Mar–Jun)", "=D18/C18", div(rowv[18][3], rowv[18][2], blank=0)),
-        ("FY26 (YTD Mar–Jun)", "=G18/F18", div(rowv[18][6], rowv[18][5], blank=0)),
-        ("FY27 (incl. Jul MTD)", "=D20/C20", div(rowv[20][3], rowv[20][2], blank=0)),
-        ("FY26 (incl. Jul MTD)", "=G20/F20", div(rowv[20][6], rowv[20][5], blank=0)),
+        (f"{fyl} (YTD {span})", f"=D{R_YTD}/C{R_YTD}", div(rowv[R_YTD][3], rowv[R_YTD][2], blank=0)),
+        (f"{ly} (YTD {span})", f"=G{R_YTD}/F{R_YTD}", div(rowv[R_YTD][6], rowv[R_YTD][5], blank=0)),
+        (f"{fyl} (incl. {cur_ab} MTD)", f"=D{R_INC}/C{R_INC}", div(rowv[R_INC][3], rowv[R_INC][2], blank=0)),
+        (f"{ly} (incl. {cur_ab} MTD)", f"=G{R_INC}/F{R_INC}", div(rowv[R_INC][6], rowv[R_INC][5], blank=0)),
     ]
     for j, (lab, v, is_input, fmt, val) in enumerate(pairs):
-        r = 23 + j
+        r = R_P0 + j
         bg = ALT if j % 2 == 0 else "white"
         ws.merge_range(r - 1, 1, r - 1, 3, lab, F(st, font_size=10, bg_color=bg))
         vf = F(st, font_size=10, bg_color=bg, num_format=fmt,
@@ -581,7 +628,7 @@ def build_tab1(wb, st, M: Model, p):
         else:
             V.f(r - 1, 4, v, vf, value=val)
     for j, (lab, f_, val) in enumerate(right):
-        r = 23 + j
+        r = R_P0 + j
         bg = ALT if j % 2 == 0 else "white"
         ws.merge_range(r - 1, 6, r - 1, 8, lab, F(st, font_size=10, bg_color=bg))
         V.f(r - 1, 9, f_, F(st, font_size=10, bg_color=bg, num_format=PCT1), value=val)
@@ -1005,7 +1052,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
             sub, kg = pool.day[a][day]
             net = sub - (M.credits.win(a, day, day) if subtract_credits else 0)
             billed[a] = (net, kg)
-    jul_t = {a: M.target(a, [7]) for a in set(M.cls) | set(billed)}
+    cur_t = {a: M.target(a, [day.month]) for a in set(M.cls) | set(billed)}
 
     per_rep = defaultdict(lambda: ([], []))  # code -> (billed, notbilled)
     for a, (net, kg) in billed.items():
@@ -1014,11 +1061,11 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
     for a, c in M.cls.items():
         if a in billed:
             continue
-        if jul_t.get(a, 0) > 0 and c in ("TF", "CN", "LS", "NP", "PM", "NEW", "AH"):
+        if cur_t.get(a, 0) > 0 and c in ("TF", "CN", "LS", "NP", "PM", "NEW", "AH"):
             per_rep[c][1].append(a)
     for c in per_rep:
         per_rep[c][0].sort(key=lambda a: (-billed[a][0], M.budget.rank(a)))
-        per_rep[c][1].sort(key=lambda a: (-jul_t[a], M.budget.rank(a)))
+        per_rep[c][1].sort(key=lambda a: (-cur_t[a], M.budget.rank(a)))
 
     reps = [c for c in REP_ORDER if per_rep.get(c) and (per_rep[c][0] or per_rep[c][1])]
     house_b = sorted(per_rep["HOUSE"][0], key=lambda a: (-billed[a][0], M.budget.rank(a))) \
@@ -1051,7 +1098,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
     ye = dict(font_size=10, bg_color=YELLOW)
     ws.write("B7", "Trading days in month:", F(st, bold=True, **ye))
     ws.merge_range("C7:D7", "", F(st, **ye))
-    days = TRADING_DAYS[7]
+    days = month_trading_days(fy_start_year(day), day.month)
     ws.write("E7", days, F(st, font_color=BLUE, bold=True, **ye))
     ws.merge_range("F7:J7", "Day target = monthly budget target ÷ trading days (editable)",
                    F(st, font_size=8, font_color="#595959"))
@@ -1084,7 +1131,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
     lab_fmt = F(st, font_size=9, bold=True, italic=True)
 
     def tgt_str(a):
-        t = jul_t.get(a, 0)
+        t = cur_t.get(a, 0)
         t = int(t) if t == int(t) else t
         return f"={t}/$E$7"
 
@@ -1094,7 +1141,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
         return {4: e, 5: f, 6: guarded_sub(e, f, guard=f), 7: div(e, f), 8: i, 9: div(e, i)}
 
     def write_row(r, a, net, kg, stripe):
-        e, f_, i = round(net), jul_t.get(a, 0) / days, round(kg)
+        e, f_, i = round(net), cur_t.get(a, 0) / days, round(kg)
         d = daily_derived(e, f_, i)
         dv[r] = d
         bg = ALT if stripe else "white"
@@ -1217,10 +1264,12 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 9, 13, 9, 32, 18, 14, 22, 13, 20]):
         ws.set_column(i, i, w)
-    title_block(ws, st, "J", "SUNRISE LOGISTICS", "MTD Credit Notes Processed — July FY27",
+    title_block(ws, st, "J", "SUNRISE LOGISTICS",
+                f"MTD Credit Notes Processed — {calendar.month_name[mtd_max.month]} "
+                f"{fy_label(fy_start_year(mtd_max))}",
                 "Credit notes processed to date · net value excl VAT · ZAR · reduces revenue")
 
-    w = (date(FY, 7, 1), month_win(FY, 7)[1])
+    w = month_win(mtd_max.year, mtd_max.month)
     notes = [n for n in M.credits.rows if w[0] <= n["date"] <= w[1]]
     total = sum(n["value"] for n in notes)
     reasons = defaultdict(lambda: [0.0, 0])
@@ -1305,7 +1354,8 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
 
     note8 = F(st, font_size=8, font_color="#595959")
     fns = [
-        "Listing of all credit notes processed in July FY27 to date (by processing date). Value = "
+        f"Listing of all credit notes processed in {calendar.month_name[mtd_max.month]} "
+        f"{fy_label(fy_start_year(mtd_max))} to date (by processing date). Value = "
         "Subtotal (net, excl VAT); credit notes reduce revenue.",
         f"The MTD Billing tab nets credit notes dated through {mtd_max.day} "
         f"{mtd_max.strftime('%b %Y')}; notes dated later appear here and will flow into billing as "
@@ -1325,13 +1375,23 @@ def build(inv_file, py_inv_file, wb_file, credits_file, budget_file, out_dir,
     credits = Credits(credits_file, fold)
     M = Model(inv, py, wbp, credits, budget)
 
+    # The latest invoiced / waybilled day decides the financial year, which
+    # months are complete and which part-month the MTD tab covers. Nothing is
+    # pinned to a particular month any more.
     mtd_max = max(d for days in inv.day.values() for d in days
-                  if d.month == 7 and d.year == FY and (inv_asof is None or d <= inv_asof))
+                  if inv_asof is None or d <= inv_asof)
     wb_max = max(d for days in wbp.day.values() for d in days
-                 if d.month == 7 and d.year == FY and (wb_asof is None or d <= wb_asof))
-    jul_elapsed = trading_days_between(date(FY, 7, 1), mtd_max)
-    ly_mtd_max = nth_trading_day(FY - 1, 7, jul_elapsed)
-    p = dict(mtd_max=mtd_max, jul_elapsed=jul_elapsed, ly_mtd_max=ly_mtd_max)
+                 if wb_asof is None or d <= wb_asof)
+    FY = fy_start_year(mtd_max)
+    fyl, ly = fy_label(FY), fy_label(FY - 1)
+    cur = mtd_max.month
+    cur_y = cal_year(FY, cur)
+    complete = [m for m in MONTHS_FY if month_win(cal_year(FY, m), m)[1] <= mtd_max]
+    cur_days = month_trading_days(FY, cur)
+    elapsed = trading_days_between(date(cur_y, cur, 1), mtd_max)
+    ly_mtd_max = nth_trading_day(cur_y - 1, cur, elapsed)
+    p = dict(mtd_max=mtd_max, cur=cur, cur_days=cur_days, elapsed=elapsed,
+             complete=complete, fy=FY, fyl=fyl, ly=ly, ly_mtd_max=ly_mtd_max)
 
     out_path = f"{out_dir}/Revenue Dashboard.xlsx"
     wb = xlsxwriter.Workbook(out_path)
@@ -1339,35 +1399,40 @@ def build(inv_file, py_inv_file, wb_file, credits_file, budget_file, out_dir,
 
     build_tab1(wb, st, M, p)
 
-    for m, name in [(3, "Mar"), (4, "Apr"), (5, "May"), (6, "Jun")]:
-        month_full = {"Mar": "Mar", "Apr": "Apr", "May": "May", "Jun": "Jun"}[name]
+    ab, mn = calendar.month_abbr, calendar.month_name
+    for m in complete:
+        y, name, td = cal_year(FY, m), ab[m], month_trading_days(FY, m)
         build_customer_tab(
-            wb, st, M, f"{name} FY27",
-            f"Billing vs Target by Customer — {name} FY27 (full month)",
+            wb, st, M, f"{name} {fyl}",
+            f"Billing vs Target by Customer — {name} {fyl} (full month)",
             f"Net billing (Subtotal less credit notes, invoice-date) · full completed month · "
-            f"Targets from Budget v30 · LY = {name} FY26 net actual · ZAR",
-            name, name, TRADING_DAYS[m], TRADING_DAYS[m],
-            month_win(FY, m), month_win(FY - 1, m), [m])
+            f"Targets from Budget v30 · LY = {name} {ly} net actual · ZAR",
+            name, name, td, td,
+            month_win(y, m), month_win(y - 1, m), [m])
 
-    ytd_days = sum(TRADING_DAYS[m] for m in (3, 4, 5, 6))
+    last = complete[-1]
+    last_y = cal_year(FY, last)
+    ytd_days = sum(month_trading_days(FY, m) for m in complete)
+    span = f"{ab[complete[0]]}–{ab[last]}"
     build_customer_tab(
-        wb, st, M, "YTD to Jun FY27",
-        "Billing vs Target by Customer — YTD to June FY27 (Mar–Jun)",
-        "Net billing (Subtotal less credit notes, invoice-date) · YTD Mar–Jun (complete) · "
-        "Targets from Budget v30 · LY = Mar–Jun FY26 net actual · ZAR",
+        wb, st, M, f"YTD to {ab[last]} {fyl}",
+        f"Billing vs Target by Customer — YTD to {mn[last]} {fyl} ({span})",
+        f"Net billing (Subtotal less credit notes, invoice-date) · YTD {span} (complete) · "
+        f"Targets from Budget v30 · LY = {span} {ly} net actual · ZAR",
         "YTD", "YTD", ytd_days, ytd_days,
-        (date(FY, 3, 1), month_win(FY, 6)[1]), (date(FY - 1, 3, 1), month_win(FY - 1, 6)[1]),
-        [3, 4, 5, 6])
+        (date(FY, 3, 1), month_win(last_y, last)[1]),
+        (date(FY - 1, 3, 1), month_win(last_y - 1, last)[1]),
+        list(complete))
 
     build_customer_tab(
         wb, st, M, "MTD Billing by Customer",
-        "MTD Billing vs Target by Customer — July FY27",
+        f"MTD Billing vs Target by Customer — {mn[cur]} {fyl}",
         f"Net billing (Subtotal less credit notes, invoice-date) · month-to-date, "
-        f"{p['jul_elapsed']} of {TRADING_DAYS[7]} trading days · Targets from Budget v30 · "
-        f"LY = July FY26 net actual · ZAR",
-        "Jul", "Jul", p["jul_elapsed"], TRADING_DAYS[7],
-        (date(FY, 7, 1), mtd_max), month_win(FY - 1, 7), [7], round_vals=True,
-        memo_mode="mtd")
+        f"{elapsed} of {cur_days} trading days · Targets from Budget v30 · "
+        f"LY = {mn[cur]} {ly} net actual · ZAR",
+        ab[cur], ab[cur], elapsed, cur_days,
+        (date(cur_y, cur, 1), mtd_max), month_win(cur_y - 1, cur), [cur],
+        round_vals=True, memo_mode="mtd")
 
     build_daily_tab(wb, st, M, "Daily — Invoice date", "Invoice", mtd_max, inv, True)
     build_daily_tab(wb, st, M, "Daily — Waybill date", "Waybill", wb_max, wbp, True)
