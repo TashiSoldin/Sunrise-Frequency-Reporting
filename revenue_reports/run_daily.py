@@ -28,8 +28,10 @@ console. The batch files therefore do no log management of their own.
 
 Dates are auto-derived and never include today, because today's data is still
 being captured while the reports run:
-  - flash          -> latest waybill date strictly before today
-  - billing detail -> last fully invoiced day (max invoice date before today)
+  - flash          -> last waybill day that actually traded (not merely the
+                      latest date present: weekends and public holidays carry
+                      a handful of waybills worth little or nothing)
+  - billing detail -> last day whose invoice run has finished
   - dashboard      -> capped at those same two dates
   - unbilled       -> billing-frontier rule inside build_unbilled
   - credit notes   -> current FY month
@@ -43,10 +45,12 @@ from __future__ import annotations
 
 import argparse
 import logging
+import statistics
 import subprocess
 import sys
 import time
-from datetime import date, datetime
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
@@ -124,13 +128,48 @@ def run(step: str, args: list[str]) -> str:
     return lines[-1]
 
 
-def latest_dates(wb_file: Path, inv_file: Path) -> tuple[date, date]:
-    """(latest waybill date before today, last fully invoiced day).
+# A day counts as traded once it clears this fraction of the median day in the
+# trailing window. Matches HOLIDAY_GUARD in build_flash.py, which uses the same
+# test to keep public holidays out of the typical-weekday benchmark.
+TRADING_GUARD = 0.5
+TRADING_WINDOW = 28  # days of history the median is taken over
 
-    Both exclude today. The 07:00 flash asked for "the day preceding" — taking
-    the latest waybill date strictly before today gives yesterday on a normal
-    weekday and rolls back to Friday on a Monday (or over a public holiday),
-    so the report is never built for a day with no trading.
+
+def last_trading_day(pairs, today: date) -> date:
+    """Newest day before today that actually traded.
+
+    "Latest date present in the file" is not the same thing. Ten waybills carry
+    a Sunday date and two invoices carry a Friday date on which invoicing had
+    not yet run — taking the max picked those and produced a flash reporting R0
+    and a billing detail of two lines. So walk back to the newest day whose
+    value clears half the median of the trailing window, which skips weekends,
+    public holidays and days whose invoice run has not happened yet.
+
+    Falls back to the plain newest day if there is no history to compare
+    against, so a first run or a sparse file still produces something.
+    """
+    totals = defaultdict(float)
+    for d, v in pairs:
+        if isinstance(d, date) and d < today:
+            totals[d] += v or 0
+    if not totals:
+        return today
+    days = sorted(totals)
+    window = [totals[d] for d in days if d > today - timedelta(days=TRADING_WINDOW)]
+    if not window:
+        return days[-1]
+    floor = TRADING_GUARD * statistics.median(window)
+    traded = [d for d in days if totals[d] >= floor]
+    return traded[-1] if traded else days[-1]
+
+
+def latest_dates(wb_file: Path, inv_file: Path) -> tuple[date, date]:
+    """(last traded waybill day, last fully invoiced day). Both exclude today.
+
+    The 07:00 flash asked for "the day preceding": on a normal weekday that is
+    yesterday, and on a Monday it rolls back over the weekend to Friday. The
+    billing detail needs the newest day whose invoice run has finished, because
+    invoicing lands through the day and a same-day detail would be a partial.
     """
     today = date.today()
 
@@ -138,18 +177,12 @@ def latest_dates(wb_file: Path, inv_file: Path) -> tuple[date, date]:
         return v.date() if isinstance(v, datetime) else v
 
     h, rows = load_export(str(wb_file))
-    iwd = col(h, "Waybill Date")
-    wb_latest = max((norm(r[iwd]) for r in rows
-                     if isinstance(norm(r[iwd]), date) and norm(r[iwd]) < today),
-                    default=today)
+    iwd, isub = col(h, "Waybill Date"), col(h, "Subtotal")
+    wb_latest = last_trading_day(((norm(r[iwd]), r[isub]) for r in rows), today)
+
     h, rows = load_export(str(inv_file))
-    iid = col(h, "Invoice Date")
-    # Guard: never build a billing detail for a day still being invoiced —
-    # today's invoice runs land through the day, so a same-day billing detail
-    # would be a partial. Use the newest fully-elapsed invoiced day.
-    inv_latest = max((norm(r[iid]) for r in rows
-                      if isinstance(norm(r[iid]), date) and norm(r[iid]) < today),
-                     default=today)
+    iid, isub = col(h, "Invoice Date"), col(h, "Subtotal")
+    inv_latest = last_trading_day(((norm(r[iid]), r[isub]) for r in rows), today)
     return wb_latest, inv_latest
 
 
