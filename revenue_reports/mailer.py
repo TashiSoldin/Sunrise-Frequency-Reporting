@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # The exco distribution list — same convention as EmailConfigs in
 # report_generation/enums/email_enums.py.
 RECIPIENTS = ["exco@sunriselogistics.net"]
-CC_RECIPIENTS: list[str] = []
+CC_RECIPIENTS = ["akha@sunriselogistics.net"]
 
 BODY = """
 <html>
@@ -70,12 +70,16 @@ def send_reports(subject: str, intro: str, attachments: list[str],
         logger.error(f"Refusing to send — missing report(s): {missing}")
         raise SystemExit(1)
 
+    # --to is for test sends, so don't copy the standing cc on those runs.
+    cc = list(CC_RECIPIENTS) if to is None else []
     to = to or list(RECIPIENTS)
     items = "".join(f"<li>{p.name}</li>" for p in paths)
     body = BODY.format(intro=intro, items=items)
 
     if dry_run:
-        logger.info(f"Dry run — would email {', '.join(to)}: {subject}")
+        logger.info(f"Dry run — would email {', '.join(to)}"
+                    + (f" (cc {', '.join(cc)})" if cc else "")
+                    + f": {subject}")
         for p in paths:
             logger.info(f"Dry run — would attach {p.name}")
         return
@@ -94,12 +98,13 @@ def send_reports(subject: str, intro: str, attachments: list[str],
     with client:
         client.send_email(
             recipient_email=", ".join(to),
-            cc_recipients=CC_RECIPIENTS,
+            cc_recipients=cc,
             subject=subject,
             body=body,
             attachments=[str(p) for p in paths],
         )
-    logger.info(f"Emailed {len(paths)} report(s) to {', '.join(to)}")
+    logger.info(f"Emailed {len(paths)} report(s) to {', '.join(to)}"
+                + (f" (cc {', '.join(cc)})" if cc else ""))
 
 
 def flash_subject(day: date) -> str:
