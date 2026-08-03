@@ -29,7 +29,8 @@ import xlsxwriter
 
 from data import col, load_credit_sheet, load_export
 from style import (ALT, NAVY, NAVY2, ORANGE, RED, RED_LIGHT, YELLOW, NUM, NUM1, NUM2, DEC2,
-                   PCT1, Styles, TAB_BILLING, TAB_CREDIT, TAB_SUMMARY, freeze_below, title_block)
+                   PCT1, Styles, TAB_BILLING, TAB_CREDIT, TAB_SUMMARY, H_BILLING, H_BILLING_LATE,
+                   freeze_below, set_rows, title_block)
 
 BRANCH_MAP = {
     "JNB": "JHB", "PRY": "JHB", "CPT": "Cape Town",
@@ -82,6 +83,7 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
     # ---------------- Tab 1: Billing lines ----------------
     ws = wb.add_worksheet(f"Billing {dm}")
     ws.set_tab_color(TAB_SUMMARY)
+    set_rows(ws, H_BILLING)
     freeze_below(ws, 7)           # headings row 7
     ws.hide_gridlines(2)
     widths = [2, 11, 9.5, 10, 8, 26, 22, 22, 9.5, 9.5, 18, 12, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 11, 8]
@@ -175,6 +177,7 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
     # ---------------- Tab 3: By Customer ----------------
     ws3 = wb.add_worksheet("By Customer")
     ws3.set_tab_color(TAB_BILLING)
+    set_rows(ws3, H_BILLING)
     freeze_below(ws3, 7)
     ws3.hide_gridlines(2)
     for i, w in enumerate([2, 8, 30, 7, 11, 12, 11, 11, 12, 12, 13, 8]):
@@ -322,6 +325,7 @@ def _consolidations(wb, st, th, day_rows, ix, short_date):
 
     ws = wb.add_worksheet("Consolidations")
     ws.set_tab_color(TAB_CREDIT)
+    set_rows(ws, {7: 20.1})
     freeze_below(ws, 7)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 14, 6, 8, 26, 24, 6, 6, 6, 6, 9, 11, 8]):
@@ -380,6 +384,7 @@ def _credit_notes(wb, st, day, credits_file, dm, short_date):
 
     ws = wb.add_worksheet(f"Credit Notes {dm}")
     ws.set_tab_color(TAB_CREDIT)
+    set_rows(ws, H_BILLING_LATE)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 10, 9, 28, 16, 13, 22, 12, 26]):
         ws.set_column(i, i, w)

@@ -41,6 +41,24 @@ TAB_DAILY = YELLOW      # Daily — Invoice date / Waybill date
 TAB_CREDIT = RED        # MTD Credit Notes
 
 
+# Row heights read off the reference workbooks. The title block (rows 2-5) is
+# set by title_block(); these cover the header bands below it, which otherwise
+# fall back to Excel's default 15 and render noticeably tighter than Larry's.
+H_TAB1 = {7: 6, 8: 16, 9: 22, 10: 8, 12: 17, 13: 24}
+H_CUSTOMER = {9: 15, 10: 18, 11: 10, 13: 18, 14: 24, 28: 24}
+H_DAILY = {9: 14, 10: 18, 14: 24}
+H_CREDIT = {7: 14, 8: 18, 11: 18}          # detail section rows set separately
+H_BILLING = {7: 21.9}
+H_BILLING_LATE = {9: 20.1}                 # credit-notes sub-tab, headings sit lower
+H_FOOTNOTE = 13
+
+
+def set_rows(ws, heights: dict):
+    """Apply a {1-indexed row: height} map."""
+    for row, h in heights.items():
+        ws.set_row(row - 1, h)
+
+
 def freeze_below(ws, header_row: int, col: int = 1):
     """Freeze everything above a header row, and the spacer column to its left.
 

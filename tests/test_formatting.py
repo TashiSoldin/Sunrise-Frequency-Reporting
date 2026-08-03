@@ -30,9 +30,14 @@ REFERENCE_COLOURS = {
     "credit": "D00000",
 }
 
-# Builders whose worksheets are all colour-coded in the reference. The flash
-# and unbilled references carry no tab colours, so they are excluded.
-COLOURED = ["build_dashboard.py", "build_billing_detail.py"]
+# Builders whose worksheets are colour-coded in the reference. Unbilled is
+# excluded — none of Larry's five unbilled references carries a tab colour.
+#
+# The flash belongs here, though its obsolete 23 Jul reference has no colour:
+# Larry redesigned that report on 24 Jul, and the current shape (24 and 27 Jul,
+# which our builder replicates) has an orange tab. Always check the newest
+# reference — comparing against the superseded one produced a wrong conclusion.
+COLOURED = ["build_dashboard.py", "build_billing_detail.py", "build_flash.py"]
 
 
 class TestColoursMatchTheReference:

@@ -21,7 +21,8 @@ from datetime import date
 import xlsxwriter
 
 from data import excel_serial_to_date  # noqa: F401  (used via Credits loader pattern)
-from style import ALT, NAVY, NAVY2, ORANGE, YELLOW, NUM, NUM2, PCT1, Styles, title_block
+from style import (ALT, NAVY, NAVY2, ORANGE, YELLOW, NUM, NUM2, PCT1, Styles,
+                   TAB_CREDIT, TAB_SUMMARY, freeze_below, set_rows, title_block)
 from xlsxvalues import Vals, div
 
 CREDIT_TYPES = ("Credit Note", "Journal Credit")
@@ -83,6 +84,8 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
 
     # ---------------- Overview ----------------
     ws = wb.add_worksheet("Overview")
+    ws.set_tab_color(TAB_SUMMARY)     # inferred: summary tab, as elsewhere
+    set_rows(ws, {7: 14, 8: 18, 12: 18})
     V = Vals(ws)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 22, 13, 12, 13, 13, 12, 13, 12, 12]):
@@ -184,6 +187,9 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
 
     # ---------------- By Customer (MTD) ----------------
     ws2 = wb.add_worksheet(f"By Customer {mon_short}")
+    ws2.set_tab_color(TAB_CREDIT)
+    set_rows(ws2, {7: 22})
+    freeze_below(ws2, 7)
     ws2.hide_gridlines(2)
     for i, w in enumerate([2, 10, 40, 22, 12, 13, 22]):
         ws2.set_column(i, i, w)
@@ -226,6 +232,9 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
 
     # ---------------- Detail (MTD) ----------------
     ws3 = wb.add_worksheet(f"Detail {mon_short}")
+    ws3.set_tab_color(TAB_CREDIT)
+    set_rows(ws3, {7: 22})
+    freeze_below(ws3, 7)
     ws3.hide_gridlines(2)
     for i, w in enumerate([2, 9, 13, 9, 32, 18, 14, 22, 13, 20]):
         ws3.set_column(i, i, w)

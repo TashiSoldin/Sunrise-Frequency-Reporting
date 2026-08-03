@@ -25,6 +25,7 @@ from datetime import date
 import xlsxwriter
 
 from data import col, load_export
+from style import TAB_BILLING
 
 NAVY = "#05003C"
 NAVY2 = "#0A0050"
@@ -119,6 +120,7 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
     out_path = f"{out_dir}/Flash Revenue - {short_date}.xlsx"
     wb = xlsxwriter.Workbook(out_path)
     ws = wb.add_worksheet(f"Flash {day.day:02d} {day.strftime('%b')}")
+    ws.set_tab_color(TAB_BILLING)
     ws.hide_gridlines(2)
     ws.set_column("A:A", 2)
     for c_, w in zip("BCDEFG", [22, 15, 13, 11, 13, 11]):

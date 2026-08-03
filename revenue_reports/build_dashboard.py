@@ -28,7 +28,8 @@ from python_calamine import CalamineWorkbook
 
 from data import col, load_credit_sheet, load_export
 from style import (ALT, BLUE, NAVY, NAVY2, ORANGE, YELLOW, NUM, DEC2, PCT1, Styles,
-                   TAB_BILLING, TAB_CREDIT, TAB_DAILY, TAB_SUMMARY, freeze_below, title_block)
+                   TAB_BILLING, TAB_CREDIT, TAB_DAILY, TAB_SUMMARY, H_CUSTOMER, H_CREDIT,
+                   H_DAILY, H_FOOTNOTE, H_TAB1, freeze_below, set_rows, title_block)
 from xlsxvalues import BLANK, Vals, div, ratio_less_1
 from xlsxvalues import sub as guarded_sub  # build_daily_tab has a local named sub
 
@@ -381,6 +382,7 @@ def detail_formats(st):
 def build_tab1(wb, st, M: Model, p):
     ws = wb.add_worksheet("YTD Revenue vs PY")
     ws.set_tab_color(TAB_SUMMARY)
+    set_rows(ws, H_TAB1)
     V = Vals(ws)
     ws.hide_gridlines(2)
     widths = [2, 22] + [13] * 7 + [9, 12, 12, 9, 10, 10, 9]
@@ -743,6 +745,7 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
                        memo_mode="unified"):
     ws = wb.add_worksheet(sheet)
     ws.set_tab_color(TAB_BILLING)
+    set_rows(ws, H_CUSTOMER)
     freeze_below(ws, 28)          # headings row 28, detail from 29
     V = Vals(ws)
     ws.hide_gridlines(2)
@@ -824,15 +827,13 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
 
     # --- row 7/8: assumptions
     ye = dict(font_size=10, bg_color=YELLOW)
-    ws.write("B7", "Trading days elapsed:", F(st, bold=True, **ye))
-    ws.merge_range("C7:D7", "", F(st, **ye))
+    ws.merge_range("B7:D7", "Trading days elapsed:", F(st, bold=True, **ye))
     ws.write("E7", elapsed, F(st, font_color=BLUE, bold=True, **ye))
-    ws.write("F7", "Trading days in period:", F(st, bold=True, **ye))
-    ws.write("G7", "", F(st, **ye))
+    ws.merge_range("F7:G7", "Trading days in period:", F(st, bold=True, **ye))
     ws.write("H7", period, F(st, font_color=BLUE, bold=True, **ye))
     ws.write("I7", "← assumptions (editable)", F(st, font_size=8, font_color="#595959"))
-    ws.write("B8", "KPIs cover the rep-allocated selling book. Non-budget accounts appear "
-                   "under their rep with 0 target.", F(st, font_size=8, font_color="#595959"))
+    ws.merge_range("B8:S8", "KPIs cover the rep-allocated selling book. Non-budget accounts "
+                   "appear under their rep with 0 target.", F(st, font_size=8, font_color="#595959"))
 
     # --- KPI band
     kl_navy = F(st, bold=True, font_size=8, font_color="white", bg_color=NAVY)
@@ -851,7 +852,7 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
             ("L", "M", "PROJ vs TARGET", f"=L{total_row}", agg[total_row][11], kl_or, kv(ORANGE, NAVY, PCT1))]
     for c1, c2, lab, f_, val, lf, vf in kpis:
         ws.merge_range(f"{c1}9:{c2}9", lab, lf)
-        V.mf(f"{c1}10:{c2}10", f_, vf, value=val)
+        V.mf(f"{c1}10:{c2}11", f_, vf, value=val)
 
     # --- summary block
     sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY)
@@ -1040,6 +1041,7 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
 def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_credits):
     ws = wb.add_worksheet(sheet)
     ws.set_tab_color(TAB_DAILY)
+    set_rows(ws, H_DAILY)
     freeze_below(ws, 14)          # headings row 14, detail from 15
     V = Vals(ws)
     ws.hide_gridlines(2)
@@ -1267,6 +1269,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
 def build_credit_tab(wb, st, M: Model, mtd_max: date):
     ws = wb.add_worksheet("MTD Credit Notes")
     ws.set_tab_color(TAB_CREDIT)
+    set_rows(ws, H_CREDIT)
     V = Vals(ws)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 9, 13, 9, 32, 18, 14, 22, 13, 20]):
@@ -1334,6 +1337,8 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
         value=1.0 if reason_tot else 0)
 
     dsec = total_r + 2
+    ws.set_row(dsec - 1, 18)      # detail section header
+    ws.set_row(dsec, 22)          # its column headings, one row below
     ws.merge_range(dsec - 1, 1, dsec - 1, 9, "CREDIT NOTE DETAIL (largest first)", sect)
     dh = dsec + 1
     for i, h in enumerate(["Date", "CN Ref", "Account", "Customer", "Rep", "Branch",
@@ -1371,7 +1376,8 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
         "Reason and Credit Controller are as captured in the credits system. Blue = source values.",
     ]
     for j, t in enumerate(fns):
-        ws.merge_range(r + 1 + j, 1, r + 1 + j, 9, t, note8)
+        ws.set_row(r + 1 + j, H_FOOTNOTE)
+        ws.merge_range(r + 1 + j, 1, r + 1 + j, 14, t, note8)
 
 
 # ---------------------------------------------------------------- main
