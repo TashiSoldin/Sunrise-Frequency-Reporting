@@ -21,6 +21,7 @@ Other flags:
     --no-email       build and save, but send nothing (safe test runs)
     --dry-run-email  print what would be sent, send nothing
     --to a@b.com     override recipients for a test send
+    --cc a@b.com     override the cc list
 
 Logging follows the same pattern as report_generation.py: one rotating file
 under logs/run_revenue/, rolled at midnight and kept for 30 days, plus the
@@ -191,6 +192,7 @@ def generate_reports(args: argparse.Namespace) -> None:
     data_dir, report_dir = Path(args.data_dir), Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
     to = [a.strip() for a in args.to.split(",")] if args.to else None
+    cc = [a.strip() for a in args.cc.split(",") if a.strip()] if args.cc else None
 
     if not args.skip_extract:
         logger.info("Extracting data from database")
@@ -225,7 +227,7 @@ def generate_reports(args: argparse.Namespace) -> None:
                 subject=flash_subject(wb_day),
                 intro=("Please find attached the Flash Revenue report for "
                        f"{wb_day.strftime('%A, %d %B %Y')}."),
-                attachments=[flash], to=to, dry_run=args.dry_run_email)
+                attachments=[flash], to=to, cc=cc, dry_run=args.dry_run_email)
 
     if args.only in ("all", "pm"):
         # The Flash Comparison tab reads that day's FROZEN flash workbook — the
@@ -265,7 +267,7 @@ def generate_reports(args: argparse.Namespace) -> None:
                 intro=("Please find attached the daily revenue reports for "
                        f"{inv_day.strftime('%A, %d %B %Y')}."),
                 attachments=[dashboard, billing, unbilled, credits],
-                to=to, dry_run=args.dry_run_email)
+                to=to, cc=cc, dry_run=args.dry_run_email)
 
 
 def main() -> None:
@@ -284,6 +286,8 @@ def main() -> None:
                     help="Print what would be emailed without sending")
     ap.add_argument("--to", default=None,
                     help="Comma-separated recipient override (test sends)")
+    ap.add_argument("--cc", default=None,
+                    help="Comma-separated cc override")
     args = ap.parse_args()
 
     logger.info(f"Starting revenue pipeline: {args.only}")

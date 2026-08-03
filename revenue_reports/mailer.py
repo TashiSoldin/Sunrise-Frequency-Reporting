@@ -58,7 +58,8 @@ BODY = """
 
 
 def send_reports(subject: str, intro: str, attachments: list[str],
-                 to: list[str] | None = None, dry_run: bool = False) -> None:
+                 to: list[str] | None = None, cc: list[str] | None = None,
+                 dry_run: bool = False) -> None:
     """Send one email carrying every workbook in `attachments`.
 
     Raises if a file is missing — better to fail the run loudly than to send
@@ -70,9 +71,8 @@ def send_reports(subject: str, intro: str, attachments: list[str],
         logger.error(f"Refusing to send — missing report(s): {missing}")
         raise SystemExit(1)
 
-    # --to is for test sends, so don't copy the standing cc on those runs.
-    cc = list(CC_RECIPIENTS) if to is None else []
     to = to or list(RECIPIENTS)
+    cc = cc or list(CC_RECIPIENTS)
     items = "".join(f"<li>{p.name}</li>" for p in paths)
     body = BODY.format(intro=intro, items=items)
 
