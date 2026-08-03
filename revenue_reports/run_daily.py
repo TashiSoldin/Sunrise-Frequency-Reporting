@@ -192,7 +192,7 @@ def generate_reports(args: argparse.Namespace) -> None:
     data_dir, report_dir = Path(args.data_dir), Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
     to = [a.strip() for a in args.to.split(",")] if args.to else None
-    cc = [a.strip() for a in args.cc.split(",") if a.strip()] if args.cc else None
+    cc = [a.strip() for a in args.cc.split(",")] if args.cc else None
 
     if not args.skip_extract:
         logger.info("Extracting data from database")
