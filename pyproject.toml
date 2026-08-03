@@ -18,3 +18,14 @@ dependencies = [
     "xlrd>=2.0.1",
     "xlsxwriter>=3.2.3",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "oracle: needs LibreOffice and a built workbook (deselected by default)",
+]
