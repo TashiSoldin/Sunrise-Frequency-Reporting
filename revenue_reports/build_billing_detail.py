@@ -154,6 +154,11 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
             stot = [a + b for a, b in zip(stot, nums)]
             r_ += 1
         def totals_row(label, tvals, bg):
+            # Fill the whole row first: the reference bands B..W solid, and
+            # writing only the populated columns leaves gaps at B-E and G-M.
+            band = st.get(font_size=9, bg_color=bg, bold=True)
+            for c in range(1, 23):
+                ws.write_blank(r_, c, None, band)
             ws.write(r_, 5, label, cellfmt(4, bg, True))
             for j, v in enumerate(tvals):  # cols N..V = 13..21
                 ws.write(r_, 13 + j, round(v, 1) if j in (1, 2) else v, cellfmt(12 + j, bg, True))
@@ -163,6 +168,9 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
         gtot = [a + b for a, b in zip(gtot, stot)]
         r_ += 1
     totals_row_label = "GRAND TOTAL — all customers"
+    grand_band = st.get(font_size=9, bg_color=ORANGE, bold=True)
+    for c in range(1, 23):
+        ws.write_blank(r_, c, None, grand_band)
     ws.write(r_, 5, totals_row_label, cellfmt(4, ORANGE, True))
     for j, v in enumerate(gtot):
         ws.write(r_, 13 + j, round(v, 1) if j in (1, 2) else v, cellfmt(12 + j, ORANGE, True))

@@ -860,7 +860,9 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
     hdr = ["Rep / segment", "", "", f"LY {lyhdr}", f"{kpi_prefix} Target", "Expected", "Actual",
            "% Exp", "Projected", "Proj v Tgt", "v Tgt %", "v LY %", "Chg kg", "LY kg",
            "kg Δ%", "R/kg", "LY R/kg", "R/kg Δ%"]
-    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY2)
+    # column headings are NAVY in the reference; the rep-section headers below
+    # are the ones that use NAVY2
+    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY)
     ws.merge_range("B14:D14", hdr[0], th)
     for i, h in enumerate(hdr[3:]):
         ws.write(13, 4 + i, h, th)
@@ -1129,7 +1131,9 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
          9, kl_or, kv(ORANGE, NAVY, DEC2)),
     ]
 
-    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY2)
+    # column headings are NAVY in the reference; the rep-section headers below
+    # are the ones that use NAVY2
+    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY)
     for i, h in enumerate(["Acct", "Customer", "Br", "Day Net", "Day Tgt", "Var v Day Tgt",
                            "% Day Tgt", "Chg kg", "R/kg"]):
         ws.write(13, 1 + i, h, th)
@@ -1308,7 +1312,9 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
 
     sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY)
     ws.merge_range("B11:J11", "CREDIT NOTES BY REASON", sect)
-    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY2)
+    # column headings are NAVY in the reference; the rep-section headers below
+    # are the ones that use NAVY2
+    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY)
     ws.merge_range("B12:F12", "Reason", th)
     ws.merge_range("G12:H12", "Value", th)
     ws.write("I12", "# Notes", th)
