@@ -27,7 +27,7 @@ import xlsxwriter
 from python_calamine import CalamineWorkbook
 
 from data import col, load_credit_sheet, load_export
-from style import (ALT, BLUE, NAVY, NAVY2, ORANGE, YELLOW, NUM, DEC2, PCT1, Styles,
+from style import (ALT, BLUE, NAVY, NAVY2, ORANGE, YELLOW, NUM, NUMP, DEC2, PCT1, Styles,
                    TAB_BILLING, TAB_CREDIT, TAB_DAILY, TAB_SUMMARY, H_CUSTOMER, H_CREDIT,
                    H_DAILY, H_FOOTNOTE, H_TAB1, freeze_below, set_rows, title_block)
 from xlsxvalues import BLANK, Vals, div, ratio_less_1
@@ -418,7 +418,7 @@ def build_tab1(wb, st, M: Model, p):
                 f"YTD Revenue Analysis  —  {fyl} vs {ly} (Prior Year)",
                 f"Net revenue after credit notes · Invoice-date basis · ZAR · Financial year Mar–Feb · "
                 f"Data through {mtd.day} {mtd.strftime('%b %Y')} ({elapsed} trading days)")
-    note8 = F(st, font_size=8, font_color="#595959")
+    note8 = F(st, font_size=8, font_color="#595959", border=0)
     ws.merge_range("B7:P7", f"Net revenue, YTD {span} completed months", note8)
 
     # KPI band
@@ -592,7 +592,7 @@ def build_tab1(wb, st, M: Model, p):
             F(st, num_format=PCT1, **yb), value=incl[15])
 
     # July momentum block
-    sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY)
+    sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY, border=0)
     ws.merge_range(R_SEC - 1, 1, R_SEC - 1, 4, f"{cur_name.upper()} MOMENTUM (MTD, net)", sect)
     ws.merge_range(R_SEC - 1, 6, R_SEC - 1, 9, "CREDIT NOTES % OF GROSS", sect)
     jul_full_py = round(M.py.total(*month_win(cur_y - 1, cur))[0]
@@ -828,12 +828,12 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
     # --- row 7/8: assumptions
     ye = dict(font_size=10, bg_color=YELLOW)
     ws.merge_range("B7:D7", "Trading days elapsed:", F(st, bold=True, font_color=NAVY, **ye))
-    ws.write("E7", elapsed, F(st, font_color=BLUE, bold=True, **ye))
+    ws.write("E7", elapsed, F(st, font_color=BLUE, bold=True, num_format="0", **ye))
     ws.merge_range("F7:G7", "Trading days in period:", F(st, bold=True, font_color=NAVY, **ye))
-    ws.write("H7", period, F(st, font_color=BLUE, bold=True, **ye))
-    ws.write("I7", "← assumptions (editable)", F(st, font_size=8, font_color="#595959"))
+    ws.write("H7", period, F(st, font_color=BLUE, bold=True, num_format="0", **ye))
+    ws.write("I7", "← assumptions (editable)", F(st, font_size=8, font_color="#595959", border=0))
     ws.merge_range("B8:S8", "KPIs cover the rep-allocated selling book. Non-budget accounts "
-                   "appear under their rep with 0 target.", F(st, font_size=8, font_color="#595959"))
+                   "appear under their rep with 0 target.", F(st, font_size=8, font_color="#595959", border=0))
 
     # --- KPI band
     kl_navy = F(st, bold=True, font_size=8, font_color="white", bg_color=NAVY)
@@ -847,22 +847,23 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
     kpis = [("B", "C", f"{kpi_prefix} TARGET", f"=F{sb_row}", agg[sb_row][5], kl_navy, kv(NAVY, "white", NUM)),
             ("D", "E", "EXPECTED", f"=G{sb_row}", agg[sb_row][6], kl_navy, kv(NAVY, "white", NUM)),
             ("F", "G", "ACTUAL", f"=H{sb_row}", agg[sb_row][7], kl_or, kv(ORANGE, NAVY, NUM)),
-            ("H", "I", "% OF EXPECTED", f"=I{sb_row}", agg[sb_row][8], kl_ye, kv(YELLOW, NAVY, PCT1)),
+            ("H", "I", "% OF EXPECTED", f"=I{sb_row}", agg[sb_row][8], kl_ye, kv(YELLOW, NAVY, "0.0%")),
             ("J", "K", "PROJECTED (all accts)", f"=J{total_row}", agg[total_row][9], kl_navy, kv(NAVY, "white", NUM)),
-            ("L", "M", "PROJ vs TARGET", f"=L{total_row}", agg[total_row][11], kl_or, kv(ORANGE, NAVY, PCT1))]
+            ("L", "M", "PROJ vs TARGET", f"=L{total_row}", agg[total_row][11], kl_or, kv(ORANGE, NAVY, "0.0%"))]
     for c1, c2, lab, f_, val, lf, vf in kpis:
         ws.merge_range(f"{c1}9:{c2}9", lab, lf)
         V.mf(f"{c1}10:{c2}11", f_, vf, value=val)
 
     # --- summary block
-    sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY)
+    sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY, border=0)
     ws.merge_range("B13:S13", "REP / SEGMENT SUMMARY", sect)
     hdr = ["Rep / segment", "", "", f"LY {lyhdr}", f"{kpi_prefix} Target", "Expected", "Actual",
            "% Exp", "Projected", "Proj v Tgt", "v Tgt %", "v LY %", "Chg kg", "LY kg",
            "kg Δ%", "R/kg", "LY R/kg", "R/kg Δ%"]
     # column headings are NAVY in the reference; the rep-section headers below
     # are the ones that use NAVY2
-    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY)
+    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY,
+           align="center", text_wrap=True)
     ws.merge_range("B14:D14", hdr[0], th)
     for i, h in enumerate(hdr[3:]):
         ws.write(13, 4 + i, h, th)
@@ -870,16 +871,19 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
     def summary_row(r, label, ref_row, fmt):
         ws.merge_range(r - 1, 1, r - 1, 3, label, fmt["txt"])
         for i, letter in enumerate("EFGHIJKLMNOPQRS"):
-            f2 = fmt["pct"] if letter in "ILMPS" else (fmt["dec"] if letter in "QR" else fmt["num"])
+            f2 = (fmt["pct"] if letter in "ILMPS" else fmt["dec"] if letter in "QR"
+                  else fmt["neg"] if letter == "K" else fmt["num"])
             V.f(r - 1, 4 + i, f"={letter}{ref_row}", f2, value=agg[ref_row][4 + i])
 
-    def mk_fmt(bg, bold=False, fc=None, size=10):
+    def mk_fmt(bg, bold=False, fc=None, size=10, align="right"):
         # Bold subtotal and total rows carry NAVY text in the reference, not
         # black; the plain summary rows above them stay black.
         fc = fc or (NAVY if bold else "black")
         base = dict(font_size=size, bg_color=bg, bold=bold, font_color=fc)
-        return dict(txt=F(st, **base), num=F(st, num_format=NUM, **base),
-                    pct=F(st, num_format=PCT1, **base), dec=F(st, num_format=DEC2, **base))
+        return dict(txt=F(st, align="left", **base), num=F(st, align=align, num_format=NUM, **base),
+                    neg=F(st, align=align, num_format=NUMP, **base),
+                    pct=F(st, align=align, num_format=PCT1, **base),
+                    dec=F(st, align=align, num_format=DEC2, **base))
 
     r = 15
     for j, (c, hrow, first, last, srow) in enumerate(sections):
@@ -904,12 +908,16 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
         e, tgt, h, n, o = written(a)
         d = derived(e, tgt, h, n, o, elapsed, period, memo)
         bg = ALT if stripe else "white"
-        base = dict(font_size=9, bg_color=bg)
-        blue = dict(font_size=9, font_color=BLUE, bg_color=bg)
-        ws.write(r - 1, 1, a, F(st, **base))
-        ws.write(r - 1, 2, M.name(a), F(st, **base))
+        # the reference aligns text left, the branch centred and wrapped, and
+        # every figure right
+        base = dict(font_size=9, bg_color=bg, align="right")
+        blue = dict(font_size=9, font_color=BLUE, bg_color=bg, align="right")
+        txt = dict(font_size=9, bg_color=bg, align="left")
+        ctr = dict(font_size=9, bg_color=bg, align="center", text_wrap=True)
+        ws.write(r - 1, 1, a, F(st, **txt))
+        ws.write(r - 1, 2, M.name(a), F(st, **txt))
         br = M.branch(a)
-        ws.write(r - 1, 3, br, F(st, **base)) if br else ws.write_blank(r - 1, 3, None, F(st, **base))
+        ws.write(r - 1, 3, br, F(st, **ctr)) if br else ws.write_blank(r - 1, 3, None, F(st, **ctr))
         ws.write(r - 1, 4, e, F(st, num_format=NUM, **blue))
         ws.write(r - 1, 5, tgt, F(st, num_format=NUM, **blue))
         V.f(r - 1, 6, f"=F{r}*$E$7/$H$7", F(st, num_format=NUM, **base), value=d[6])
@@ -917,7 +925,8 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
         V.f(r - 1, 8, f'=IF(G{r}=0,"",H{r}/G{r})', F(st, num_format=PCT1, **base), value=d[8])
         jf = f"=H{r}" if memo else f"=H{r}/$E$7*$H$7"
         V.f(r - 1, 9, jf, F(st, num_format=NUM, **base), value=d[9])
-        V.f(r - 1, 10, f'=IF(F{r}=0,"",J{r}-F{r})', F(st, num_format=NUM, **base), value=d[10])
+        V.f(r - 1, 10, f'=IF(F{r}=0,"",J{r}-F{r})',
+            F(st, num_format=NUMP, **base), value=d[10])
         V.f(r - 1, 11, f'=IF(F{r}=0,"",J{r}/F{r}-1)', F(st, num_format=PCT1, **base), value=d[11])
         V.f(r - 1, 12, f'=IF(E{r}=0,"",J{r}/E{r}-1)', F(st, num_format=PCT1, **base), value=d[12])
         ws.write(r - 1, 13, n, F(st, num_format=NUM, **blue))
@@ -940,7 +949,7 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
         V.f(r - 1, 8, f'=IF(G{r}=0,"",H{r}/G{r})', fmt["pct"], value=d[8])
         jf = f"=H{r}" if memo else f"=H{r}/$E$7*$H$7"
         V.f(r - 1, 9, jf, fmt["num"], value=d[9])
-        V.f(r - 1, 10, f'=IF(F{r}=0,"",J{r}-F{r})', fmt["num"], value=d[10])
+        V.f(r - 1, 10, f'=IF(F{r}=0,"",J{r}-F{r})', fmt["neg"], value=d[10])
         V.f(r - 1, 11, f'=IF(F{r}=0,"",J{r}/F{r}-1)', fmt["pct"], value=d[11])
         V.f(r - 1, 12, f'=IF(E{r}=0,"",J{r}/E{r}-1)', fmt["pct"], value=d[12])
         pf = (f'=IF(O{r}=0,"",N{r}/O{r}-1)' if memo
@@ -969,7 +978,7 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
             sb_fmt["num"], value=sbd[cl])
     V.f(sb_row - 1, 6, f"=F{sb_row}*$E$7/$H$7", sb_fmt["num"], value=sbd[6])
     V.f(sb_row - 1, 8, f"=H{sb_row}/G{sb_row}", sb_fmt["pct"], value=sbd[8])
-    V.f(sb_row - 1, 10, f"=J{sb_row}-F{sb_row}", sb_fmt["num"], value=sbd[10])
+    V.f(sb_row - 1, 10, f"=J{sb_row}-F{sb_row}", sb_fmt["neg"], value=sbd[10])
     V.f(sb_row - 1, 11, f"=J{sb_row}/F{sb_row}-1", sb_fmt["pct"], value=sbd[11])
     V.f(sb_row - 1, 12, f"=J{sb_row}/E{sb_row}-1", sb_fmt["pct"], value=sbd[12])
     V.f(sb_row - 1, 15,
@@ -1007,7 +1016,7 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
             tot_fmt["num"], value=td[cl])
     V.f(total_row - 1, 6, f"=F{total_row}*$E$7/$H$7", tot_fmt["num"], value=td[6])
     V.f(total_row - 1, 8, f"=H{total_row}/G{total_row}", tot_fmt["pct"], value=td[8])
-    V.f(total_row - 1, 10, f"=J{total_row}-F{total_row}", tot_fmt["num"], value=td[10])
+    V.f(total_row - 1, 10, f"=J{total_row}-F{total_row}", tot_fmt["neg"], value=td[10])
     V.f(total_row - 1, 11, f"=J{total_row}/F{total_row}-1", tot_fmt["pct"], value=td[11])
     V.f(total_row - 1, 12, f"=J{total_row}/E{total_row}-1", tot_fmt["pct"], value=td[12])
     V.f(total_row - 1, 15,
@@ -1020,7 +1029,7 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
         f'=IF(OR(N{total_row}=0,O{total_row}=0,E{total_row}=0),"",(H{total_row}/N{total_row})/(E{total_row}/O{total_row})-1)',
         tot_fmt["pct"], value=td[18])
 
-    note8 = F(st, font_size=8, font_color="#595959")
+    note8 = F(st, font_size=8, font_color="#595959", border=0)
     fns = [
         "Expected = target × (trading days elapsed ÷ trading days in period). Projected = actual ÷ "
         "elapsed × days in period. For completed months elapsed = days in period, so Expected = target "
@@ -1114,7 +1123,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
     days = month_trading_days(fy_start_year(day), day.month)
     ws.write("E7", days, F(st, font_color=BLUE, bold=True, **ye))
     ws.merge_range("F7:J7", "Day target = monthly budget target ÷ trading days (editable)",
-                   F(st, font_size=8, font_color="#595959"))
+                   F(st, font_size=8, font_color="#595959", border=0))
 
     kl_navy = F(st, bold=True, font_size=8, font_color="white", bg_color=NAVY)
     kl_or = F(st, bold=True, font_size=8, font_color=NAVY, bg_color=ORANGE)
@@ -1136,7 +1145,8 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
 
     # column headings are NAVY in the reference; the rep-section headers below
     # are the ones that use NAVY2
-    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY)
+    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY,
+           align="center", text_wrap=True)
     for i, h in enumerate(["Acct", "Customer", "Br", "Day Net", "Day Tgt", "Var v Day Tgt",
                            "% Day Tgt", "Chg kg", "R/kg"]):
         ws.write(13, 1 + i, h, th)
@@ -1160,12 +1170,16 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
         d = daily_derived(e, f_, i)
         dv[r] = d
         bg = ALT if stripe else "white"
-        base = dict(font_size=9, bg_color=bg)
-        blue = dict(font_size=9, font_color=BLUE, bg_color=bg)
-        ws.write(r - 1, 1, a, F(st, **base))
-        ws.write(r - 1, 2, M.name(a), F(st, **base))
+        # the reference aligns text left, the branch centred and wrapped, and
+        # every figure right
+        base = dict(font_size=9, bg_color=bg, align="right")
+        blue = dict(font_size=9, font_color=BLUE, bg_color=bg, align="right")
+        txt = dict(font_size=9, bg_color=bg, align="left")
+        ctr = dict(font_size=9, bg_color=bg, align="center", text_wrap=True)
+        ws.write(r - 1, 1, a, F(st, **txt))
+        ws.write(r - 1, 2, M.name(a), F(st, **txt))
         br = M.branch(a)
-        ws.write(r - 1, 3, br, F(st, **base)) if br else ws.write_blank(r - 1, 3, None, F(st, **base))
+        ws.write(r - 1, 3, br, F(st, **ctr)) if br else ws.write_blank(r - 1, 3, None, F(st, **ctr))
         ws.write(r - 1, 4, e, F(st, num_format=NUM, **blue))
         V.f(r - 1, 5, tgt_str(a), F(st, num_format=NUM, **base), value=d[5])
         V.f(r - 1, 6, f'=IF(F{r}=0,"",E{r}-F{r})', F(st, num_format=NUM, **base), value=d[6])
@@ -1256,7 +1270,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
             ws.merge_range(f"{c1}9:{c2}9", lab, lf)
             V.mf(f"{c1}10:{c2}10", f_, vf, value=td[cl])
 
-    note8 = F(st, font_size=8, font_color="#595959")
+    note8 = F(st, font_size=8, font_color="#595959", border=0)
     fns = [
         "Each rep section lists customers billed on the day first, then targeted customers with no "
         "billing that day (Day Net 0). Day Tgt = monthly budget target ÷ trading days; subtotals & "
@@ -1313,11 +1327,12 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
     ws.merge_range("F8:G8", largest, kv(NAVY, "white", NUM))
     ws.merge_range("H8:J8", top_reason[1][0], kv(ORANGE, NAVY, NUM))
 
-    sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY)
+    sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY, border=0)
     ws.merge_range("B11:J11", "CREDIT NOTES BY REASON", sect)
     # column headings are NAVY in the reference; the rep-section headers below
     # are the ones that use NAVY2
-    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY)
+    th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY,
+           align="center", text_wrap=True)
     ws.merge_range("B12:F12", "Reason", th)
     ws.merge_range("G12:H12", "Value", th)
     ws.write("I12", "# Notes", th)
@@ -1374,7 +1389,7 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
         F(st, num_format=NUM, font_size=9, bold=True, bg_color=ORANGE),
         value=sum(round(n["value"]) for n in detail))
 
-    note8 = F(st, font_size=8, font_color="#595959")
+    note8 = F(st, font_size=8, font_color="#595959", border=0)
     fns = [
         f"Listing of all credit notes processed in {calendar.month_name[mtd_max.month]} "
         f"{fy_label(fy_start_year(mtd_max))} to date (by processing date). Value = "

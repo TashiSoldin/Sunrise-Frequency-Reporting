@@ -141,7 +141,7 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
     s_.hide_gridlines(2)
     for i, w in enumerate([10, 48, 18, 20]):
         s_.set_column(i, i, w)
-    th = F(bold=True, font_color="white", bg_color=NAVY)
+    th = F(bold=True, font_color="white", bg_color=NAVY, align="center", text_wrap=True)
     for i, h in enumerate(["Account", "Customer", "Unbilled Waybills", "Unbilled Value (R)"]):
         s_.write(0, i, h, th)
     groups = defaultdict(lambda: [0, 0.0, 10 ** 9])  # (acct, cust) -> [n, value, first idx]
@@ -158,7 +158,7 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
         s_.write(1 + j, 2, n, F(num_format=NUM, bg_color=bg))
         s_.write(1 + j, 3, round(v, 2), F(num_format=NUM, bg_color=bg))
     tr = 1 + len(ranked)
-    tot = dict(bold=True, bg_color=ORANGE)
+    tot = dict(bold=True, bg_color=ORANGE, font_color=NAVY)
     s_.write(tr, 1, "TOTAL", F(**tot))
     Vals(s_).f(tr, 2, f"=SUM(C2:C{tr})", F(num_format=NUM, **tot),
                value=sum(n for _, (n, _, _) in ranked))

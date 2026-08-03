@@ -25,7 +25,7 @@ from datetime import date
 import xlsxwriter
 
 from data import col, load_export
-from style import TAB_BILLING
+from style import GRID, TAB_BILLING
 
 NAVY = "#05003C"
 NAVY2 = "#0A0050"
@@ -129,14 +129,19 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
         ws.set_row(r_ - 1, h)
 
     def fmt(**kw):
-        base = {"font_name": "Calibri"}
+        # Same defaults as style.Styles: thin grey grid and vertical centring.
+        # This builder predates that shared helper and makes its own formats.
+        base = {"font_name": "Calibri", "valign": "vcenter",
+                "border": 1, "border_color": GRID}
         base.update(kw)
+        if not base.get("border"):
+            base.pop("border_color", None)
         return wb.add_format(base)
 
-    brand = fmt(bold=True, font_size=13, font_color=YELLOW, bg_color=NAVY)
-    title = fmt(bold=True, font_size=16, font_color="white", bg_color=NAVY)
-    subtitle = fmt(font_size=9, font_color="white", bg_color=NAVY2)
-    accent = fmt(bg_color=ORANGE)
+    brand = fmt(border=0, bold=True, font_size=13, font_color=YELLOW, bg_color=NAVY)
+    title = fmt(border=0, bold=True, font_size=16, font_color="white", bg_color=NAVY)
+    subtitle = fmt(border=0, font_size=9, font_color="white", bg_color=NAVY2)
+    accent = fmt(border=0, bg_color=ORANGE)
     kpi_l_navy = fmt(bold=True, font_size=8, font_color="white", bg_color=NAVY)
     kpi_v_navy = fmt(bold=True, font_size=16, font_color="white", bg_color=NAVY, num_format="#,##0", align="left", valign="vcenter")
     kpi_l_or = fmt(bold=True, font_size=8, font_color=NAVY, bg_color=ORANGE)

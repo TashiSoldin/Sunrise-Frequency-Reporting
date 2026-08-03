@@ -10,14 +10,27 @@ ALT = "#F0F0F8"
 BLUE = "#0000FF"
 
 NUM = "#,##0"
+NUMP = "#,##0;(#,##0)"   # negatives in parentheses, per the reference
 NUM1 = "#,##0.0"
 NUM2 = "#,##0.00;(#,##0.00)"
 DEC2 = "0.00"
 PCT1 = "0.0%;(0.0%)"
 
 
+GRID = "#D9D9D9"  # thin grid the reference draws round every populated cell
+
+
 class Styles:
-    """Format cache so we don't create duplicate formats."""
+    """Format cache so we don't create duplicate formats.
+
+    Two defaults, both read off the reference workbooks: a thin grey box
+    border on every cell, and vertical centring — the latter only shows once
+    rows are taller than default, which is why it went unnoticed alongside the
+    missing row heights.
+
+    Pass border=0 for the title block, section headers and footnotes, which the
+    reference leaves unbordered.
+    """
 
     def __init__(self, wb):
         self.wb = wb
@@ -26,8 +39,11 @@ class Styles:
     def get(self, **kw):
         key = tuple(sorted(kw.items()))
         if key not in self._cache:
-            base = {"font_name": "Calibri"}
+            base = {"font_name": "Calibri", "valign": "vcenter",
+                    "border": 1, "border_color": GRID}
             base.update(kw)
+            if not base.get("border"):
+                base.pop("border_color", None)
             self._cache[key] = self.wb.add_format(base)
         return self._cache[key]
 
@@ -76,7 +92,10 @@ def title_block(ws, styles, last_col: str, brand_text: str, title: str, subtitle
     ws.set_row(2, 30)
     ws.set_row(3, 16)
     ws.set_row(4, 4)
-    ws.merge_range(f"B2:{last_col}2", brand_text, styles.get(bold=True, font_size=13, font_color=YELLOW, bg_color=NAVY))
-    ws.merge_range(f"B3:{last_col}3", title, styles.get(bold=True, font_size=16, font_color="white", bg_color=NAVY))
-    ws.merge_range(f"B4:{last_col}4", subtitle, styles.get(font_size=9, font_color="white", bg_color=NAVY2))
-    ws.merge_range(f"B5:{last_col}5", "", styles.get(bg_color=ORANGE))
+    ws.merge_range(f"B2:{last_col}2", brand_text,
+                   styles.get(bold=True, font_size=13, font_color=YELLOW, bg_color=NAVY, border=0))
+    ws.merge_range(f"B3:{last_col}3", title,
+                   styles.get(bold=True, font_size=16, font_color="white", bg_color=NAVY, border=0))
+    ws.merge_range(f"B4:{last_col}4", subtitle,
+                   styles.get(font_size=9, font_color="white", bg_color=NAVY2, border=0))
+    ws.merge_range(f"B5:{last_col}5", "", styles.get(bg_color=ORANGE, border=0))

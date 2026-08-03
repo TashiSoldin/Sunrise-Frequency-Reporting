@@ -108,7 +108,8 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
     headers = ["Waybill", "Date", "Invoice #", "Account", "Customer", "Consignor", "Consignee",
                "Orig", "Dest", "Destination", "Cust Ref", "Service", "Pcs", "Actual Mass", "Chrge Mass",
                "Basic", "Outly", "Service Fee", "Fuel", "Surcharge", "Sub-Total", "R/kg"]
-    th = st.get(bold=True, font_size=9, font_color="white", bg_color=NAVY)
+    th = st.get(bold=True, font_size=9, font_color="white", bg_color=NAVY,
+                align="center", text_wrap=True)
     for i, h in enumerate(headers):
         ws.write(6, 1 + i, h, th)
 
@@ -221,15 +222,21 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
         bg = ALT if rr % 2 == 0 else "white"
         row = [acc, cname, v[0], round(v[1], 1), *v[2:], (v[7] / v[1]) if v[1] else 0]
         for j, x in enumerate(row):
-            kw = {"font_size": 9, "bg_color": bg}
+            kw = {"font_size": 9, "bg_color": bg,
+                  "align": "left" if j < 2 else "right"}
             if fmts3[j]:
                 kw["num_format"] = fmts3[j]
+            if 2 <= j <= 9:                 # source figures, blue as elsewhere
+                kw["font_color"] = BLUE
+            else:
+                kw["font_color"] = "black"
             ws3.write(rr, 1 + j, x, st.get(**kw))
         rr += 1
     tot = [sum(v[j] for _, _, v in ranked) for j in range(8)]
     trow = ["TOTAL", f"{len(ranked)} customers", tot[0], round(tot[1], 1), *tot[2:], (tot[7] / tot[1]) if tot[1] else 0]
     for j, x in enumerate(trow):
-        kw = {"font_size": 9, "bold": True, "bg_color": ORANGE}
+        kw = {"font_size": 9, "bold": True, "bg_color": ORANGE, "font_color": NAVY,
+              "align": "left" if j < 2 else "right"}
         if fmts3[j]:
             kw["num_format"] = fmts3[j]
         ws3.write(rr, 1 + j, x, st.get(**kw))
@@ -332,6 +339,9 @@ def _flash_comparison(wb, st, day, day_rows, ix, flash_file, long_date, inv_tota
                    "while invoices group by billing account.", note)
 
 
+BLUE = "#0000FF"
+
+
 def _consolidations(wb, st, th, day_rows, ix, short_date):
     groups = defaultdict(list)
     for r in day_rows:
@@ -382,15 +392,17 @@ def _consolidations(wb, st, th, day_rows, ix, short_date):
                 kw = {"font_size": 9, "bg_color": bg}
                 if fmts[j]:
                     kw["num_format"] = fmts[j]
+                kw["align"] = "right" if j >= 8 else "left"
+                kw["font_color"] = BLUE if 8 <= j <= 10 else "black"
                 ws.write(rr, 1 + j, v, st.get(**kw))
             kg_t += kg
             pcs_t += x[ix["Pieces"]] or 0
             rr += 1
-        gt = st.get(bold=True, font_size=9, bg_color=ORANGE)
+        gt = st.get(bold=True, font_size=9, bg_color=ORANGE, font_color=NAVY)
         ws.write(rr, 1, "Group total", gt)
-        ws.write(rr, 10, kg_t, st.get(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM1))
-        ws.write(rr, 11, total, st.get(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM2))
-        ws.write(rr, 12, (total / kg_t) if kg_t else 0, st.get(bold=True, font_size=9, bg_color=ORANGE, num_format=DEC2))
+        ws.write(rr, 10, kg_t, st.get(bold=True, font_size=9, bg_color=ORANGE, font_color=NAVY, num_format=NUM1))
+        ws.write(rr, 11, total, st.get(bold=True, font_size=9, bg_color=ORANGE, font_color=NAVY, num_format=NUM2))
+        ws.write(rr, 12, (total / kg_t) if kg_t else 0, st.get(bold=True, font_size=9, bg_color=ORANGE, font_color=NAVY, num_format=DEC2))
         rr += 2
 
 
