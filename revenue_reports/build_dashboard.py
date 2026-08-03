@@ -28,6 +28,7 @@ from python_calamine import CalamineWorkbook
 
 from data import col, load_credit_sheet, load_export
 from style import ALT, BLUE, NAVY, NAVY2, ORANGE, YELLOW, NUM, DEC2, PCT1, Styles, title_block
+from xlsxvalues import BLANK, Vals, div, ratio_less_1, sub
 
 CREDIT_TYPES = ("Credit Note", "Journal Credit")
 REP_ORDER = ["TF", "CN", "LS", "NP", "PM", "NEW", "AH"]
@@ -617,10 +618,36 @@ def customer_universe(M: Model, w27, wly, months, memo_mode="unified"):
     return per_rep, active
 
 
+def derived(e, tgt, h, n, o, elapsed, period, memo):
+    """Compute what each formula column on a customer row evaluates to.
+
+    Mirrors the formulas written alongside, so the cached value matches what
+    Excel works out. Keyed by 0-indexed column. Inputs are the values actually
+    written to E/F/H/N/O (already rounded where the tab rounds), because Excel
+    computes from the written cells, not from the unrounded source.
+    """
+    g = tgt * elapsed / period                      # G  Expected
+    j = h if memo else h / elapsed * period         # J  Projected
+    return {
+        6: g,
+        8: div(h, g),
+        9: j,
+        10: sub(j, tgt),
+        11: ratio_less_1(j, tgt),
+        12: ratio_less_1(j, e),
+        15: (ratio_less_1(n, o) if memo
+             else (BLANK if not o else (n / elapsed * period) / o - 1)),
+        16: div(h, n),
+        17: div(e, o),
+        18: (BLANK if not (n and o and e) else (h / n) / (e / o) - 1),
+    }
+
+
 def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyhdr,
                        elapsed, period, w27, wly, months, round_vals=False,
                        memo_mode="unified"):
     ws = wb.add_worksheet(sheet)
+    V = Vals(ws)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 9, 34, 6, 13, 13, 12, 13, 9, 13, 13, 10, 9, 12, 12, 9, 8, 8, 9]):
         ws.set_column(i, i, w)
@@ -629,6 +656,21 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
     per_rep, active = customer_universe(M, w27, wly, months, memo_mode)
     reps = [c for c in REP_ORDER if per_rep[c]]
     house, closed = per_rep["HOUSE"], per_rep["CLOSED"]
+
+    def rnd(v):
+        return round(v) if round_vals else v
+
+    def written(a):
+        """(E, F, H, N, O) exactly as they land in the sheet."""
+        tgt, h, n, e, o = active[a]
+        return (rnd(e), rnd(tgt), rnd(h), rnd(n), rnd(o))
+
+    def totals(accts):
+        t = [0.0] * 5
+        for a in accts:
+            for i, v in enumerate(written(a)):
+                t[i] += v
+        return t
 
     # --- layout pass: assign rows (1-indexed)
     sections = []  # (code, header_row, first, last, subtotal_row)
@@ -643,6 +685,45 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
     closed_hdr = house_sub + 1
     closed_sub = closed_hdr + len(closed) + 1
     total_row = closed_sub + 1
+
+    # --- aggregate values, computed before anything is written.
+    #     The summary block (rows 15+) and the KPI band both reference subtotal
+    #     rows that only appear further down the sheet, so their cached values
+    #     have to be known up front rather than read back as we go.
+    agg = {}
+
+    def aggregate(row, accts, memo):
+        e, f, h, n, o = totals(accts)
+        d = derived(e, f, h, n, o, elapsed, period, memo)
+        d.update({4: e, 5: f, 7: h, 13: n, 14: o})
+        agg[row] = d
+        return d
+
+    def combine(row, rows):
+        """Rows that add their children up, including J, rather than re-deriving it.
+
+        House and Closed subtotals are memo rows whose Projected is their actual,
+        so a combined Projected is the sum of the parts, not the run-rate of the
+        combined actual. Columns I/K/L/M are written unguarded here, matching the
+        formulas on these two rows.
+        """
+        s = {c_: sum(agg[r][c_] for r in rows) for c_ in (4, 5, 7, 9, 13, 14)}
+        d = derived(s[4], s[5], s[7], s[13], s[14], elapsed, period, memo=False)
+        d.update({4: s[4], 5: s[5], 7: s[7], 9: s[9], 13: s[13], 14: s[14]})
+        j = s[9]
+        d[8] = s[7] / d[6] if d[6] else 0
+        d[10] = j - s[5]
+        d[11] = j / s[5] - 1 if s[5] else 0
+        d[12] = j / s[4] - 1 if s[4] else 0
+        agg[row] = d
+        return d
+
+    for _c, _hr, _f, _l, _sr in sections:
+        aggregate(_sr, per_rep[_c], memo=False)
+    aggregate(house_sub, house, memo=True)
+    aggregate(closed_sub, closed, memo=True)
+    combine(sb_row, [s[4] for s in sections])
+    combine(total_row, [sb_row, house_sub, closed_sub])
 
     # --- row 7/8: assumptions
     ye = dict(font_size=10, bg_color=YELLOW)
@@ -665,15 +746,15 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
         return F(st, bold=True, font_size=14, font_color=fc, bg_color=bg,
                  num_format=fmt, align="left", valign="vcenter")
 
-    kpis = [("B", "C", f"{kpi_prefix} TARGET", f"=F{sb_row}", kl_navy, kv(NAVY, "white", NUM)),
-            ("D", "E", "EXPECTED", f"=G{sb_row}", kl_navy, kv(NAVY, "white", NUM)),
-            ("F", "G", "ACTUAL", f"=H{sb_row}", kl_or, kv(ORANGE, NAVY, NUM)),
-            ("H", "I", "% OF EXPECTED", f"=I{sb_row}", kl_ye, kv(YELLOW, NAVY, PCT1)),
-            ("J", "K", "PROJECTED (all accts)", f"=J{total_row}", kl_navy, kv(NAVY, "white", NUM)),
-            ("L", "M", "PROJ vs TARGET", f"=L{total_row}", kl_or, kv(ORANGE, NAVY, PCT1))]
-    for c1, c2, lab, f_, lf, vf in kpis:
+    kpis = [("B", "C", f"{kpi_prefix} TARGET", f"=F{sb_row}", agg[sb_row][5], kl_navy, kv(NAVY, "white", NUM)),
+            ("D", "E", "EXPECTED", f"=G{sb_row}", agg[sb_row][6], kl_navy, kv(NAVY, "white", NUM)),
+            ("F", "G", "ACTUAL", f"=H{sb_row}", agg[sb_row][7], kl_or, kv(ORANGE, NAVY, NUM)),
+            ("H", "I", "% OF EXPECTED", f"=I{sb_row}", agg[sb_row][8], kl_ye, kv(YELLOW, NAVY, PCT1)),
+            ("J", "K", "PROJECTED (all accts)", f"=J{total_row}", agg[total_row][9], kl_navy, kv(NAVY, "white", NUM)),
+            ("L", "M", "PROJ vs TARGET", f"=L{total_row}", agg[total_row][11], kl_or, kv(ORANGE, NAVY, PCT1))]
+    for c1, c2, lab, f_, val, lf, vf in kpis:
         ws.merge_range(f"{c1}9:{c2}9", lab, lf)
-        ws.merge_range(f"{c1}10:{c2}10", f_, vf)
+        V.mf(f"{c1}10:{c2}10", f_, vf, value=val)
 
     # --- summary block
     sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY)
@@ -690,7 +771,7 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
         ws.merge_range(r - 1, 1, r - 1, 3, label, fmt["txt"])
         for i, letter in enumerate("EFGHIJKLMNOPQRS"):
             f2 = fmt["pct"] if letter in "ILMPS" else (fmt["dec"] if letter in "QR" else fmt["num"])
-            ws.write_formula(r - 1, 4 + i, f"={letter}{ref_row}", f2)
+            V.f(r - 1, 4 + i, f"={letter}{ref_row}", f2, value=agg[ref_row][4 + i])
 
     def mk_fmt(bg, bold=False, fc="black", size=10):
         base = dict(font_size=size, bg_color=bg, bold=bold, font_color=fc)
@@ -716,11 +797,9 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
     rep_hdr_fmt = F(st, bold=True, font_size=10, font_color="white", bg_color=NAVY2)
     sub_fmt = mk_fmt(ORANGE, True, size=10)
 
-    def rnd(v):
-        return round(v) if round_vals else v
-
     def write_acct_row(r, a, memo, stripe):
-        tgt, h, n, e, o = active[a]
+        e, tgt, h, n, o = written(a)
+        d = derived(e, tgt, h, n, o, elapsed, period, memo)
         bg = ALT if stripe else "white"
         base = dict(font_size=9, bg_color=bg)
         blue = dict(font_size=9, font_color=BLUE, bg_color=bg)
@@ -728,46 +807,47 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
         ws.write(r - 1, 2, M.name(a), F(st, **base))
         br = M.branch(a)
         ws.write(r - 1, 3, br, F(st, **base)) if br else ws.write_blank(r - 1, 3, None, F(st, **base))
-        ws.write(r - 1, 4, rnd(e), F(st, num_format=NUM, **blue))
-        ws.write(r - 1, 5, rnd(tgt), F(st, num_format=NUM, **blue))
-        ws.write_formula(r - 1, 6, f"=F{r}*$E$7/$H$7", F(st, num_format=NUM, **base))
-        ws.write(r - 1, 7, rnd(h), F(st, num_format=NUM, **blue))
-        ws.write_formula(r - 1, 8, f'=IF(G{r}=0,"",H{r}/G{r})', F(st, num_format=PCT1, **base))
+        ws.write(r - 1, 4, e, F(st, num_format=NUM, **blue))
+        ws.write(r - 1, 5, tgt, F(st, num_format=NUM, **blue))
+        V.f(r - 1, 6, f"=F{r}*$E$7/$H$7", F(st, num_format=NUM, **base), value=d[6])
+        ws.write(r - 1, 7, h, F(st, num_format=NUM, **blue))
+        V.f(r - 1, 8, f'=IF(G{r}=0,"",H{r}/G{r})', F(st, num_format=PCT1, **base), value=d[8])
         jf = f"=H{r}" if memo else f"=H{r}/$E$7*$H$7"
-        ws.write_formula(r - 1, 9, jf, F(st, num_format=NUM, **base))
-        ws.write_formula(r - 1, 10, f'=IF(F{r}=0,"",J{r}-F{r})', F(st, num_format=NUM, **base))
-        ws.write_formula(r - 1, 11, f'=IF(F{r}=0,"",J{r}/F{r}-1)', F(st, num_format=PCT1, **base))
-        ws.write_formula(r - 1, 12, f'=IF(E{r}=0,"",J{r}/E{r}-1)', F(st, num_format=PCT1, **base))
-        ws.write(r - 1, 13, rnd(n), F(st, num_format=NUM, **blue))
-        ws.write(r - 1, 14, rnd(o), F(st, num_format=NUM, **blue))
+        V.f(r - 1, 9, jf, F(st, num_format=NUM, **base), value=d[9])
+        V.f(r - 1, 10, f'=IF(F{r}=0,"",J{r}-F{r})', F(st, num_format=NUM, **base), value=d[10])
+        V.f(r - 1, 11, f'=IF(F{r}=0,"",J{r}/F{r}-1)', F(st, num_format=PCT1, **base), value=d[11])
+        V.f(r - 1, 12, f'=IF(E{r}=0,"",J{r}/E{r}-1)', F(st, num_format=PCT1, **base), value=d[12])
+        ws.write(r - 1, 13, n, F(st, num_format=NUM, **blue))
+        ws.write(r - 1, 14, o, F(st, num_format=NUM, **blue))
         pf = (f'=IF(O{r}=0,"",N{r}/O{r}-1)' if memo
               else f'=IF(O{r}=0,"",(N{r}/$E$7*$H$7)/O{r}-1)')
-        ws.write_formula(r - 1, 15, pf, F(st, num_format=PCT1, **base))
-        ws.write_formula(r - 1, 16, f'=IF(N{r}=0,"",H{r}/N{r})', F(st, num_format=DEC2, **base))
-        ws.write_formula(r - 1, 17, f'=IF(O{r}=0,"",E{r}/O{r})', F(st, num_format=DEC2, **base))
-        ws.write_formula(r - 1, 18,
-                         f'=IF(OR(N{r}=0,O{r}=0,E{r}=0),"",(H{r}/N{r})/(E{r}/O{r})-1)',
-                         F(st, num_format=PCT1, **base))
+        V.f(r - 1, 15, pf, F(st, num_format=PCT1, **base), value=d[15])
+        V.f(r - 1, 16, f'=IF(N{r}=0,"",H{r}/N{r})', F(st, num_format=DEC2, **base), value=d[16])
+        V.f(r - 1, 17, f'=IF(O{r}=0,"",E{r}/O{r})', F(st, num_format=DEC2, **base), value=d[17])
+        V.f(r - 1, 18,
+            f'=IF(OR(N{r}=0,O{r}=0,E{r}=0),"",(H{r}/N{r})/(E{r}/O{r})-1)',
+            F(st, num_format=PCT1, **base), value=d[18])
 
     def write_subtotal(r, label, first, last, memo, fmt):
+        d = agg[r]
         ws.merge_range(r - 1, 1, r - 1, 3, label, fmt["txt"])
         for cl, letter in [(4, "E"), (5, "F"), (7, "H"), (13, "N"), (14, "O")]:
-            ws.write_formula(r - 1, cl, f"=SUM({letter}{first}:{letter}{last})", fmt["num"])
-        ws.write_formula(r - 1, 6, f"=F{r}*$E$7/$H$7", fmt["num"])
-        ws.write_formula(r - 1, 8, f'=IF(G{r}=0,"",H{r}/G{r})', fmt["pct"])
+            V.f(r - 1, cl, f"=SUM({letter}{first}:{letter}{last})", fmt["num"], value=d[cl])
+        V.f(r - 1, 6, f"=F{r}*$E$7/$H$7", fmt["num"], value=d[6])
+        V.f(r - 1, 8, f'=IF(G{r}=0,"",H{r}/G{r})', fmt["pct"], value=d[8])
         jf = f"=H{r}" if memo else f"=H{r}/$E$7*$H$7"
-        ws.write_formula(r - 1, 9, jf, fmt["num"])
-        ws.write_formula(r - 1, 10, f'=IF(F{r}=0,"",J{r}-F{r})', fmt["num"])
-        ws.write_formula(r - 1, 11, f'=IF(F{r}=0,"",J{r}/F{r}-1)', fmt["pct"])
-        ws.write_formula(r - 1, 12, f'=IF(E{r}=0,"",J{r}/E{r}-1)', fmt["pct"])
+        V.f(r - 1, 9, jf, fmt["num"], value=d[9])
+        V.f(r - 1, 10, f'=IF(F{r}=0,"",J{r}-F{r})', fmt["num"], value=d[10])
+        V.f(r - 1, 11, f'=IF(F{r}=0,"",J{r}/F{r}-1)', fmt["pct"], value=d[11])
+        V.f(r - 1, 12, f'=IF(E{r}=0,"",J{r}/E{r}-1)', fmt["pct"], value=d[12])
         pf = (f'=IF(O{r}=0,"",N{r}/O{r}-1)' if memo
               else f'=IF(O{r}=0,"",(N{r}/$E$7*$H$7)/O{r}-1)')
-        ws.write_formula(r - 1, 15, pf, fmt["pct"])
-        ws.write_formula(r - 1, 16, f'=IF(N{r}=0,"",H{r}/N{r})', fmt["dec"])
-        ws.write_formula(r - 1, 17, f'=IF(O{r}=0,"",E{r}/O{r})', fmt["dec"])
-        ws.write_formula(r - 1, 18,
-                         f'=IF(OR(N{r}=0,O{r}=0,E{r}=0),"",(H{r}/N{r})/(E{r}/O{r})-1)',
-                         fmt["pct"])
+        V.f(r - 1, 15, pf, fmt["pct"], value=d[15])
+        V.f(r - 1, 16, f'=IF(N{r}=0,"",H{r}/N{r})', fmt["dec"], value=d[16])
+        V.f(r - 1, 17, f'=IF(O{r}=0,"",E{r}/O{r})', fmt["dec"], value=d[17])
+        V.f(r - 1, 18,
+            f'=IF(OR(N{r}=0,O{r}=0,E{r}=0),"",(H{r}/N{r})/(E{r}/O{r})-1)',
+            fmt["pct"], value=d[18])
 
     for c, hrow, first, last, srow in sections:
         ws.merge_range(hrow - 1, 1, hrow - 1, 18,
@@ -780,20 +860,22 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
     sb_fmt = mk_fmt(YELLOW, True, size=10)
     ws.merge_range(sb_row - 1, 1, sb_row - 1, 3, "SUBTOTAL — Rep-allocated selling book", sb_fmt["txt"])
     subrefs = [s[4] for s in sections]
+    sbd = agg[sb_row]
     for cl, letter in [(4, "E"), (5, "F"), (7, "H"), (9, "J"), (13, "N"), (14, "O")]:
-        ws.write_formula(sb_row - 1, cl, "=" + "+".join(f"{letter}{sr}" for sr in subrefs), sb_fmt["num"])
-    ws.write_formula(sb_row - 1, 6, f"=F{sb_row}*$E$7/$H$7", sb_fmt["num"])
-    ws.write_formula(sb_row - 1, 8, f"=H{sb_row}/G{sb_row}", sb_fmt["pct"])
-    ws.write_formula(sb_row - 1, 10, f"=J{sb_row}-F{sb_row}", sb_fmt["num"])
-    ws.write_formula(sb_row - 1, 11, f"=J{sb_row}/F{sb_row}-1", sb_fmt["pct"])
-    ws.write_formula(sb_row - 1, 12, f"=J{sb_row}/E{sb_row}-1", sb_fmt["pct"])
-    ws.write_formula(sb_row - 1, 15,
-                     f'=IF(O{sb_row}=0,"",(N{sb_row}/$E$7*$H$7)/O{sb_row}-1)', sb_fmt["pct"])
-    ws.write_formula(sb_row - 1, 16, f'=IF(N{sb_row}=0,"",H{sb_row}/N{sb_row})', sb_fmt["dec"])
-    ws.write_formula(sb_row - 1, 17, f'=IF(O{sb_row}=0,"",E{sb_row}/O{sb_row})', sb_fmt["dec"])
-    ws.write_formula(sb_row - 1, 18,
-                     f'=IF(OR(N{sb_row}=0,O{sb_row}=0,E{sb_row}=0),"",(H{sb_row}/N{sb_row})/(E{sb_row}/O{sb_row})-1)',
-                     sb_fmt["pct"])
+        V.f(sb_row - 1, cl, "=" + "+".join(f"{letter}{sr}" for sr in subrefs),
+            sb_fmt["num"], value=sbd[cl])
+    V.f(sb_row - 1, 6, f"=F{sb_row}*$E$7/$H$7", sb_fmt["num"], value=sbd[6])
+    V.f(sb_row - 1, 8, f"=H{sb_row}/G{sb_row}", sb_fmt["pct"], value=sbd[8])
+    V.f(sb_row - 1, 10, f"=J{sb_row}-F{sb_row}", sb_fmt["num"], value=sbd[10])
+    V.f(sb_row - 1, 11, f"=J{sb_row}/F{sb_row}-1", sb_fmt["pct"], value=sbd[11])
+    V.f(sb_row - 1, 12, f"=J{sb_row}/E{sb_row}-1", sb_fmt["pct"], value=sbd[12])
+    V.f(sb_row - 1, 15,
+        f'=IF(O{sb_row}=0,"",(N{sb_row}/$E$7*$H$7)/O{sb_row}-1)', sb_fmt["pct"], value=sbd[15])
+    V.f(sb_row - 1, 16, f'=IF(N{sb_row}=0,"",H{sb_row}/N{sb_row})', sb_fmt["dec"], value=sbd[16])
+    V.f(sb_row - 1, 17, f'=IF(O{sb_row}=0,"",E{sb_row}/O{sb_row})', sb_fmt["dec"], value=sbd[17])
+    V.f(sb_row - 1, 18,
+        f'=IF(OR(N{sb_row}=0,O{sb_row}=0,E{sb_row}=0),"",(H{sb_row}/N{sb_row})/(E{sb_row}/O{sb_row})-1)',
+        sb_fmt["pct"], value=sbd[18])
 
     memo_hdr = F(st, bold=True, font_size=10, font_color="white", bg_color=NAVY2)
     ws.merge_range(house_hdr - 1, 1, house_hdr - 1, 18,
@@ -815,21 +897,25 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
     # total
     tot_fmt = mk_fmt(NAVY, True, "white", 12)
     ws.merge_range(total_row - 1, 1, total_row - 1, 3, "TOTAL — ALL ACCOUNTS", tot_fmt["txt"])
+    td = agg[total_row]
     for cl, letter in [(4, "E"), (5, "F"), (7, "H"), (9, "J"), (13, "N"), (14, "O")]:
-        ws.write_formula(total_row - 1, cl,
-                         f"={letter}{sb_row}+{letter}{house_sub}+{letter}{closed_sub}", tot_fmt["num"])
-    ws.write_formula(total_row - 1, 6, f"=F{total_row}*$E$7/$H$7", tot_fmt["num"])
-    ws.write_formula(total_row - 1, 8, f"=H{total_row}/G{total_row}", tot_fmt["pct"])
-    ws.write_formula(total_row - 1, 10, f"=J{total_row}-F{total_row}", tot_fmt["num"])
-    ws.write_formula(total_row - 1, 11, f"=J{total_row}/F{total_row}-1", tot_fmt["pct"])
-    ws.write_formula(total_row - 1, 12, f"=J{total_row}/E{total_row}-1", tot_fmt["pct"])
-    ws.write_formula(total_row - 1, 15,
-                     f'=IF(O{total_row}=0,"",(N{total_row}/$E$7*$H$7)/O{total_row}-1)', tot_fmt["pct"])
-    ws.write_formula(total_row - 1, 16, f'=IF(N{total_row}=0,"",H{total_row}/N{total_row})', tot_fmt["dec"])
-    ws.write_formula(total_row - 1, 17, f'=IF(O{total_row}=0,"",E{total_row}/O{total_row})', tot_fmt["dec"])
-    ws.write_formula(total_row - 1, 18,
-                     f'=IF(OR(N{total_row}=0,O{total_row}=0,E{total_row}=0),"",(H{total_row}/N{total_row})/(E{total_row}/O{total_row})-1)',
-                     tot_fmt["pct"])
+        V.f(total_row - 1, cl,
+            f"={letter}{sb_row}+{letter}{house_sub}+{letter}{closed_sub}",
+            tot_fmt["num"], value=td[cl])
+    V.f(total_row - 1, 6, f"=F{total_row}*$E$7/$H$7", tot_fmt["num"], value=td[6])
+    V.f(total_row - 1, 8, f"=H{total_row}/G{total_row}", tot_fmt["pct"], value=td[8])
+    V.f(total_row - 1, 10, f"=J{total_row}-F{total_row}", tot_fmt["num"], value=td[10])
+    V.f(total_row - 1, 11, f"=J{total_row}/F{total_row}-1", tot_fmt["pct"], value=td[11])
+    V.f(total_row - 1, 12, f"=J{total_row}/E{total_row}-1", tot_fmt["pct"], value=td[12])
+    V.f(total_row - 1, 15,
+        f'=IF(O{total_row}=0,"",(N{total_row}/$E$7*$H$7)/O{total_row}-1)', tot_fmt["pct"], value=td[15])
+    V.f(total_row - 1, 16, f'=IF(N{total_row}=0,"",H{total_row}/N{total_row})',
+        tot_fmt["dec"], value=td[16])
+    V.f(total_row - 1, 17, f'=IF(O{total_row}=0,"",E{total_row}/O{total_row})',
+        tot_fmt["dec"], value=td[17])
+    V.f(total_row - 1, 18,
+        f'=IF(OR(N{total_row}=0,O{total_row}=0,E{total_row}=0),"",(H{total_row}/N{total_row})/(E{total_row}/O{total_row})-1)',
+        tot_fmt["pct"], value=td[18])
 
     note8 = F(st, font_size=8, font_color="#595959")
     fns = [
