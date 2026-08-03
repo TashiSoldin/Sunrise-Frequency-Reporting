@@ -27,7 +27,8 @@ import xlsxwriter
 from python_calamine import CalamineWorkbook
 
 from data import col, load_credit_sheet, load_export
-from style import ALT, BLUE, NAVY, NAVY2, ORANGE, YELLOW, NUM, DEC2, PCT1, Styles, title_block
+from style import (ALT, BLUE, NAVY, NAVY2, ORANGE, YELLOW, NUM, DEC2, PCT1, Styles,
+                   TAB_BILLING, TAB_CREDIT, TAB_DAILY, TAB_SUMMARY, freeze_below, title_block)
 from xlsxvalues import BLANK, Vals, div, ratio_less_1
 from xlsxvalues import sub as guarded_sub  # build_daily_tab has a local named sub
 
@@ -379,6 +380,7 @@ def detail_formats(st):
 
 def build_tab1(wb, st, M: Model, p):
     ws = wb.add_worksheet("YTD Revenue vs PY")
+    ws.set_tab_color(TAB_SUMMARY)
     V = Vals(ws)
     ws.hide_gridlines(2)
     widths = [2, 22] + [13] * 7 + [9, 12, 12, 9, 10, 10, 9]
@@ -740,6 +742,8 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
                        elapsed, period, w27, wly, months, round_vals=False,
                        memo_mode="unified"):
     ws = wb.add_worksheet(sheet)
+    ws.set_tab_color(TAB_BILLING)
+    freeze_below(ws, 28)          # headings row 28, detail from 29
     V = Vals(ws)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 9, 34, 6, 13, 13, 12, 13, 9, 13, 13, 10, 9, 12, 12, 9, 8, 8, 9]):
@@ -1035,6 +1039,8 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
 
 def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_credits):
     ws = wb.add_worksheet(sheet)
+    ws.set_tab_color(TAB_DAILY)
+    freeze_below(ws, 14)          # headings row 14, detail from 15
     V = Vals(ws)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 9, 34, 6, 13, 12, 13, 9, 12, 8]):
@@ -1260,6 +1266,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
 
 def build_credit_tab(wb, st, M: Model, mtd_max: date):
     ws = wb.add_worksheet("MTD Credit Notes")
+    ws.set_tab_color(TAB_CREDIT)
     V = Vals(ws)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 9, 13, 9, 32, 18, 14, 22, 13, 20]):
@@ -1332,6 +1339,7 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
     for i, h in enumerate(["Date", "CN Ref", "Account", "Customer", "Rep", "Branch",
                            "Reason", "Value", "Credit Controller"]):
         ws.write(dh - 1, 1 + i, h, th)
+    freeze_below(ws, dh)          # dh moves with the number of reason rows above it
     detail = sorted(notes, key=lambda n: -n["value"])
     r = dh + 1
     for n in detail:

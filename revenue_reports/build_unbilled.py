@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta
 import xlsxwriter
 
 from data import col, load_export
-from style import ALT, NAVY, ORANGE, YELLOW, NUM, Styles
+from style import ALT, NAVY, ORANGE, YELLOW, NUM, Styles, freeze_below
 from xlsxvalues import Vals
 
 # Parcel Perfect invoice-status codes (per PP manuals); ≤ 0 means not invoiced.
@@ -135,6 +135,7 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
 
     # ---------------- Summary by Customer ----------------
     s_ = wb.add_worksheet("Summary by Customer")
+    freeze_below(s_, 1, col=0)    # headings row 1
     s_.hide_gridlines(2)
     for i, w in enumerate([10, 48, 18, 20]):
         s_.set_column(i, i, w)
@@ -164,6 +165,7 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
 
     # ---------------- Unbilled Detail ----------------
     d_ = wb.add_worksheet("Unbilled Detail")
+    freeze_below(d_, 1, col=0)    # headings row 1
     d_.hide_gridlines(2)
     for i, w in enumerate([13, 12, 9, 48, 9, 20, 8, 15]):
         d_.set_column(i, i, w)

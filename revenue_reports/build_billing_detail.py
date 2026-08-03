@@ -28,7 +28,8 @@ import openpyxl
 import xlsxwriter
 
 from data import col, load_credit_sheet, load_export
-from style import ALT, NAVY, NAVY2, ORANGE, RED, RED_LIGHT, YELLOW, NUM, NUM1, NUM2, DEC2, PCT1, Styles, title_block
+from style import (ALT, NAVY, NAVY2, ORANGE, RED, RED_LIGHT, YELLOW, NUM, NUM1, NUM2, DEC2,
+                   PCT1, Styles, TAB_BILLING, TAB_CREDIT, TAB_SUMMARY, freeze_below, title_block)
 
 BRANCH_MAP = {
     "JNB": "JHB", "PRY": "JHB", "CPT": "Cape Town",
@@ -80,6 +81,8 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
 
     # ---------------- Tab 1: Billing lines ----------------
     ws = wb.add_worksheet(f"Billing {dm}")
+    ws.set_tab_color(TAB_SUMMARY)
+    freeze_below(ws, 7)           # headings row 7
     ws.hide_gridlines(2)
     widths = [2, 11, 9.5, 10, 8, 26, 22, 22, 9.5, 9.5, 18, 12, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 9.5, 11, 8]
     for i, w in enumerate(widths):
@@ -171,6 +174,8 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
 
     # ---------------- Tab 3: By Customer ----------------
     ws3 = wb.add_worksheet("By Customer")
+    ws3.set_tab_color(TAB_BILLING)
+    freeze_below(ws3, 7)
     ws3.hide_gridlines(2)
     for i, w in enumerate([2, 8, 30, 7, 11, 12, 11, 11, 12, 12, 13, 8]):
         ws3.set_column(i, i, w)
@@ -241,6 +246,7 @@ def _flash_comparison(wb, st, day, day_rows, ix, flash_file, long_date, inv_tota
     rep_names = {str(r[ix["Salesrep"]]): str(r[ix["Rep"]]) for r in day_rows if r[ix["Rep"]]}
 
     ws = wb.add_worksheet("Flash Comparison")
+    ws.set_tab_color(TAB_BILLING)   # no freeze in the reference
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 26, 16, 16, 15, 12]):
         ws.set_column(i, i, w)
@@ -315,6 +321,8 @@ def _consolidations(wb, st, th, day_rows, ix, short_date):
     r0_first = sorted(cons.items(), key=lambda kv: (sum((x[ix["Subtotal"]] or 0) for x in kv[1]) != 0,))
 
     ws = wb.add_worksheet("Consolidations")
+    ws.set_tab_color(TAB_CREDIT)
+    freeze_below(ws, 7)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 14, 6, 8, 26, 24, 6, 6, 6, 6, 9, 11, 8]):
         ws.set_column(i, i, w)
@@ -371,6 +379,7 @@ def _credit_notes(wb, st, day, credits_file, dm, short_date):
              if str(r[ic["Type"]]) in CREDIT_TYPES and r[ic["Date"]] == day]
 
     ws = wb.add_worksheet(f"Credit Notes {dm}")
+    ws.set_tab_color(TAB_CREDIT)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 10, 9, 28, 16, 13, 22, 12, 26]):
         ws.set_column(i, i, w)
@@ -395,6 +404,7 @@ def _credit_notes(wb, st, day, credits_file, dm, short_date):
     th2 = st.get(bold=True, font_size=9, font_color="white", bg_color=NAVY)
     for j, h in enumerate(["CN #", "Account", "Customer", "Rep", "Branch", "Reason", "Value", "Credit Controller"]):
         ws.write(rr, 1 + j, h, th2)
+    freeze_below(ws, rr + 1)      # moves with the by-reason block above it
     rr += 1
     for r in notes:
         bg = ALT if rr % 2 == 0 else "white"

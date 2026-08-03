@@ -32,6 +32,26 @@ class Styles:
         return self._cache[key]
 
 
+# Tab colours, from Larry's reference workbook of 28 Jul 2026. The dashboard
+# colour-codes its tabs by section — the tab strip is how people navigate the
+# workbook, so this is wayfinding rather than decoration.
+TAB_SUMMARY = NAVY      # YTD Revenue vs PY
+TAB_BILLING = ORANGE    # month tabs, YTD, MTD Billing by Customer
+TAB_DAILY = YELLOW      # Daily — Invoice date / Waybill date
+TAB_CREDIT = RED        # MTD Credit Notes
+
+
+def freeze_below(ws, header_row: int, col: int = 1):
+    """Freeze everything above a header row, and the spacer column to its left.
+
+    header_row is 1-indexed, matching the row the column headings sit on, so
+    the headings stay visible once the detail scrolls. Larry's reference froze
+    the customer tabs at B29, the daily tabs at B15 and credit notes at B41 —
+    in each case the row directly below the headings.
+    """
+    ws.freeze_panes(header_row, col)
+
+
 def title_block(ws, styles, last_col: str, brand_text: str, title: str, subtitle: str):
     """Rows 2-5: brand bar, title, subtitle, orange accent (1-indexed rows)."""
     ws.set_row(1, 24)
