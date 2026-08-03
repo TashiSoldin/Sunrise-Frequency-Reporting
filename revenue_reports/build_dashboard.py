@@ -28,7 +28,8 @@ from python_calamine import CalamineWorkbook
 
 from data import col, load_credit_sheet, load_export
 from style import ALT, BLUE, NAVY, NAVY2, ORANGE, YELLOW, NUM, DEC2, PCT1, Styles, title_block
-from xlsxvalues import BLANK, Vals, div, ratio_less_1, sub
+from xlsxvalues import BLANK, Vals, div, ratio_less_1
+from xlsxvalues import sub as guarded_sub  # build_daily_tab has a local named sub
 
 CREDIT_TYPES = ("Credit Note", "Journal Credit")
 REP_ORDER = ["TF", "CN", "LS", "NP", "PM", "NEW", "AH"]
@@ -354,6 +355,7 @@ def detail_formats(st):
 
 def build_tab1(wb, st, M: Model, p):
     ws = wb.add_worksheet("YTD Revenue vs PY")
+    V = Vals(ws)
     ws.hide_gridlines(2)
     widths = [2, 22] + [13] * 7 + [9, 12, 12, 9, 10, 10, 9]
     for i, w in enumerate(widths):
@@ -384,12 +386,8 @@ def build_tab1(wb, st, M: Model, p):
     ws.merge_range("H8:J8", "YoY GROWTH", kl_ye)
     ws.merge_range("K8:M8", "NET R/kg  FY27", kl_navy)
     ws.merge_range("N8:P8", "NET R/kg  FY26  (Δ% in table)", kl_navy2)
-    ws.merge_range("B9:C10", "=E18", kv(NAVY, "white", NUM))
-    ws.merge_range("D9:E10", "=H18", kv(NAVY, "white", NUM))
-    ws.merge_range("F9:G10", "=I18", kv(ORANGE, NAVY, "#,##0;(#,##0)"))
-    ws.merge_range("H9:J10", "=J18", kv(YELLOW, NAVY, "0.0%"))
-    ws.merge_range("K9:M10", "=E18/K18", kv(NAVY, "white", DEC2))
-    ws.merge_range("N9:P10", "=H18/L18", kv(NAVY2, "white", DEC2))
+    # KPI values are written once row 18 has been computed, below — merged cells
+    # take their position from the range, not from write order.
 
     # table header
     th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY, align="center")
@@ -414,29 +412,50 @@ def build_tab1(wb, st, M: Model, p):
         cp = M.credits.total(*wpy)
         return round(g), round(c), round(gp), round(cp), round(kg), round(kgp)
 
-    def write_month_row(r, label, vals, label_fmt, blue_bg, bold=False):
+    rowv = {}  # row number -> computed value of every formula column on that row
+
+    def month_derived(g, c, gp, cp, kg, kgp, guarded=True):
+        """What each formula column on a tab-1 month row evaluates to."""
+        e = g - c                                   # E  net FY27
+        h = gp - cp                                 # H  net FY26
+        i = e - h                                   # I  variance
+        return {
+            2: g, 3: c, 4: e, 5: gp, 6: cp, 7: h, 8: i,
+            9: (div(i, h) if guarded else (i / h if h else 0)),
+            10: kg, 11: kgp,
+            12: ratio_less_1(kg, kgp),
+            13: div(e, kg),
+            14: div(h, kgp),
+            15: (BLANK if not (kg and kgp and h) else (e / kg) / (h / kgp) - 1),
+        }
+
+    def write_month_row(r, label, vals, label_fmt, blue_bg, bold=False, d=None):
         g, c, gp, cp, kg, kgp = vals
+        guarded = label not in ("Jul MTD", "_sum")
+        if d is None:
+            d = month_derived(g, c, gp, cp, kg, kgp, guarded)
+        rowv[r] = d
         bg = blue_bg
         base = dict(font_size=10, bg_color=bg, bold=bold)
         blue = dict(font_size=10, font_color=BLUE, bg_color=bg, bold=bold)
         ws.write(r - 1, 1, label, label_fmt)
         ws.write(r - 1, 2, g, F(st, num_format=NUM, **blue))
         ws.write(r - 1, 3, c, F(st, num_format="(#,##0)", **blue))
-        ws.write_formula(r - 1, 4, f"=C{r}-D{r}", F(st, num_format=NUM, **base))
+        V.f(r - 1, 4, f"=C{r}-D{r}", F(st, num_format=NUM, **base), value=d[4])
         ws.write(r - 1, 5, gp, F(st, num_format=NUM, **blue))
         ws.write(r - 1, 6, cp, F(st, num_format="(#,##0)", **blue))
-        ws.write_formula(r - 1, 7, f"=F{r}-G{r}", F(st, num_format=NUM, **base))
-        ws.write_formula(r - 1, 8, f"=E{r}-H{r}", F(st, num_format="#,##0;(#,##0)", **base))
-        guard_j = f'=IF(H{r}=0,"",I{r}/H{r})' if label not in ("Jul MTD", "_sum") else f"=I{r}/H{r}"
-        ws.write_formula(r - 1, 9, guard_j, F(st, num_format=PCT1, **base))
+        V.f(r - 1, 7, f"=F{r}-G{r}", F(st, num_format=NUM, **base), value=d[7])
+        V.f(r - 1, 8, f"=E{r}-H{r}", F(st, num_format="#,##0;(#,##0)", **base), value=d[8])
+        guard_j = f'=IF(H{r}=0,"",I{r}/H{r})' if guarded else f"=I{r}/H{r}"
+        V.f(r - 1, 9, guard_j, F(st, num_format=PCT1, **base), value=d[9])
         ws.write(r - 1, 10, kg, F(st, num_format=NUM, **blue))
         ws.write(r - 1, 11, kgp, F(st, num_format=NUM, **blue))
-        ws.write_formula(r - 1, 12, f'=IF(L{r}=0,"",K{r}/L{r}-1)', F(st, num_format=PCT1, **base))
-        ws.write_formula(r - 1, 13, f'=IF(K{r}=0,"",E{r}/K{r})', F(st, num_format=DEC2, **base))
-        ws.write_formula(r - 1, 14, f'=IF(L{r}=0,"",H{r}/L{r})', F(st, num_format=DEC2, **base))
-        ws.write_formula(r - 1, 15,
-                         f'=IF(OR(K{r}=0,L{r}=0,H{r}=0),"",(E{r}/K{r})/(H{r}/L{r})-1)',
-                         F(st, num_format=PCT1, **base))
+        V.f(r - 1, 12, f'=IF(L{r}=0,"",K{r}/L{r}-1)', F(st, num_format=PCT1, **base), value=d[12])
+        V.f(r - 1, 13, f'=IF(K{r}=0,"",E{r}/K{r})', F(st, num_format=DEC2, **base), value=d[13])
+        V.f(r - 1, 14, f'=IF(L{r}=0,"",H{r}/L{r})', F(st, num_format=DEC2, **base), value=d[14])
+        V.f(r - 1, 15,
+            f'=IF(OR(K{r}=0,L{r}=0,H{r}=0),"",(E{r}/K{r})/(H{r}/L{r})-1)',
+            F(st, num_format=PCT1, **base), value=d[15])
 
     for j, (m, lab) in enumerate(months):
         r = 14 + j
@@ -447,60 +466,79 @@ def build_tab1(wb, st, M: Model, p):
     # YTD row 18
     r = 18
     ob = dict(font_size=10, bold=True, bg_color=ORANGE)
+    mrows = [14 + j for j in range(len(months))]
+    ytd = month_derived(*[sum(rowv[rr][cl] for rr in mrows)
+                          for cl in (2, 3, 5, 6, 10, 11)], guarded=False)
+    rowv[18] = ytd
     ws.write(r - 1, 1, "YTD  (Mar–Jun)", F(st, **ob))
     for cl, letter in [(2, "C"), (3, "D"), (5, "F"), (6, "G"), (10, "K"), (11, "L")]:
-        ws.write_formula(r - 1, cl, f"=SUM({letter}14:{letter}17)",
-                         F(st, num_format=NUM if letter not in "DG" else "(#,##0)", **ob))
-    ws.write_formula(r - 1, 4, "=C18-D18", F(st, num_format=NUM, **ob))
-    ws.write_formula(r - 1, 7, "=F18-G18", F(st, num_format=NUM, **ob))
-    ws.write_formula(r - 1, 8, "=E18-H18", F(st, num_format="#,##0;(#,##0)", **ob))
-    ws.write_formula(r - 1, 9, "=I18/H18", F(st, num_format=PCT1, **ob))
-    ws.write_formula(r - 1, 12, '=IF(L18=0,"",K18/L18-1)', F(st, num_format=PCT1, **ob))
-    ws.write_formula(r - 1, 13, '=IF(K18=0,"",E18/K18)', F(st, num_format=DEC2, **ob))
-    ws.write_formula(r - 1, 14, '=IF(L18=0,"",H18/L18)', F(st, num_format=DEC2, **ob))
-    ws.write_formula(r - 1, 15, '=IF(OR(K18=0,L18=0,H18=0),"",(E18/K18)/(H18/L18)-1)',
-                     F(st, num_format=PCT1, **ob))
+        V.f(r - 1, cl, f"=SUM({letter}14:{letter}17)",
+            F(st, num_format=NUM if letter not in "DG" else "(#,##0)", **ob), value=ytd[cl])
+    V.f(r - 1, 4, "=C18-D18", F(st, num_format=NUM, **ob), value=ytd[4])
+    V.f(r - 1, 7, "=F18-G18", F(st, num_format=NUM, **ob), value=ytd[7])
+    V.f(r - 1, 8, "=E18-H18", F(st, num_format="#,##0;(#,##0)", **ob), value=ytd[8])
+    V.f(r - 1, 9, "=I18/H18", F(st, num_format=PCT1, **ob), value=ytd[9])
+    V.f(r - 1, 12, '=IF(L18=0,"",K18/L18-1)', F(st, num_format=PCT1, **ob), value=ytd[12])
+    V.f(r - 1, 13, '=IF(K18=0,"",E18/K18)', F(st, num_format=DEC2, **ob), value=ytd[13])
+    V.f(r - 1, 14, '=IF(L18=0,"",H18/L18)', F(st, num_format=DEC2, **ob), value=ytd[14])
+    V.f(r - 1, 15, '=IF(OR(K18=0,L18=0,H18=0),"",(E18/K18)/(H18/L18)-1)',
+        F(st, num_format=PCT1, **ob), value=ytd[15])
+
+    # KPI band (rows 9-10), deferred until row 18 exists
+    V.mf("B9:C10", "=E18", kv(NAVY, "white", NUM), value=ytd[4])
+    V.mf("D9:E10", "=H18", kv(NAVY, "white", NUM), value=ytd[7])
+    V.mf("F9:G10", "=I18", kv(ORANGE, NAVY, "#,##0;(#,##0)"), value=ytd[8])
+    V.mf("H9:J10", "=J18", kv(YELLOW, NAVY, "0.0%"), value=ytd[9])
+    V.mf("K9:M10", "=E18/K18", kv(NAVY, "white", DEC2),
+         value=div(ytd[4], ytd[10], blank=0))
+    V.mf("N9:P10", "=H18/L18", kv(NAVY2, "white", DEC2),
+         value=div(ytd[7], ytd[11], blank=0))
 
     # Jul MTD row 19
     w27 = (date(FY, 7, 1), mtd)
     wpy = (date(FY - 1, 7, 1), p["ly_mtd_max"])
     g, c, gp, cp, kg, kgp = rowvals(w27, wpy)
     r = 19
+    jul = month_derived(g, c, gp, cp, kg, kgp, guarded=False)
+    rowv[19] = jul
     base = dict(font_size=10, bg_color="white")
     blue = dict(font_size=10, font_color=BLUE, bg_color="white")
     ws.write(r - 1, 1, f"Jul MTD ({elapsed} trading days) ¹", F(st, **base))
     ws.write(r - 1, 2, g, F(st, num_format=NUM, **blue))
     ws.write(r - 1, 3, c, F(st, num_format="(#,##0)", **blue))
-    ws.write_formula(r - 1, 4, "=C19-D19", F(st, num_format=NUM, **base))
+    V.f(r - 1, 4, "=C19-D19", F(st, num_format=NUM, **base), value=jul[4])
     ws.write(r - 1, 5, gp, F(st, num_format=NUM, **blue))
     ws.write(r - 1, 6, cp, F(st, num_format="(#,##0)", **blue))
-    ws.write_formula(r - 1, 7, "=F19-G19", F(st, num_format=NUM, **base))
-    ws.write_formula(r - 1, 8, "=E19-H19", F(st, num_format="#,##0;(#,##0)", **base))
-    ws.write_formula(r - 1, 9, "=I19/H19", F(st, num_format=PCT1, **base))
+    V.f(r - 1, 7, "=F19-G19", F(st, num_format=NUM, **base), value=jul[7])
+    V.f(r - 1, 8, "=E19-H19", F(st, num_format="#,##0;(#,##0)", **base), value=jul[8])
+    V.f(r - 1, 9, "=I19/H19", F(st, num_format=PCT1, **base), value=jul[9])
     ws.write(r - 1, 10, kg, F(st, num_format=NUM, **blue))
     ws.write(r - 1, 11, kgp, F(st, num_format=NUM, **blue))
-    ws.write_formula(r - 1, 12, '=IF(L19=0,"",K19/L19-1)', F(st, num_format=PCT1, **base))
-    ws.write_formula(r - 1, 13, '=IF(K19=0,"",E19/K19)', F(st, num_format=DEC2, **base))
-    ws.write_formula(r - 1, 14, '=IF(L19=0,"",H19/L19)', F(st, num_format=DEC2, **base))
-    ws.write_formula(r - 1, 15, '=IF(OR(K19=0,L19=0,H19=0),"",(E19/K19)/(H19/L19)-1)',
-                     F(st, num_format=PCT1, **base))
+    V.f(r - 1, 12, '=IF(L19=0,"",K19/L19-1)', F(st, num_format=PCT1, **base), value=jul[12])
+    V.f(r - 1, 13, '=IF(K19=0,"",E19/K19)', F(st, num_format=DEC2, **base), value=jul[13])
+    V.f(r - 1, 14, '=IF(L19=0,"",H19/L19)', F(st, num_format=DEC2, **base), value=jul[14])
+    V.f(r - 1, 15, '=IF(OR(K19=0,L19=0,H19=0),"",(E19/K19)/(H19/L19)-1)',
+        F(st, num_format=PCT1, **base), value=jul[15])
 
     # YTD incl Jul MTD row 20
     r = 20
+    incl = month_derived(*[rowv[18][cl] + rowv[19][cl] for cl in (2, 3, 5, 6, 10, 11)],
+                         guarded=False)
+    rowv[20] = incl
     yb = dict(font_size=10, bold=True, bg_color=YELLOW)
     ws.write(r - 1, 1, "YTD incl. Jul MTD", F(st, **yb))
     for cl, letter in [(2, "C"), (3, "D"), (5, "F"), (6, "G"), (10, "K"), (11, "L")]:
-        ws.write_formula(r - 1, cl, f"={letter}18+{letter}19",
-                         F(st, num_format=NUM if letter not in "DG" else "(#,##0)", **yb))
-    ws.write_formula(r - 1, 4, "=C20-D20", F(st, num_format=NUM, **yb))
-    ws.write_formula(r - 1, 7, "=F20-G20", F(st, num_format=NUM, **yb))
-    ws.write_formula(r - 1, 8, "=E20-H20", F(st, num_format="#,##0;(#,##0)", **yb))
-    ws.write_formula(r - 1, 9, "=I20/H20", F(st, num_format=PCT1, **yb))
-    ws.write_formula(r - 1, 12, '=IF(L20=0,"",K20/L20-1)', F(st, num_format=PCT1, **yb))
-    ws.write_formula(r - 1, 13, '=IF(K20=0,"",E20/K20)', F(st, num_format=DEC2, **yb))
-    ws.write_formula(r - 1, 14, '=IF(L20=0,"",H20/L20)', F(st, num_format=DEC2, **yb))
-    ws.write_formula(r - 1, 15, '=IF(OR(K20=0,L20=0,H20=0),"",(E20/K20)/(H20/L20)-1)',
-                     F(st, num_format=PCT1, **yb))
+        V.f(r - 1, cl, f"={letter}18+{letter}19",
+            F(st, num_format=NUM if letter not in "DG" else "(#,##0)", **yb), value=incl[cl])
+    V.f(r - 1, 4, "=C20-D20", F(st, num_format=NUM, **yb), value=incl[4])
+    V.f(r - 1, 7, "=F20-G20", F(st, num_format=NUM, **yb), value=incl[7])
+    V.f(r - 1, 8, "=E20-H20", F(st, num_format="#,##0;(#,##0)", **yb), value=incl[8])
+    V.f(r - 1, 9, "=I20/H20", F(st, num_format=PCT1, **yb), value=incl[9])
+    V.f(r - 1, 12, '=IF(L20=0,"",K20/L20-1)', F(st, num_format=PCT1, **yb), value=incl[12])
+    V.f(r - 1, 13, '=IF(K20=0,"",E20/K20)', F(st, num_format=DEC2, **yb), value=incl[13])
+    V.f(r - 1, 14, '=IF(L20=0,"",H20/L20)', F(st, num_format=DEC2, **yb), value=incl[14])
+    V.f(r - 1, 15, '=IF(OR(K20=0,L20=0,H20=0),"",(E20/K20)/(H20/L20)-1)',
+        F(st, num_format=PCT1, **yb), value=incl[15])
 
     # July momentum block
     sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY)
@@ -508,23 +546,31 @@ def build_tab1(wb, st, M: Model, p):
     ws.merge_range("G22:J22", "CREDIT NOTES % OF GROSS", sect)
     jul_full_py = round(M.py.total(*month_win(FY - 1, 7))[0]
                         - M.credits.total(*month_win(FY - 1, 7)))
+    # E23..E30 chain: each rung feeds the next, so evaluate as we go
+    e23, e24 = elapsed, injul
+    e25 = rowv[19][4] / e23 if e23 else 0          # net FY27 per trading day
+    e26 = rowv[19][7] / e23 if e23 else 0          # net FY26 per day, same window
+    e27 = e25 / e26 - 1 if e26 else 0
+    e28 = e25 * e24
+    e29 = jul_full_py
+    e30 = e28 / e29 - 1 if e29 else 0
     pairs = [
-        ("Trading days elapsed", elapsed, True, NUM),
-        ("Trading days in July", injul, True, NUM),
-        ("Net FY27 avg / trading day", "=E19/E23", False, NUM),
-        ("Net FY26 avg / day (same window)", "=H19/E23", False, NUM),
-        ("Daily growth vs PY", "=E25/E26-1", False, PCT1),
-        ("Projected full July FY27 (net)", "=E25*E24", False, NUM),
-        ("FY26 full July net (actual)", jul_full_py, True, NUM),
-        ("Projected July growth vs PY", "=E28/E29-1", False, PCT1),
+        ("Trading days elapsed", elapsed, True, NUM, e23),
+        ("Trading days in July", injul, True, NUM, e24),
+        ("Net FY27 avg / trading day", "=E19/E23", False, NUM, e25),
+        ("Net FY26 avg / day (same window)", "=H19/E23", False, NUM, e26),
+        ("Daily growth vs PY", "=E25/E26-1", False, PCT1, e27),
+        ("Projected full July FY27 (net)", "=E25*E24", False, NUM, e28),
+        ("FY26 full July net (actual)", jul_full_py, True, NUM, e29),
+        ("Projected July growth vs PY", "=E28/E29-1", False, PCT1, e30),
     ]
     right = [
-        ("FY27 (YTD Mar–Jun)", "=D18/C18"),
-        ("FY26 (YTD Mar–Jun)", "=G18/F18"),
-        ("FY27 (incl. Jul MTD)", "=D20/C20"),
-        ("FY26 (incl. Jul MTD)", "=G20/F20"),
+        ("FY27 (YTD Mar–Jun)", "=D18/C18", div(rowv[18][3], rowv[18][2], blank=0)),
+        ("FY26 (YTD Mar–Jun)", "=G18/F18", div(rowv[18][6], rowv[18][5], blank=0)),
+        ("FY27 (incl. Jul MTD)", "=D20/C20", div(rowv[20][3], rowv[20][2], blank=0)),
+        ("FY26 (incl. Jul MTD)", "=G20/F20", div(rowv[20][6], rowv[20][5], blank=0)),
     ]
-    for j, (lab, v, is_input, fmt) in enumerate(pairs):
+    for j, (lab, v, is_input, fmt, val) in enumerate(pairs):
         r = 23 + j
         bg = ALT if j % 2 == 0 else "white"
         ws.merge_range(r - 1, 1, r - 1, 3, lab, F(st, font_size=10, bg_color=bg))
@@ -533,12 +579,12 @@ def build_tab1(wb, st, M: Model, p):
         if is_input:
             ws.write(r - 1, 4, v, vf)
         else:
-            ws.write_formula(r - 1, 4, v, vf)
-    for j, (lab, f_) in enumerate(right):
+            V.f(r - 1, 4, v, vf, value=val)
+    for j, (lab, f_, val) in enumerate(right):
         r = 23 + j
         bg = ALT if j % 2 == 0 else "white"
         ws.merge_range(r - 1, 6, r - 1, 8, lab, F(st, font_size=10, bg_color=bg))
-        ws.write_formula(r - 1, 9, f_, F(st, font_size=10, bg_color=bg, num_format=PCT1))
+        V.f(r - 1, 9, f_, F(st, font_size=10, bg_color=bg, num_format=PCT1), value=val)
 
     fn = [
         f"¹ FY27 July = {elapsed} invoiced trading days (1–{mtd.day} {mtd.strftime('%b %Y')}). "
@@ -632,7 +678,7 @@ def derived(e, tgt, h, n, o, elapsed, period, memo):
         6: g,
         8: div(h, g),
         9: j,
-        10: sub(j, tgt),
+        10: guarded_sub(j, tgt),
         11: ratio_less_1(j, tgt),
         12: ratio_less_1(j, e),
         15: (ratio_less_1(n, o) if memo
@@ -942,6 +988,7 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
 
 def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_credits):
     ws = wb.add_worksheet(sheet)
+    V = Vals(ws)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 9, 34, 6, 13, 12, 13, 9, 12, 8]):
         ws.set_column(i, i, w)
@@ -1004,7 +1051,8 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
     ye = dict(font_size=10, bg_color=YELLOW)
     ws.write("B7", "Trading days in month:", F(st, bold=True, **ye))
     ws.merge_range("C7:D7", "", F(st, **ye))
-    ws.write("E7", TRADING_DAYS[7], F(st, font_color=BLUE, bold=True, **ye))
+    days = TRADING_DAYS[7]
+    ws.write("E7", days, F(st, font_color=BLUE, bold=True, **ye))
     ws.merge_range("F7:J7", "Day target = monthly budget target ÷ trading days (editable)",
                    F(st, font_size=8, font_color="#595959"))
 
@@ -1016,19 +1064,15 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
         return F(st, bold=True, font_size=14, font_color=fc, bg_color=bg,
                  num_format=fmt, align="left", valign="vcenter")
 
-    for c1, c2, lab, f_, lf, vf in [
-            ("B", "C", "DAY NET", f"=E{total_row}", kl_navy, kv(NAVY, "white", NUM)),
-            ("D", "E", "DAY TARGET (full book)", f"=F{total_row}", kl_navy, kv(NAVY, "white", NUM)),
-            ("F", "G", "% OF DAY TARGET", f"=H{total_row}", kl_ye, kv(YELLOW, NAVY, PCT1)),
-            ("H", "I", "CHG KG", f"=I{total_row}", kl_navy, kv(NAVY, "white", NUM)),
-            ("J", "J", "R/kg", f'=IF(I{total_row}=0,"",E{total_row}/I{total_row})',
-             kl_or, kv(ORANGE, NAVY, DEC2))]:
-        if c1 == c2:
-            ws.write(f"{c1}9", lab, lf)
-            ws.write_formula(f"{c1}10", f_, vf)
-        else:
-            ws.merge_range(f"{c1}9:{c2}9", lab, lf)
-            ws.merge_range(f"{c1}10:{c2}10", f_, vf)
+    # KPI band is written after the total row has been computed, below.
+    kpi_spec = [
+        ("B", "C", "DAY NET", f"=E{total_row}", 4, kl_navy, kv(NAVY, "white", NUM)),
+        ("D", "E", "DAY TARGET (full book)", f"=F{total_row}", 5, kl_navy, kv(NAVY, "white", NUM)),
+        ("F", "G", "% OF DAY TARGET", f"=H{total_row}", 7, kl_ye, kv(YELLOW, NAVY, PCT1)),
+        ("H", "I", "CHG KG", f"=I{total_row}", 8, kl_navy, kv(NAVY, "white", NUM)),
+        ("J", "J", "R/kg", f'=IF(I{total_row}=0,"",E{total_row}/I{total_row})',
+         9, kl_or, kv(ORANGE, NAVY, DEC2)),
+    ]
 
     th = F(st, bold=True, font_size=9, font_color="white", bg_color=NAVY2)
     for i, h in enumerate(["Acct", "Customer", "Br", "Day Net", "Day Tgt", "Var v Day Tgt",
@@ -1044,7 +1088,15 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
         t = int(t) if t == int(t) else t
         return f"={t}/$E$7"
 
+    dv = {}  # row -> computed values, so subtotals can add their own rows up
+
+    def daily_derived(e, f, i):
+        return {4: e, 5: f, 6: guarded_sub(e, f, guard=f), 7: div(e, f), 8: i, 9: div(e, i)}
+
     def write_row(r, a, net, kg, stripe):
+        e, f_, i = round(net), jul_t.get(a, 0) / days, round(kg)
+        d = daily_derived(e, f_, i)
+        dv[r] = d
         bg = ALT if stripe else "white"
         base = dict(font_size=9, bg_color=bg)
         blue = dict(font_size=9, font_color=BLUE, bg_color=bg)
@@ -1052,21 +1104,24 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
         ws.write(r - 1, 2, M.name(a), F(st, **base))
         br = M.branch(a)
         ws.write(r - 1, 3, br, F(st, **base)) if br else ws.write_blank(r - 1, 3, None, F(st, **base))
-        ws.write(r - 1, 4, round(net), F(st, num_format=NUM, **blue))
-        ws.write_formula(r - 1, 5, tgt_str(a), F(st, num_format=NUM, **base))
-        ws.write_formula(r - 1, 6, f'=IF(F{r}=0,"",E{r}-F{r})', F(st, num_format=NUM, **base))
-        ws.write_formula(r - 1, 7, f'=IF(F{r}=0,"",E{r}/F{r})', F(st, num_format=PCT1, **base))
-        ws.write(r - 1, 8, round(kg), F(st, num_format=NUM, **blue))
-        ws.write_formula(r - 1, 9, f'=IF(I{r}=0,"",E{r}/I{r})', F(st, num_format=DEC2, **base))
+        ws.write(r - 1, 4, e, F(st, num_format=NUM, **blue))
+        V.f(r - 1, 5, tgt_str(a), F(st, num_format=NUM, **base), value=d[5])
+        V.f(r - 1, 6, f'=IF(F{r}=0,"",E{r}-F{r})', F(st, num_format=NUM, **base), value=d[6])
+        V.f(r - 1, 7, f'=IF(F{r}=0,"",E{r}/F{r})', F(st, num_format=PCT1, **base), value=d[7])
+        ws.write(r - 1, 8, i, F(st, num_format=NUM, **blue))
+        V.f(r - 1, 9, f'=IF(I{r}=0,"",E{r}/I{r})', F(st, num_format=DEC2, **base), value=d[9])
 
     def write_sub(r, label, first, last):
+        kids = [dv[x] for x in range(first, last + 1) if x in dv]
+        d = daily_derived(*[sum(k[cl] for k in kids) for cl in (4, 5, 8)])
+        dv[r] = d
         ws.merge_range(r - 1, 1, r - 1, 3, label, F(st, **sub_base))
-        ws.write_formula(r - 1, 4, f"=SUM(E{first}:E{last})", F(st, num_format=NUM, **sub_base))
-        ws.write_formula(r - 1, 5, f"=SUM(F{first}:F{last})", F(st, num_format=NUM, **sub_base))
-        ws.write_formula(r - 1, 6, f'=IF(F{r}=0,"",E{r}-F{r})', F(st, num_format=NUM, **sub_base))
-        ws.write_formula(r - 1, 7, f'=IF(F{r}=0,"",E{r}/F{r})', F(st, num_format=PCT1, **sub_base))
-        ws.write_formula(r - 1, 8, f"=SUM(I{first}:I{last})", F(st, num_format=NUM, **sub_base))
-        ws.write_formula(r - 1, 9, f'=IF(I{r}=0,"",E{r}/I{r})', F(st, num_format=DEC2, **sub_base))
+        V.f(r - 1, 4, f"=SUM(E{first}:E{last})", F(st, num_format=NUM, **sub_base), value=d[4])
+        V.f(r - 1, 5, f"=SUM(F{first}:F{last})", F(st, num_format=NUM, **sub_base), value=d[5])
+        V.f(r - 1, 6, f'=IF(F{r}=0,"",E{r}-F{r})', F(st, num_format=NUM, **sub_base), value=d[6])
+        V.f(r - 1, 7, f'=IF(F{r}=0,"",E{r}/F{r})', F(st, num_format=PCT1, **sub_base), value=d[7])
+        V.f(r - 1, 8, f"=SUM(I{first}:I{last})", F(st, num_format=NUM, **sub_base), value=d[8])
+        V.f(r - 1, 9, f'=IF(I{r}=0,"",E{r}/I{r})', F(st, num_format=DEC2, **sub_base), value=d[9])
 
     for c, hrow, first, last, srow in sections:
         b, nb = per_rep[c]
@@ -1087,13 +1142,17 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
     sbf = dict(font_size=10, bold=True, bg_color=YELLOW)
     ws.merge_range(sb_row - 1, 1, sb_row - 1, 3, "SUBTOTAL — Rep-allocated (billed today)", F(st, **sbf))
     subrefs = [s[4] for s in sections]
+    sbd = daily_derived(*[sum(dv[sr][cl] for sr in subrefs) for cl in (4, 5, 8)])
+    sbd[6] = sbd[4] - sbd[5]                                  # written unguarded here
+    sbd[7] = sbd[4] / sbd[5] if sbd[5] else 0
+    dv[sb_row] = sbd
     for cl, letter in [(4, "E"), (5, "F"), (8, "I")]:
-        ws.write_formula(sb_row - 1, cl, "=" + "+".join(f"{letter}{sr}" for sr in subrefs),
-                         F(st, num_format=NUM, **sbf))
-    ws.write_formula(sb_row - 1, 6, f"=E{sb_row}-F{sb_row}", F(st, num_format=NUM, **sbf))
-    ws.write_formula(sb_row - 1, 7, f"=E{sb_row}/F{sb_row}", F(st, num_format=PCT1, **sbf))
-    ws.write_formula(sb_row - 1, 9, f'=IF(I{sb_row}=0,"",E{sb_row}/I{sb_row})',
-                     F(st, num_format=DEC2, **sbf))
+        V.f(sb_row - 1, cl, "=" + "+".join(f"{letter}{sr}" for sr in subrefs),
+            F(st, num_format=NUM, **sbf), value=sbd[cl])
+    V.f(sb_row - 1, 6, f"=E{sb_row}-F{sb_row}", F(st, num_format=NUM, **sbf), value=sbd[6])
+    V.f(sb_row - 1, 7, f"=E{sb_row}/F{sb_row}", F(st, num_format=PCT1, **sbf), value=sbd[7])
+    V.f(sb_row - 1, 9, f'=IF(I{sb_row}=0,"",E{sb_row}/I{sb_row})',
+        F(st, num_format=DEC2, **sbf), value=sbd[9])
 
     memo_hdr = F(st, bold=True, font_size=10, font_color="white", bg_color=NAVY2)
     parts = [f"E{sb_row}"]
@@ -1114,13 +1173,26 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
     tf = dict(font_size=11, bold=True, font_color="white", bg_color=NAVY)
     ws.merge_range(total_row - 1, 1, total_row - 1, 3, "TOTAL — ALL ACCOUNTS BILLED", F(st, **tf))
     refs = [p[1:] for p in parts]  # row numbers
+    td = daily_derived(*[sum(dv[int(r)][cl] for r in refs) for cl in (4, 5, 8)])
+    td[6] = td[4] - td[5]                                     # written unguarded here
+    td[7] = td[4] / td[5] if td[5] else 0
+    dv[total_row] = td
     for cl, letter in [(4, "E"), (5, "F"), (8, "I")]:
-        ws.write_formula(total_row - 1, cl, "=" + "+".join(f"{letter}{r}" for r in refs),
-                         F(st, num_format=NUM, **tf))
-    ws.write_formula(total_row - 1, 6, f"=E{total_row}-F{total_row}", F(st, num_format=NUM, **tf))
-    ws.write_formula(total_row - 1, 7, f"=E{total_row}/F{total_row}", F(st, num_format=PCT1, **tf))
-    ws.write_formula(total_row - 1, 9, f'=IF(I{total_row}=0,"",E{total_row}/I{total_row})',
-                     F(st, num_format=DEC2, **tf))
+        V.f(total_row - 1, cl, "=" + "+".join(f"{letter}{r}" for r in refs),
+            F(st, num_format=NUM, **tf), value=td[cl])
+    V.f(total_row - 1, 6, f"=E{total_row}-F{total_row}", F(st, num_format=NUM, **tf), value=td[6])
+    V.f(total_row - 1, 7, f"=E{total_row}/F{total_row}", F(st, num_format=PCT1, **tf), value=td[7])
+    V.f(total_row - 1, 9, f'=IF(I{total_row}=0,"",E{total_row}/I{total_row})',
+        F(st, num_format=DEC2, **tf), value=td[9])
+
+    # KPI band (rows 9-10), deferred until the total row exists
+    for c1, c2, lab, f_, cl, lf, vf in kpi_spec:
+        if c1 == c2:
+            ws.write(f"{c1}9", lab, lf)
+            V.f(9, ord(c1) - 65, f_, vf, value=td[cl])
+        else:
+            ws.merge_range(f"{c1}9:{c2}9", lab, lf)
+            V.mf(f"{c1}10:{c2}10", f_, vf, value=td[cl])
 
     note8 = F(st, font_size=8, font_color="#595959")
     fns = [
@@ -1141,6 +1213,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
 
 def build_credit_tab(wb, st, M: Model, mtd_max: date):
     ws = wb.add_worksheet("MTD Credit Notes")
+    V = Vals(ws)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 9, 13, 9, 32, 18, 14, 22, 13, 20]):
         ws.set_column(i, i, w)
@@ -1185,6 +1258,7 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
     ordered = sorted(reasons.items(), key=lambda kv: -kv[1][0])
     r0 = 13
     total_r = r0 + len(ordered)
+    reason_tot = sum(round(val) for _, (val, _) in ordered)
     for j, (rs, (val, cnt)) in enumerate(ordered):
         r = r0 + j
         bg = ALT if r % 2 == 1 else "white"
@@ -1192,13 +1266,16 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
         ws.merge_range(r - 1, 1, r - 1, 5, rs, F(st, **base))
         ws.merge_range(r - 1, 6, r - 1, 7, round(val), F(st, num_format=NUM, font_color=BLUE, **base))
         ws.write(r - 1, 8, cnt, F(st, num_format=NUM, font_color=BLUE, **base))
-        ws.write_formula(r - 1, 9, f"=G{r}/$G${total_r}", F(st, num_format=PCT1, **base))
+        V.f(r - 1, 9, f"=G{r}/$G${total_r}", F(st, num_format=PCT1, **base),
+            value=div(round(val), reason_tot, blank=0))
     ob = dict(font_size=9, bold=True, bg_color=ORANGE)
     ws.merge_range(total_r - 1, 1, total_r - 1, 5, "Total", F(st, **ob))
-    ws.merge_range(total_r - 1, 6, total_r - 1, 7, f"=SUM(G{r0}:G{total_r - 1})",
-                   F(st, num_format=NUM, **ob))
-    ws.write_formula(total_r - 1, 8, f"=SUM(I{r0}:I{total_r - 1})", F(st, num_format=NUM, **ob))
-    ws.write_formula(total_r - 1, 9, f"=G{total_r}/G{total_r}", F(st, num_format=PCT1, **ob))
+    V.mf(f"G{total_r}:H{total_r}", f"=SUM(G{r0}:G{total_r - 1})",
+         F(st, num_format=NUM, **ob), value=reason_tot)
+    V.f(total_r - 1, 8, f"=SUM(I{r0}:I{total_r - 1})", F(st, num_format=NUM, **ob),
+        value=sum(cnt for _, (_, cnt) in ordered))
+    V.f(total_r - 1, 9, f"=G{total_r}/G{total_r}", F(st, num_format=PCT1, **ob),
+        value=1.0 if reason_tot else 0)
 
     dsec = total_r + 2
     ws.merge_range(dsec - 1, 1, dsec - 1, 9, "CREDIT NOTE DETAIL (largest first)", sect)
@@ -1222,8 +1299,9 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
             ws.write(r - 1, 1 + j, v, F(st, **kw))
         r += 1
     ws.write(r - 1, 1, "TOTAL", F(st, font_size=9, bold=True, bg_color=ORANGE))
-    ws.write_formula(r - 1, 8, f"=SUM(I{dh + 1}:I{r - 1})",
-                     F(st, num_format=NUM, font_size=9, bold=True, bg_color=ORANGE))
+    V.f(r - 1, 8, f"=SUM(I{dh + 1}:I{r - 1})",
+        F(st, num_format=NUM, font_size=9, bold=True, bg_color=ORANGE),
+        value=sum(round(n["value"]) for n in detail))
 
     note8 = F(st, font_size=8, font_color="#595959")
     fns = [
