@@ -35,7 +35,8 @@ being captured while the reports run:
   - billing detail -> last day whose invoice run has finished
   - dashboard      -> capped at those same two dates
   - unbilled       -> billing-frontier rule inside build_unbilled
-  - credit notes   -> current FY month
+  - credit notes   -> the month of the last invoiced day, so every PM report
+                      keys off the same reporting date
 
 The prior-FY INV file and the budget workbook are read from --data-dir using
 their standard names. Report generation stays deterministic Python; Claude
@@ -259,6 +260,7 @@ def generate_reports(args: argparse.Namespace) -> None:
                                     "--out-dir", str(report_dir)])
         credits = run("credit notes",
                       ["build_credit_notes.py", "--credits-file", str(credits_file),
+                       "--month", inv_day.strftime("%Y-%m"),
                        "--out-dir", str(report_dir)])
         if not args.no_email:
             logger.info("Sending daily revenue reports email")
