@@ -28,7 +28,8 @@ import openpyxl
 import xlsxwriter
 
 from data import col, load_credit_sheet, load_export
-from style import (ALT, NAVY, NAVY2, ORANGE, RED, RED_LIGHT, YELLOW, NUM, NUM1, NUM2, DEC2,
+from style import (ALT, GREEN, NAVY, NAVY2, ORANGE, RED, RED_LIGHT, YELLOW, NUM, NUMP,
+                   NUM1, NUM2, DEC2, PCT_SIGNED,
                    PCT1, Styles, TAB_BILLING, TAB_CREDIT, TAB_SUMMARY, H_BILLING, H_BILLING_LATE,
                    freeze_below, set_rows, title_block)
 
@@ -297,13 +298,21 @@ def _flash_comparison(wb, st, day, day_rows, ix, flash_file, long_date, inv_tota
             bold = bool(emphas)
             dec = isinstance(a, float) and a < 100
             base = {"font_size": 10, "bg_color": bg, "bold": bold}
-            ws.write(rr, 1, lab, st.get(**base))
+            # Reference convention on this tab: navy labels, blue figures, and
+            # the two variance columns green when positive, red when negative.
+            ws.write(rr, 1, lab, st.get(font_color=NAVY, align="left", **base))
             nf = DEC2 if dec else NUM
-            ws.write(rr, 2, a, st.get(num_format=nf, **base))
-            ws.write(rr, 3, b, st.get(num_format=nf, **base))
+            ws.write(rr, 2, a, st.get(num_format=nf, font_color=BLUE, align="right", **base))
+            ws.write(rr, 3, b, st.get(num_format=nf, font_color=BLUE, align="right", **base))
             if wantvar:
-                ws.write(rr, 4, a - b, st.get(num_format=NUM, **base))
-                ws.write(rr, 5, (a - b) / b if b else 0, st.get(num_format=PCT1, **base))
+                var = a - b
+                vpct = (a - b) / b if b else 0
+                ws.write(rr, 4, var,
+                         st.get(num_format=NUMP, font_color=(GREEN if var >= 0 else RED),
+                                align="right", **base))
+                ws.write(rr, 5, vpct,
+                         st.get(num_format=PCT_SIGNED, font_color=(GREEN if vpct >= 0 else RED),
+                                align="right", **base))
             rr += 1
         return rr
 
@@ -324,7 +333,7 @@ def _flash_comparison(wb, st, day, day_rows, ix, flash_file, long_date, inv_tota
     rows_.append(("Total", round(inv_total), round(f_rev), True, True))
     rr = block(rr + 1, "BY REP", rows_)
 
-    note = st.get(font_size=8)
+    note = st.get(font_size=8, font_color="#595959", border=0)
     gap = f_rev - inv_total
     ws.merge_range(rr + 1, 1, rr + 1, 5,
                    f"Reading the gap: waybills moved on the {day.day}th (R{f_rev:,.0f}) "

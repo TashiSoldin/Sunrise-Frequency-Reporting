@@ -228,11 +228,23 @@ def generate_reports(args: argparse.Namespace) -> None:
                 attachments=[flash], to=to, dry_run=args.dry_run_email)
 
     if args.only in ("all", "pm"):
-        billing = run("billing detail",
-                      ["build_billing_detail.py", "--date", inv_day.isoformat(),
-                       "--inv-file", str(inv_file),
-                       "--credits-file", str(credits_file),
-                       "--out-dir", str(report_dir)])
+        # The Flash Comparison tab reads that day's FROZEN flash workbook — the
+        # one written by the 07:00 run the morning after the day it covers —
+        # rather than recomputing from the live export, which keeps firming up
+        # as waybills are captured. Skipped if that file isn't there, e.g. the
+        # first run of a new deployment or a morning the flash didn't run.
+        flash_name = f"Flash Revenue - {inv_day.day:02d} {inv_day.strftime('%b %Y')}.xlsx"
+        flash_path = report_dir / flash_name
+        billing_args = ["build_billing_detail.py", "--date", inv_day.isoformat(),
+                        "--inv-file", str(inv_file),
+                        "--credits-file", str(credits_file),
+                        "--out-dir", str(report_dir)]
+        if flash_path.exists():
+            billing_args += ["--flash-file", str(flash_path)]
+        else:
+            logger.warning(f"No frozen flash at {flash_name} — billing detail "
+                           f"will build without the Flash Comparison tab")
+        billing = run("billing detail", billing_args)
         dashboard = run("dashboard",
                         ["build_dashboard.py", "--inv-file", str(inv_file),
                          "--py-inv-file", str(py_inv), "--wb-file", str(wb_file),

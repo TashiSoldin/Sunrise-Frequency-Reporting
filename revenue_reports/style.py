@@ -5,6 +5,7 @@ NAVY2 = "#0A0050"
 ORANGE = "#FF6900"
 YELLOW = "#FAB414"
 RED = "#D00000"
+GREEN = "#1E7B34"      # favourable variance, per the flash-comparison reference
 RED_LIGHT = "#FCE4E4"
 ALT = "#F0F0F8"
 BLUE = "#0000FF"
@@ -15,6 +16,7 @@ NUM1 = "#,##0.0"
 NUM2 = "#,##0.00;(#,##0.00)"
 DEC2 = "0.00"
 PCT1 = "0.0%;(0.0%)"
+PCT_SIGNED = "+0.0%;(0.0%)"   # variance percentages carry an explicit sign
 
 
 GRID = "#D9D9D9"  # thin grid the reference draws round every populated cell
