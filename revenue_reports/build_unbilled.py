@@ -20,6 +20,7 @@ import xlsxwriter
 
 from data import col, load_export
 from style import ALT, NAVY, ORANGE, YELLOW, NUM, Styles
+from xlsxvalues import Vals
 
 # Parcel Perfect invoice-status codes (per PP manuals); ≤ 0 means not invoiced.
 STATUS_CODES = {
@@ -156,8 +157,10 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
     tr = 1 + len(ranked)
     tot = dict(bold=True, bg_color=ORANGE)
     s_.write(tr, 1, "TOTAL", F(**tot))
-    s_.write_formula(tr, 2, f"=SUM(C2:C{tr})", F(num_format=NUM, **tot))
-    s_.write_formula(tr, 3, f"=SUM(D2:D{tr})", F(num_format=NUM, **tot))
+    Vals(s_).f(tr, 2, f"=SUM(C2:C{tr})", F(num_format=NUM, **tot),
+               value=sum(n for _, (n, _, _) in ranked))
+    Vals(s_).f(tr, 3, f"=SUM(D2:D{tr})", F(num_format=NUM, **tot),
+               value=round(sum(round(v, 2) for _, (_, v, _) in ranked), 2))
 
     # ---------------- Unbilled Detail ----------------
     d_ = wb.add_worksheet("Unbilled Detail")
@@ -178,7 +181,8 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
             d_.write(1 + j, i, v, F(**kw))
     tr = 1 + len(unbilled)
     d_.write(tr, 5, "TOTAL", F(**tot))
-    d_.write_formula(tr, 7, f"=SUM(H2:H{tr})", F(num_format=NUM, **tot))
+    Vals(d_).f(tr, 7, f"=SUM(H2:H{tr})", F(num_format=NUM, **tot),
+               value=round(sum(round(u["sub"], 2) for u in unbilled), 2))
 
     wb.close()
     return out_path

@@ -22,6 +22,7 @@ import xlsxwriter
 
 from data import excel_serial_to_date  # noqa: F401  (used via Credits loader pattern)
 from style import ALT, NAVY, NAVY2, ORANGE, YELLOW, NUM, NUM2, PCT1, Styles, title_block
+from xlsxvalues import Vals, div
 
 CREDIT_TYPES = ("Credit Note", "Journal Credit")
 FY_START = date(2026, 3, 1)  # FY27
@@ -82,6 +83,7 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
 
     # ---------------- Overview ----------------
     ws = wb.add_worksheet("Overview")
+    V = Vals(ws)
     ws.hide_gridlines(2)
     for i, w in enumerate([2, 22, 13, 12, 13, 13, 12, 13, 12, 12]):
         ws.set_column(i, i, w)
@@ -116,23 +118,28 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
             fy[(n["date"].year, n["date"].month)].append(n["value"])
     r = 13
     first_r = r
+    trend_val, trend_cnt = [], []
     for (y, m), vals in sorted(fy.items()):
         bg = ALT if r % 2 == 1 else "white"
         lab = date(y, m, 1).strftime("%b %Y")
         if (y, m) == (month.year, month.month):
             lab += " (MTD)"
+        c, d = round(sum(vals)), len(vals)
+        trend_val.append(c)
+        trend_cnt.append(d)
         ws.write(r - 1, 1, lab, F(font_size=10, bg_color=bg))
-        ws.write(r - 1, 2, round(sum(vals)), F(font_size=10, bg_color=bg, num_format=NUM))
-        ws.write(r - 1, 3, len(vals), F(font_size=10, bg_color=bg, num_format=NUM))
-        ws.write_formula(r - 1, 4, f'=IF(D{r}=0,"",C{r}/D{r})',
-                         F(font_size=10, bg_color=bg, num_format=NUM))
+        ws.write(r - 1, 2, c, F(font_size=10, bg_color=bg, num_format=NUM))
+        ws.write(r - 1, 3, d, F(font_size=10, bg_color=bg, num_format=NUM))
+        V.f(r - 1, 4, f'=IF(D{r}=0,"",C{r}/D{r})',
+            F(font_size=10, bg_color=bg, num_format=NUM), value=div(c, d))
         ws.write(r - 1, 5, round(max(vals)), F(font_size=10, bg_color=bg, num_format=NUM))
         r += 1
     ob = dict(bold=True, font_size=10, bg_color=ORANGE)
+    tv, tc = sum(trend_val), sum(trend_cnt)
     ws.write(r - 1, 1, "FY27 to date", F(**ob))
-    ws.write_formula(r - 1, 2, f"=SUM(C{first_r}:C{r - 1})", F(num_format=NUM, **ob))
-    ws.write_formula(r - 1, 3, f"=SUM(D{first_r}:D{r - 1})", F(num_format=NUM, **ob))
-    ws.write_formula(r - 1, 4, f'=IF(D{r}=0,"",C{r}/D{r})', F(num_format=NUM, **ob))
+    V.f(r - 1, 2, f"=SUM(C{first_r}:C{r - 1})", F(num_format=NUM, **ob), value=tv)
+    V.f(r - 1, 3, f"=SUM(D{first_r}:D{r - 1})", F(num_format=NUM, **ob), value=tc)
+    V.f(r - 1, 4, f'=IF(D{r}=0,"",C{r}/D{r})', F(num_format=NUM, **ob), value=div(tv, tc))
     total_trend_row = r
 
     # MTD by reason
@@ -146,21 +153,26 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
     ws.write(r - 1, 7, "% of Total", th)
     r += 1
     first_r = r
-    for reason, (val, cnt) in sorted(reasons.items(), key=lambda kv_: -kv_[1][0]):
+    ranked_reasons = sorted(reasons.items(), key=lambda kv_: -kv_[1][0])
+    reason_tot = sum(round(val) for _, (val, _) in ranked_reasons)
+    for reason, (val, cnt) in ranked_reasons:
         bg = ALT if r % 2 == 1 else "white"
         ws.merge_range(r - 1, 1, r - 1, 4, reason, F(font_size=9, bg_color=bg))
         ws.write(r - 1, 5, round(val), F(font_size=9, bg_color=bg, num_format=NUM))
         ws.write(r - 1, 6, cnt, F(font_size=9, bg_color=bg, num_format=NUM))
-        ws.write_formula(r - 1, 7, f"=F{r}/$F${first_r + len(reasons)}",
-                         F(font_size=9, bg_color=bg, num_format=PCT1))
+        V.f(r - 1, 7, f"=F{r}/$F${first_r + len(reasons)}",
+            F(font_size=9, bg_color=bg, num_format=PCT1),
+            value=div(round(val), reason_tot, blank=0))
         r += 1
     ws.merge_range(r - 1, 1, r - 1, 4, "Total", F(bold=True, font_size=9, bg_color=ORANGE))
-    ws.write_formula(r - 1, 5, f"=SUM(F{first_r}:F{r - 1})",
-                     F(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM))
-    ws.write_formula(r - 1, 6, f"=SUM(G{first_r}:G{r - 1})",
-                     F(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM))
-    ws.write_formula(r - 1, 7, f"=F{r}/F{r}",
-                     F(bold=True, font_size=9, bg_color=ORANGE, num_format=PCT1))
+    V.f(r - 1, 5, f"=SUM(F{first_r}:F{r - 1})",
+        F(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM), value=reason_tot)
+    V.f(r - 1, 6, f"=SUM(G{first_r}:G{r - 1})",
+        F(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM),
+        value=sum(cnt for _, (_, cnt) in ranked_reasons))
+    V.f(r - 1, 7, f"=F{r}/F{r}",
+        F(bold=True, font_size=9, bg_color=ORANGE, num_format=PCT1),
+        value=1.0 if reason_tot else 0)
     r += 2
     ws.merge_range(r - 1, 1, r - 1, 9,
                    "Net revenue = gross invoiced (Subtotal, excl VAT) less these credit notes. "
@@ -193,6 +205,7 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
     for n in mtd:
         rep_of.setdefault(n["acct"], n["rep"])
     rr = 8
+    cust_cnt, cust_val = 0, 0.0
     for acct, (val, cnt) in sorted(cust.items(), key=lambda kv_: -kv_[1][0]):
         bg = ALT if rr % 2 == 0 else "white"
         ws2.write(rr - 1, 1, acct, F(font_size=9, bg_color=bg))
@@ -201,12 +214,15 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
         ws2.write(rr - 1, 4, cnt, F(font_size=9, bg_color=bg, num_format=NUM))
         ws2.write(rr - 1, 5, round(val, 2), F(font_size=9, bg_color=bg, num_format=NUM2))
         ws2.write(rr - 1, 6, ctop[acct][0], F(font_size=9, bg_color=bg))
+        cust_cnt += cnt
+        cust_val += round(val, 2)
         rr += 1
+    V2 = Vals(ws2)
     ws2.write(rr - 1, 1, "TOTAL", F(bold=True, font_size=9, bg_color=ORANGE))
-    ws2.write_formula(rr - 1, 4, f"=SUM(E8:E{rr - 1})",
-                      F(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM))
-    ws2.write_formula(rr - 1, 5, f"=SUM(F8:F{rr - 1})",
-                      F(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM2))
+    V2.f(rr - 1, 4, f"=SUM(E8:E{rr - 1})",
+         F(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM), value=cust_cnt)
+    V2.f(rr - 1, 5, f"=SUM(F8:F{rr - 1})",
+         F(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM2), value=round(cust_val, 2))
 
     # ---------------- Detail (MTD) ----------------
     ws3 = wb.add_worksheet(f"Detail {mon_short}")
@@ -220,6 +236,7 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
                            "Reason", "Value", "Credit Controller"]):
         ws3.write(6, 1 + i, h, th)
     rr = 8
+    detail_tot = 0
     for n in sorted(mtd, key=lambda n_: -n_["value"]):
         bg = ALT if rr % 2 == 0 else "white"
         vals = [n["date"].strftime("%d %b"), n["ref"], n["acct"], n["customer"],
@@ -229,10 +246,11 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
             if j == 7:
                 kw.update(num_format=NUM, font_color="#0000FF")
             ws3.write(rr - 1, 1 + j, v, F(**kw))
+        detail_tot += round(n["value"])
         rr += 1
     ws3.write(rr - 1, 1, "TOTAL", F(bold=True, font_size=9, bg_color=ORANGE))
-    ws3.write_formula(rr - 1, 8, f"=SUM(I8:I{rr - 1})",
-                      F(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM))
+    Vals(ws3).f(rr - 1, 8, f"=SUM(I8:I{rr - 1})",
+                F(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM), value=detail_tot)
 
     wb.close()
     return out_path
