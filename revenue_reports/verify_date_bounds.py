@@ -4,8 +4,20 @@ Read-only against the database. Runs SELECTs only, sends nothing, and does not
 touch the production export files. Safe to run at any time, including between
 the 07:00 and 16:30 jobs.
 
+    run_verify_bounds.bat
+
+which fills in the paths and copes with uv not being on PATH. By hand it is:
+
     uv run revenue_reports/verify_date_bounds.py ^
         --out-dir "<synced>\Dashboards and Data Analysis\2. Revenue Data\_diagnostics"
+
+If uv is not recognised — it is on PATH for the Task Scheduler user but often
+not in an interactive shell — use the venv interpreter that "uv sync" built:
+
+    .venv\Scripts\python.exe revenue_reports\verify_date_bounds.py --out-dir "..."
+
+Plain "python" will not do: firebirdsql, python-calamine and python-dotenv are
+installed in that venv, not system-wide.
 
 Everything printed is also written to that folder, which is the synced working
 folder rather than the reports folder — the output is a diagnostic, not
