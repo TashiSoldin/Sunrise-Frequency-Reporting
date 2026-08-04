@@ -250,3 +250,51 @@ class TestMatchesTheHouseFormatting:
         ws = workbook[build_flash.ALL_TAB]
         cell = ws.cell(ws.max_row, 2)
         assert cell.fill.start_color.rgb.endswith("FF6900") and cell.font.bold
+
+
+class TestTheRuntimeGuard:
+    """The contract above is enforced at build time, not just in CI.
+
+    The tests in this file protect the flash's layout. They cannot protect a
+    frozen flash already sitting in the reports folder, or a change made to the
+    flash by someone who never runs pytest. _check_flash_parse re-derives the
+    invariant from whatever it actually read: every branch and every rep with
+    revenue appears in the flash, so each block must sum to the headline.
+
+    It warns rather than raises. A wrong comparison tab is worth flagging
+    loudly; it is not worth withholding four correct reports over.
+    """
+
+    def _warnings(self, capsys, f_rev, f_branch, f_rep):
+        import build_billing_detail
+        build_billing_detail._check_flash_parse("flash.xlsx", f_rev, f_branch, f_rep)
+        return capsys.readouterr().err
+
+    def test_silent_when_the_blocks_reconcile(self, capsys):
+        err = self._warnings(capsys, 1000.0,
+                             {"JHB": 600.0, "Durban": 400.0},
+                             {"TF": 700.0, "CN": 300.0})
+        assert err == ""
+
+    def test_flags_mass_read_as_revenue(self, capsys):
+        """Chg kg inserted left of Revenue: every figure is plausible, and the
+        block no longer sums to the day."""
+        err = self._warnings(capsys, 1000.0,
+                             {"JHB": 600.0, "Durban": 400.0},
+                             {"TF": 140.0, "CN": 60.0})
+        assert "BY REP" in err and "no longer revenue" in err
+        assert "BY BRANCH" not in err, "the branch block was fine and must not warn"
+
+    def test_flags_a_renamed_section_header(self, capsys):
+        err = self._warnings(capsys, 1000.0, {"JHB": 600.0, "Durban": 400.0}, {})
+        assert "read no rows" in err and "renamed" in err
+
+    def test_tolerates_rounding_but_not_a_real_gap(self, capsys):
+        assert self._warnings(capsys, 1000.0, {"JHB": 1000.4}, {"TF": 999.7}) == ""
+        assert "no longer revenue" in self._warnings(
+            capsys, 1000.0, {"JHB": 1000.0}, {"TF": 990.0})
+
+    def test_says_nothing_when_there_is_no_headline_to_compare(self, capsys):
+        """A flash with an empty KPI band is a different fault; do not add a
+        second, misleading warning on top of it."""
+        assert self._warnings(capsys, 0, {"JHB": 5.0}, {"TF": 5.0}) == ""

@@ -21,6 +21,8 @@ Derivations reconciled against the 24 Jul 2026 reference:
 """
 
 import argparse
+import sys
+import os
 from collections import defaultdict
 from datetime import date
 
@@ -252,6 +254,38 @@ def build(day: date, inv_file: str, credits_file: str, out_dir: str, flash_file:
     return out_path
 
 
+def _check_flash_parse(flash_file, f_rev, f_branch, f_rep):
+    """Did we read the flash's revenue column, or something next to it?
+
+    This tab is built by scanning the frozen flash for three literal section
+    headers and taking column C as the revenue. Nothing about that is checked
+    by the file format, so a change to the flash's layout produces a wrong
+    comparison rather than an error — 100 "reps" if a section header is
+    renamed, or chargeable kilograms read as rands if a column is inserted to
+    the left of revenue. Both look plausible on the page.
+
+    Every branch and every rep with revenue appears in the flash, so each block
+    must sum to the headline figure. That is exact, not approximate, and it is
+    the cheapest thing that distinguishes revenue from anything else in the row.
+
+    Warns rather than raises: a wrong comparison tab is worth flagging loudly,
+    but not worth withholding four correct reports over. run_daily logs stderr
+    from the builders as WARNING, so this lands in run_revenue.log.
+    """
+    for label, parsed in (("BY BRANCH (origin)", f_branch), ("BY REP", f_rep)):
+        total = sum(v for v in parsed.values() if isinstance(v, (int, float)))
+        if not parsed:
+            print(f"WARNING: flash comparison read no rows from {label!r} in "
+                  f"{os.path.basename(flash_file)} — the section header has "
+                  f"probably been renamed.", file=sys.stderr)
+        elif f_rev and abs(total - f_rev) > 1:
+            print(f"WARNING: flash comparison read {len(parsed)} {label!r} rows "
+                  f"summing to {total:,.2f}, but the flash headline is "
+                  f"{f_rev:,.2f}. The column read is probably no longer revenue "
+                  f"— check the flash's layout before trusting this tab.",
+                  file=sys.stderr)
+
+
 def _flash_comparison(wb, st, day, day_rows, ix, flash_file, long_date, inv_total, inv_kg, inv_lines):
     f = openpyxl.load_workbook(flash_file, data_only=True).active
     f_rev, f_wbs, f_kg = f["B8"].value or 0, f["D8"].value or 0, f["F8"].value or 0
@@ -265,6 +299,8 @@ def _flash_comparison(wb, st, day, day_rows, ix, flash_file, long_date, inv_tota
             f_branch[v] = row[1].value
         elif section == "BY REP" and v and row[1].value is not None and v != "Rep":
             f_rep[str(v).split(" — ")[0]] = row[1].value
+
+    _check_flash_parse(flash_file, f_rev, f_branch, f_rep)
 
     inv_branch = defaultdict(float)
     inv_rep = defaultdict(float)
