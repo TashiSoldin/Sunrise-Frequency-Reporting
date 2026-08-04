@@ -1,0 +1,160 @@
+"""The flash's All Customers tab, and the page-one contract it must not break.
+
+Larry asked on 4 Aug 2026 for the flash to show every client. The full list
+went onto a second tab rather than into the front-page block, because
+build_billing_detail._flash_comparison re-reads the frozen flash and finds its
+sections by scanning the FIRST sheet for three literal headers. Lengthening or
+renaming "TOP 10 CUSTOMERS" in place leaves the rep section open and pulls
+every customer row into it — a hundred "reps" instead of six, with no error.
+
+That parser also has to keep working against the archive of flashes frozen
+before this change, so page one is fixed by contract, not by preference. These
+tests encode both halves: the front page stays exactly as the parser expects,
+and the new tab ties back to the KPI to the cent.
+"""
+
+import sys
+from datetime import date
+from pathlib import Path
+
+import openpyxl
+import pytest
+import xlsxwriter
+
+REPO = Path(__file__).resolve().parent.parent
+BUILDERS = REPO / "revenue_reports"
+sys.path.insert(0, str(BUILDERS))
+
+import build_flash  # noqa: E402
+
+# Headers _flash_comparison switches on. Copied deliberately rather than
+# imported: they are string literals in the other builder, and the point of
+# the test is to fail if the two drift apart.
+PARSER_SECTIONS = ("BY BRANCH (origin)", "BY REP", "TOP 10 CUSTOMERS")
+
+HEADERS = ["Waybill", "Waybill Date", "Customer", "Account", "Orig Hub",
+           "Chrg Mass", "Subtotal", "Salesrep", "Rep"]
+
+DAY = date(2026, 8, 3)
+PRIOR = date(2026, 7, 27)          # same weekday, for the typical-Mon benchmark
+
+
+def _row(wb, cust, acct, hub, kg, sub, rep, repname, day=DAY):
+    return [wb, day, cust, acct, hub, kg, sub, rep, repname]
+
+
+@pytest.fixture
+def workbook(tmp_path):
+    """Twelve accounts so the top ten is a genuine subset, plus one account
+    carrying two spellings of its customer name — the case that grouping on
+    Account rather than Customer exists to merge."""
+    rows = []
+    for i in range(12):
+        rows.append(_row(f"SL{i:05d}", f"CUSTOMER {i}", f"A{i}", "JNB",
+                         100 + i, 1000 - i * 10, "TF", "Tracy Flandorp"))
+    # same account, second spelling, and a second rep and branch for coverage
+    rows.append(_row("SL00100", "CUSTOMER 0 (PTY) LTD", "A0", "CPT",
+                     50, 500, "CN", "Christine Naidoo"))
+    # prior same-weekday history so `typical` has something to average
+    rows.append(_row("SL00200", "CUSTOMER 1", "A1", "DUR", 10, 900, "TF",
+                     "Tracy Flandorp", PRIOR))
+
+    src = tmp_path / "wb.xlsx"
+    w = xlsxwriter.Workbook(str(src))
+    sh = w.add_worksheet()
+    # A date-only number format, so the reader hands back date and not datetime
+    # — build_flash compares Waybill Date to a date directly, as the real
+    # Parcel Perfect export allows.
+    dfmt = w.add_format({"num_format": "yyyy-mm-dd"})
+    for c, h in enumerate(HEADERS):
+        sh.write(0, c, h)
+    for r, vals in enumerate(rows, start=1):
+        for c, v in enumerate(vals):
+            if isinstance(v, date):
+                sh.write_datetime(r, c, v, dfmt)
+            else:
+                sh.write(r, c, v)
+    w.close()
+
+    out = build_flash.build(DAY, str(src), str(tmp_path))
+    return openpyxl.load_workbook(out, data_only=True)
+
+
+class TestPageOneStaysParseable:
+    """The contract build_billing_detail._flash_comparison relies on."""
+
+    def test_all_customers_is_not_the_first_sheet(self, workbook):
+        # openpyxl's .active is what the other builder opens.
+        assert workbook.active.title != build_flash.ALL_TAB
+        assert workbook.sheetnames[0] == workbook.active.title
+
+    def test_front_page_still_says_top_10_customers(self, workbook):
+        col_b = [c.value for c in workbook.active["B"]]
+        for header in PARSER_SECTIONS:
+            assert header in col_b, f"{header!r} missing — the parser will mis-section"
+
+    def test_rep_section_closes_before_the_customers(self, workbook):
+        """Replays the parser and asserts it sees reps, not customers."""
+        f, section, reps, branches = workbook.active, None, {}, {}
+        for row in f.iter_rows(min_col=2, max_col=3):
+            v = row[0].value
+            if v in PARSER_SECTIONS:
+                section = v
+            elif section == "BY BRANCH (origin)" and v and row[1].value is not None and v != "Branch":
+                branches[v] = row[1].value
+            elif section == "BY REP" and v and row[1].value is not None and v != "Rep":
+                reps[str(v).split(" — ")[0]] = row[1].value
+        assert set(reps) == {"TF", "CN"}
+        assert set(branches) == {"JHB", "Cape Town"}
+
+    def test_front_page_lists_ten_customers(self, workbook):
+        ws = workbook.active
+        start = next(r for r in range(1, ws.max_row + 1)
+                     if ws.cell(r, 2).value == "TOP 10 CUSTOMERS")
+        names = []
+        for r in range(start + 2, ws.max_row + 1):
+            v = ws.cell(r, 2).value
+            if v is None or ws.cell(r, 3).value is None:
+                break
+            names.append(v)
+        assert len(names) == 10
+
+
+class TestAllCustomersTab:
+    def test_lists_every_client_that_moved_freight(self, workbook):
+        ws = workbook[build_flash.ALL_TAB]
+        assert ws.cell(ws.max_row, 3).value == "12 clients"   # 13 rows, 12 accounts
+
+    def test_merges_name_variants_on_one_account(self, workbook):
+        ws = workbook[build_flash.ALL_TAB]
+        accounts = [ws.cell(r, 2).value for r in range(8, ws.max_row)]
+        assert len(accounts) == len(set(accounts)), "an account was split across rows"
+        assert "A0" in accounts
+
+    def test_total_reconciles_to_the_headline_revenue(self, workbook):
+        """The old top-ten block never tied to the KPI; this one must."""
+        kpi = workbook.active["B8"].value
+        ws = workbook[build_flash.ALL_TAB]
+        body = sum(ws.cell(r, 4).value for r in range(8, ws.max_row))
+        assert body == pytest.approx(kpi, abs=0.005)
+        assert ws.cell(ws.max_row, 4).value == pytest.approx(kpi, abs=0.005)
+
+    def test_waybills_and_kg_reconcile_too(self, workbook):
+        p1, ws = workbook.active, workbook[build_flash.ALL_TAB]
+        assert ws.cell(ws.max_row, 7).value == p1["D8"].value          # waybills
+        assert ws.cell(ws.max_row, 5).value == pytest.approx(p1["F8"].value)
+
+    def test_cumulative_share_reaches_one(self, workbook):
+        ws = workbook[build_flash.ALL_TAB]
+        assert ws.cell(ws.max_row - 1, 9).value == pytest.approx(1.0)
+
+    def test_rows_are_ordered_by_revenue(self, workbook):
+        ws = workbook[build_flash.ALL_TAB]
+        rev = [ws.cell(r, 4).value for r in range(8, ws.max_row)]
+        assert rev == sorted(rev, reverse=True)
+
+    def test_prints_with_repeating_headings(self, workbook):
+        """~100 rows a day — it gets printed, not just scrolled."""
+        ws = workbook[build_flash.ALL_TAB]
+        assert ws.print_title_rows == "$7:$7"
+        assert ws.page_setup.orientation == "landscape"

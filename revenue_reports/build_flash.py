@@ -1,6 +1,11 @@
-"""Build the Flash Revenue report — one-page same-day snapshot, waybill-date basis.
+"""Build the Flash Revenue report — same-day snapshot, waybill-date basis.
 
-Replicates Larry's "Flash Revenue - DD Mon YYYY.xlsx" (see replication guide).
+Page one replicates Larry's "Flash Revenue - DD Mon YYYY.xlsx" (see replication
+guide) and must stay that shape: build_billing_detail._flash_comparison re-reads
+the frozen workbook and finds its sections by scanning the first sheet for three
+literal headers. A second "All Customers" tab lists every client that moved
+freight that day — Larry's request of 4 Aug 2026, on its own tab so page one and
+the archive of already-frozen flashes both keep parsing.
 
 Usage:
     python build_flash.py --date 2026-07-27 \
@@ -45,6 +50,7 @@ BRANCH_MAP = {
 }
 BRANCH_ORDER = ["JHB", "Cape Town", "Durban", "Other"]
 HOLIDAY_GUARD = 0.5  # exclude same-weekday days below this fraction of median
+ALL_TAB = "All Customers"
 
 
 def build(day: date, wb_file: str, out_dir: str) -> str:
@@ -57,6 +63,7 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
     iREP = col(headers, "Salesrep")
     iREPN = col(headers, "Rep")
     iCUST = col(headers, "Customer")
+    iACC = col(headers, "Account")
 
     day_rows = [
         r for r in rows if r[iWD] == day and "~" not in str(r[iWB])
@@ -104,14 +111,22 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
         key=lambda t: -t[1],
     )
 
-    # top 10 customers
+    # Customers, keyed on Account rather than the name printed on the waybill:
+    # a handful of accounts carry two spellings of the same customer (94 names
+    # against 92 accounts on 3 Aug 2026), which would split those clients into
+    # two rows on the all-customers tab. The display name is the first spelling
+    # seen for the account.
     cust = defaultdict(lambda: [0.0, 0.0, 0])
+    cust_names = {}
     for r in day_rows:
-        c = str(r[iCUST])
-        cust[c][0] += r[iSUB] or 0
-        cust[c][1] += r[iKG] or 0
-        cust[c][2] += 1
-    top10 = sorted(((c, *v) for c, v in cust.items()), key=lambda t: -t[1])[:10]
+        a = str(r[iACC])
+        cust_names.setdefault(a, str(r[iCUST]))
+        cust[a][0] += r[iSUB] or 0
+        cust[a][1] += r[iKG] or 0
+        cust[a][2] += 1
+    customers = sorted(((a, cust_names[a], *v) for a, v in cust.items()),
+                       key=lambda t: -t[2])
+    top10 = [(name, *v) for _, name, *v in customers[:10]]
 
     # ---- write workbook ----
     weekday = day.strftime("%A")
@@ -211,9 +226,97 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
         ws.write(r + 2 + j, 3, ckg, num)
         ws.write(r + 2 + j, 4, rev / ckg if ckg else 0, dec)
         ws.write(r + 2 + j, 5, n, num)
+    ws.write(r + 2 + len(top10), 1,
+             f"Every client that moved freight on the {day.day}th is listed on the "
+             f"'{ALL_TAB}' tab.", fmt(border=0, font_size=8, font_color="#595959"))
+
+    _all_customers(wb, fmt, customers, revenue, title_date, weekday)
 
     wb.close()
     return out_path
+
+
+def _all_customers(wb, fmt, customers, revenue, title_date, weekday):
+    """Second tab: every client that moved freight that day.
+
+    Larry asked for all clients on 4 Aug 2026; the shape (full list on its own
+    tab, top ten left on the front page) was agreed the same morning. Around a
+    hundred rows on a typical day.
+
+    Deliberately a separate worksheet rather than an expanded front-page block:
+    build_billing_detail._flash_comparison re-reads the frozen flash and scans
+    the first sheet for the section headers "BY BRANCH (origin)", "BY REP" and
+    "TOP 10 CUSTOMERS". Renaming or lengthening that block in place would leave
+    the rep section open and pull every customer into it — 100 "reps" instead of
+    six, silently. Leaving page one untouched keeps that parser correct for both
+    the archive of frozen flashes and every run from here.
+    """
+    ws = wb.add_worksheet(ALL_TAB)
+    ws.set_tab_color(TAB_BILLING)
+    ws.hide_gridlines(2)
+    ws.set_column("A:A", 2)
+    for c_, w in zip("BCDEFGHI", [10, 34, 14, 12, 9, 10, 9, 10]):
+        ws.set_column(f"{c_}:{c_}", w)
+    for r_, h in {2: 24, 3: 30, 4: 16, 5: 4}.items():
+        ws.set_row(r_ - 1, h)
+
+    brand = fmt(border=0, bold=True, font_size=13, font_color=YELLOW, bg_color=NAVY)
+    title = fmt(border=0, bold=True, font_size=16, font_color="white", bg_color=NAVY)
+    subtitle = fmt(border=0, font_size=9, font_color="white", bg_color=NAVY2)
+    accent = fmt(border=0, bg_color=ORANGE)
+    th = fmt(bold=True, font_size=9, font_color="white", bg_color=NAVY2)
+
+    ws.merge_range("B2:I2", "SUNRISE LOGISTICS", brand)
+    ws.merge_range("B3:I3", f"All Customers — {title_date} ({weekday})", title)
+    ws.merge_range(
+        "B4:I4",
+        f"Every client that moved freight that day · {len(customers)} clients · "
+        f"grouped by account · waybill-date basis · gross Subtotal (ex-VAT) · ZAR",
+        subtitle)
+    ws.merge_range("B5:I5", "", accent)
+
+    hdr = ["Account", "Customer", "Revenue", "Chg kg", "R/kg", "Waybills",
+           "% of day", "Cumulative"]
+    for i, h in enumerate(hdr):
+        ws.write(6, 1 + i, h, th)
+    ws.freeze_panes(7, 1)                 # headings row 7, detail scrolls below
+
+    running = 0.0
+    rr = 7
+    for j, (acc, name, rev, ckg, n) in enumerate(customers):
+        running += rev
+        bg = ALT if j % 2 else "white"
+        txt = fmt(font_size=10, bg_color=bg)
+        num = fmt(font_size=10, font_color=BLUE, bg_color=bg, num_format="#,##0")
+        dec = fmt(font_size=10, font_color=BLUE, bg_color=bg, num_format="0.00")
+        pct = fmt(font_size=10, font_color=BLUE, bg_color=bg, num_format="0.0%")
+        ws.write(rr, 1, acc, txt)
+        ws.write(rr, 2, name, txt)
+        ws.write(rr, 3, rev, num)
+        ws.write(rr, 4, ckg, num)
+        ws.write(rr, 5, rev / ckg if ckg else 0, dec)
+        ws.write(rr, 6, n, num)
+        ws.write(rr, 7, rev / revenue if revenue else 0, pct)
+        ws.write(rr, 8, running / revenue if revenue else 0, pct)
+        rr += 1
+
+    tot = {"bold": True, "font_size": 10, "bg_color": ORANGE, "font_color": NAVY}
+    ws.write(rr, 1, "TOTAL", fmt(**tot))
+    ws.write(rr, 2, f"{len(customers)} clients", fmt(**tot))
+    ws.write(rr, 3, sum(c[2] for c in customers), fmt(num_format="#,##0", **tot))
+    kg_t = sum(c[3] for c in customers)
+    ws.write(rr, 4, kg_t, fmt(num_format="#,##0", **tot))
+    ws.write(rr, 5, revenue / kg_t if kg_t else 0, fmt(num_format="0.00", **tot))
+    ws.write(rr, 6, sum(c[4] for c in customers), fmt(num_format="#,##0", **tot))
+    ws.write(rr, 7, 1 if revenue else 0, fmt(num_format="0.0%", **tot))
+    ws.write(rr, 8, 1 if revenue else 0, fmt(num_format="0.0%", **tot))
+
+    # ~100 rows a day, so this one is meant to be printed as well as scrolled.
+    ws.set_landscape()
+    ws.set_paper(9)                       # A4
+    ws.fit_to_pages(1, 0)                 # one page wide, as many tall as needed
+    ws.repeat_rows(6)                     # headings on every printed page
+    ws.print_area(1, 1, rr, 8)
 
 
 if __name__ == "__main__":
