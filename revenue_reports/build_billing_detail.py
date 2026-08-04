@@ -31,7 +31,7 @@ from data import col, load_credit_sheet, load_export
 from style import (ALT, GREEN, NAVY, NAVY2, ORANGE, RED, RED_LIGHT, YELLOW, NUM, NUMP,
                    NUM1, NUM2, DEC2, PCT_SIGNED,
                    PCT1, Styles, TAB_BILLING, TAB_CREDIT, TAB_SUMMARY, H_BILLING, H_BILLING_LATE,
-                   freeze_below, set_rows, title_block)
+                   freeze_below, ordinal, set_rows, title_block)
 
 BRANCH_MAP = {
     "JNB": "JHB", "PRY": "JHB", "CPT": "Cape Town",
@@ -336,7 +336,7 @@ def _flash_comparison(wb, st, day, day_rows, ix, flash_file, long_date, inv_tota
     note = st.get(font_size=8, font_color="#595959", border=0)
     gap = f_rev - inv_total
     ws.merge_range(rr + 1, 1, rr + 1, 5,
-                   f"Reading the gap: waybills moved on the {day.day}th (R{f_rev:,.0f}) "
+                   f"Reading the gap: waybills moved on the {ordinal(day.day)} (R{f_rev:,.0f}) "
                    f"{'exceeded' if gap > 0 else 'trailed'} invoices raised that day (R{inv_total:,.0f}) by R{abs(gap):,.0f} "
                    f"({gap / inv_total:+.1%}) — normal invoicing lag; some of the day's shipments invoice on later days, "
                    f"and some of the day's invoices cover earlier waybills.", note)

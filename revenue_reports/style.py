@@ -71,6 +71,18 @@ H_BILLING_LATE = {9: 20.1}                 # credit-notes sub-tab, headings sit 
 H_FOOTNOTE = 13
 
 
+def ordinal(day: int) -> str:
+    """1 -> "1st", 3 -> "3rd", 11 -> "11th", 22 -> "22nd".
+
+    Two report footnotes built the suffix as a bare "th" and read "the 3th" and
+    "(to 31th)". Larry reads both daily. The teens are the case a naive
+    last-digit rule gets wrong, so they are special-cased first.
+    """
+    if 11 <= day % 100 <= 13:
+        return f"{day}th"
+    return f"{day}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th') }"
+
+
 def set_rows(ws, heights: dict):
     """Apply a {1-indexed row: height} map."""
     for row, h in heights.items():

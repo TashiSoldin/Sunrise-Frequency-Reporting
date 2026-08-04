@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta
 import xlsxwriter
 
 from data import col, load_export
-from style import ALT, NAVY, ORANGE, YELLOW, NUM, Styles, freeze_below, set_rows
+from style import ALT, NAVY, ORANGE, YELLOW, NUM, Styles, freeze_below, ordinal, set_rows
 from xlsxvalues import Vals
 
 # Parcel Perfect invoice-status codes (per PP manuals); ≤ 0 means not invoiced.
@@ -43,13 +43,24 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
         return v.date() if isinstance(v, datetime) else v
 
     if exclude_from is None:
-        last_invoiced = max((norm(r[ix["Waybill Date"]]) for r in rows
-                             if str(r[ix["Status"]]) == "Invoiced"
-                             and isinstance(norm(r[ix["Waybill Date"]]), date)),
-                            default=None)
-        if last_invoiced is None:
+        # The billing frontier is the last waybill date whose invoicing has run;
+        # anything after it is normal billing lag, not unbilled freight.
+        #
+        # Capture typos put a handful of waybills in years 2803, 3000 and 9473,
+        # and two of them are marked Invoiced. A plain max() therefore put the
+        # frontier in the year 9473 and excluded nothing, so every waybill still
+        # waiting for a normal invoice run was reported as unbilled: 1,050
+        # waybills and R3.07m on 3 Aug 2026 against 35-85 and R10-265k in
+        # Larry's own reports. A waybill cannot be invoiced before it ships, so
+        # future dates are rejected outright.
+        today = date.today()
+        dates = [d for r in rows
+                 if str(r[ix["Status"]]) == "Invoiced"
+                 and isinstance(d := norm(r[ix["Waybill Date"]]), date)
+                 and d <= today]
+        if not dates:
             raise SystemExit("No invoiced waybills found — cannot derive billing frontier.")
-        exclude_from = last_invoiced + timedelta(days=1)
+        exclude_from = max(dates) + timedelta(days=1)
 
     unbilled = []
     for r in rows:
@@ -129,7 +140,7 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
     for (y, m), n in sorted(by_month.items()):
         lab = date(y, m, 1).strftime("%b %Y")
         if (y, m) == (last.year, last.month):
-            lab += f" (to {last.day}th)"
+            lab += f" (to {ordinal(last.day)})"
         o.write(r, 0, lab, F(**body))
         o.write(r, 2, n, F(num_format=NUM, **body))
         r += 1

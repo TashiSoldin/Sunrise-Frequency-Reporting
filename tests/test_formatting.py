@@ -67,6 +67,36 @@ class TestEveryWorksheetIsColoured:
         )
 
 
+class TestOrdinal:
+    """Two footnotes Larry reads daily built the suffix as a bare "th" —
+    the Flash Comparison's "waybills moved on the 3th" and the unbilled
+    overview's "Jul 2026 (to 31th)". Teens are the case a naive last-digit
+    rule gets wrong, so they are pinned alongside the ones that motivated it.
+    """
+
+    @pytest.mark.parametrize("day, expected", [
+        (1, "1st"), (2, "2nd"), (3, "3rd"), (4, "4th"),
+        (11, "11th"), (12, "12th"), (13, "13th"),     # not 11st/12nd/13rd
+        (21, "21st"), (22, "22nd"), (23, "23rd"),
+        (30, "30th"), (31, "31st"),
+    ])
+    def test_suffix(self, day, expected):
+        from style import ordinal
+        assert ordinal(day) == expected
+
+    def test_every_day_of_a_month_is_covered(self):
+        from style import ordinal
+        for d in range(1, 32):
+            assert ordinal(d).startswith(str(d)) and ordinal(d)[len(str(d)):] in {
+                "st", "nd", "rd", "th"}
+
+    def test_no_builder_still_hand_rolls_the_suffix(self):
+        """The two sites are fixed; this stops a third appearing."""
+        offenders = [p.name for p in BUILDERS.glob("*.py")
+                     if re.search(r"\{[^}]*\.day[^}]*\}th", p.read_text())]
+        assert not offenders, f"bare 'th' suffix in {offenders} — use style.ordinal()"
+
+
 class TestFreezeBelow:
     def test_freezes_the_row_under_the_headings(self):
         """freeze_below(ws, 28) must produce B29 — headings visible, detail scrolls."""

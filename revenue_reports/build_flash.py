@@ -30,8 +30,8 @@ from datetime import date
 import xlsxwriter
 
 from data import col, load_export
-from style import (DEC2, GRID, H_BILLING, NUM, PCT1, TAB_BILLING, freeze_below,
-                   set_rows, title_block)
+from style import (DEC2, H_BILLING, NUM, PCT1, Styles, TAB_BILLING,
+                   freeze_below, set_rows, title_block)
 
 NAVY = "#05003C"
 NAVY2 = "#0A0050"
@@ -144,15 +144,14 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
     for r_, h in {2: 24, 3: 30, 4: 16, 5: 4}.items():
         ws.set_row(r_ - 1, h)
 
+    # Alias over the shared cache, matching build_unbilled's F and
+    # build_credit_notes' F. This used to hand-copy Styles' base dict — same
+    # values, second copy — which is how a change to the house defaults would
+    # have reached four builders and quietly skipped this one.
+    st = Styles(wb)
+
     def fmt(**kw):
-        # Same defaults as style.Styles: thin grey grid and vertical centring.
-        # This builder predates that shared helper and makes its own formats.
-        base = {"font_name": "Calibri", "valign": "vcenter",
-                "border": 1, "border_color": GRID}
-        base.update(kw)
-        if not base.get("border"):
-            base.pop("border_color", None)
-        return wb.add_format(base)
+        return st.get(**kw)
 
     brand = fmt(border=0, bold=True, font_size=13, font_color=YELLOW, bg_color=NAVY)
     title = fmt(border=0, bold=True, font_size=16, font_color="white", bg_color=NAVY)
