@@ -1,10 +1,21 @@
 """Verify the FY ceiling added to extraction_sql (commit 21fef49).
 
-Read-only. Runs SELECTs against Parcel Perfect, writes nothing, sends nothing,
-and does not touch the production export files. Safe to run at any time,
-including between the 07:00 and 16:30 jobs.
+Read-only against the database. Runs SELECTs only, sends nothing, and does not
+touch the production export files. Safe to run at any time, including between
+the 07:00 and 16:30 jobs.
 
-    uv run revenue_reports/verify_date_bounds.py
+    uv run revenue_reports/verify_date_bounds.py ^
+        --out-dir "<synced>\Dashboards and Data Analysis\2. Revenue Data\_diagnostics"
+
+Everything printed is also written to that folder, which is the synced working
+folder rather than the reports folder — the output is a diagnostic, not
+something Larry should find alongside his dailies. Two files, both dated:
+
+    date-bounds check YYYY-MM-DD.txt   the full run, exactly as printed
+    dropped rows YYYY-MM-DD.csv        every excluded row, for analysis
+
+Because it syncs, the results can be read off the share afterwards without a
+second RDP session. Omit --out-dir to print to the console only.
 
 What it answers, in order:
 
@@ -42,6 +53,8 @@ invoiced" might actually mean "never billed".
 
 from __future__ import annotations
 
+import argparse
+import csv
 import sys
 from collections import Counter
 from datetime import date
@@ -53,6 +66,23 @@ from extract_revenue import connect, extraction_sql, fetch, fy_end, fy_start  # 
 
 FLOOR_ONLY = "floor only (before the fix)"
 BOUNDED = "bounded (after the fix)"
+
+
+class Tee:
+    """Console and file at once, so the run can be read afterwards off the
+    share instead of needing a second RDP session to reproduce it."""
+
+    def __init__(self, path: Path | None):
+        self.fh = path.open("w", encoding="utf-8") if path else None
+
+    def __call__(self, line: str = "") -> None:
+        print(line)
+        if self.fh:
+            self.fh.write(line + "\n")
+
+    def close(self) -> None:
+        if self.fh:
+            self.fh.close()
 
 
 def floor_only_sql(basis: str, start: date) -> str:
@@ -75,52 +105,87 @@ def counts(conn, sql: str, date_col: str):
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--out-dir", default=None,
+                    help="Folder for the .txt log and dropped-rows .csv. Use the "
+                         "synced _diagnostics folder so the results can be read "
+                         "off the share afterwards. Omit to print only.")
+    args = ap.parse_args()
+
+    out_dir = Path(args.out_dir) if args.out_dir else None
+    if out_dir:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = date.today().isoformat()
+    say = Tee(out_dir / f"date-bounds check {stamp}.txt" if out_dir else None)
+    csv_rows: list[dict] = []
+
     start = fy_start()
-    print(f"FY window: {start} to {fy_end(start)} (exclusive)\n")
+    say(f"Date-bounds check — {stamp}")
+    say(f"FY window: {start} to {fy_end(start)} (exclusive)")
+    say("")
     conn = connect()
     try:
         for basis, date_col, label in (("wb", "WAYDATE", "WAYBILL-DATE FILE"),
                                        ("inv", "INVDATE", "INVOICE-DATE FILE")):
-            print("=" * 72)
-            print(label)
-            print("=" * 72)
+            say("=" * 72)
+            say(label)
+            say("=" * 72)
 
             cols_a, rows_a, tot_a, i_d, i_sub = counts(conn, floor_only_sql(basis, start), date_col)
             cols_b, rows_b, tot_b, _, _ = counts(conn, extraction_sql(basis, start), date_col)
 
-            print(f"  {FLOOR_ONLY:28} {len(rows_a):>8,} rows   R{tot_a:>16,.2f}")
-            print(f"  {BOUNDED:28} {len(rows_b):>8,} rows   R{tot_b:>16,.2f}")
-            print(f"  {'dropped by the ceiling':28} {len(rows_a) - len(rows_b):>8,} rows   "
-                  f"R{tot_a - tot_b:>16,.2f}")
+            say(f"  {FLOOR_ONLY:28} {len(rows_a):>8,} rows   R{tot_a:>16,.2f}")
+            say(f"  {BOUNDED:28} {len(rows_b):>8,} rows   R{tot_b:>16,.2f}")
+            say(f"  {'dropped by the ceiling':28} {len(rows_a) - len(rows_b):>8,} rows   "
+                f"R{tot_a - tot_b:>16,.2f}")
 
-            keys_b = {(r[cols_b.index('WAYBILL')], r[i_d]) for r in rows_b}
-            dropped = [r for r in rows_a if (r[cols_a.index('WAYBILL')], r[i_d]) not in keys_b]
+            i_wb = cols_a.index("WAYBILL")
+            keys_b = {(r[cols_b.index("WAYBILL")], r[i_d]) for r in rows_b}
+            dropped = [r for r in rows_a if (r[i_wb], r[i_d]) not in keys_b]
 
             if not dropped:
-                print("\n  Nothing dropped — as expected on the invoice side.\n")
+                say("")
+                say("  Nothing dropped — which is what the invoice side should show.")
+                say("")
                 continue
 
             years = Counter(d.year for r in dropped if isinstance(d := r[i_d], date))
-            print(f"\n  Dropped by year: {dict(sorted(years.items()))}")
-            print(f"  Dropped by status: "
-                  f"{dict(Counter(str(r[cols_a.index('STATUS')]) for r in dropped).most_common())}")
+            statuses = Counter(str(r[cols_a.index("STATUS")]) for r in dropped)
+            say("")
+            say(f"  Dropped by year: {dict(sorted(years.items()))}")
+            say(f"  Dropped by status: {dict(statuses.most_common())}")
 
-            print("\n  --- EVERY DROPPED ROW: check none of these is live freight ---")
-            show = ["WAYBILL", "STATUS", "CUSTNAME", "SUBTOTAL"]
-            idx = {c: cols_a.index(c) for c in show if c in cols_a}
-            cap = cols_a.index("CAPTUREDATE") if "CAPTUREDATE" in cols_a else None
-            inv = cols_a.index("INVDATE") if "INVDATE" in cols_a else None
-            for r in sorted(dropped, key=lambda r: str(r[i_d]))[:400]:
-                bits = [f"{str(r[i_d]):>12}"]
-                bits += [f"{str(r[idx[c]])[:26]:<26}" if c == "CUSTNAME"
-                         else f"{str(r[idx[c]])[:20]:<20}" for c in show if c in idx]
-                if cap is not None:
-                    bits.append(f"captured {str(r[cap])[:10]}")
-                if inv is not None and basis == "wb":
-                    bits.append(f"invoiced {str(r[inv])[:10]}")
-                print("   ", " | ".join(bits))
-            if len(dropped) > 400:
-                print(f"    ... and {len(dropped) - 400} more")
+            # Account split. On 4 Aug the R3.49m was 99% cash-before-delivery,
+            # which never reaches Invoiced because the money is taken up front.
+            # Only the named-account slice could mean genuinely unbilled work.
+            i_acc, i_cust = cols_a.index("ACCNUM"), cols_a.index("CUSTNAME")
+            cbd = [r for r in dropped if str(r[i_acc]).upper().startswith("CBD")]
+            named = [r for r in dropped if not str(r[i_acc]).upper().startswith("CBD")]
+            v = lambda g: sum(float(r[i_sub] or 0) for r in g)  # noqa: E731
+            say("")
+            say(f"  cash-before-delivery : {len(cbd):>5,} rows  R{v(cbd):>14,.2f}  (never invoiced by design)")
+            say(f"  named accounts       : {len(named):>5,} rows  R{v(named):>14,.2f}  (the only slice worth chasing)")
+
+            i_cap = cols_a.index("CAPTUREDATE")
+            near = sum(1 for r in dropped
+                       if isinstance(c := r[i_cap], date) and isinstance(d := r[i_d], date)
+                       and abs((d.replace(year=c.year) - c).days) <= 3)
+            say(f"  within 3 days of their capture date once the year is corrected: "
+                f"{near}/{len(dropped)} — a mis-keyed year rather than random corruption")
+
+            say("")
+            say("  --- EVERY DROPPED ROW: check none of these is live freight ---")
+            for r in sorted(dropped, key=lambda r: str(r[i_d])):
+                say(f"    {str(r[i_d]):>12} | {str(r[i_wb])[:16]:<16} | "
+                    f"{str(r[cols_a.index('STATUS')])[:22]:<22} | "
+                    f"{str(r[i_acc])[:8]:<8} | {str(r[i_cust])[:30]:<30} | "
+                    f"R{float(r[i_sub] or 0):>11,.2f} | captured {str(r[i_cap])[:10]}")
+                csv_rows.append({
+                    "basis": basis, "waybill": r[i_wb], "waybill_or_invoice_date": r[i_d],
+                    "status": r[cols_a.index("STATUS")], "account": r[i_acc],
+                    "customer": r[i_cust], "subtotal": float(r[i_sub] or 0),
+                    "capture_date": r[i_cap], "invoice_date": r[cols_a.index("INVDATE")],
+                })
 
             if basis == "wb":
                 def frontier(cols, rows):
@@ -129,13 +194,15 @@ def main() -> None:
                           and isinstance(d := r[cols.index("WAYDATE")], date)]
                     return max(ds) if ds else None
 
-                print("\n  Billing frontier (newest Invoiced waybill date):")
-                print(f"    {FLOOR_ONLY:28} {frontier(cols_a, rows_a)}")
-                print(f"    {BOUNDED:28} {frontier(cols_b, rows_b)}")
+                say("")
+                say("  Billing frontier (newest Invoiced waybill date):")
+                say(f"    {FLOOR_ONLY:28} {frontier(cols_a, rows_a)}")
+                say(f"    {BOUNDED:28} {frontier(cols_b, rows_b)}")
 
-                print("\n  --- INVERSE CHECK: rows the FLOOR may be wrongly excluding ---")
-                print("  A waybill whose real date is this FY but was keyed into a past")
-                print("  year is dropped by the floor, and neither query catches it.")
+                say("")
+                say("  --- INVERSE CHECK: rows the FLOOR may be wrongly excluding ---")
+                say("  A waybill whose real date is this FY but was keyed into a past")
+                say("  year is dropped by the floor, and neither query catches it.")
                 _, res = fetch(conn, f"""
                     SELECT COUNT(*), COALESCE(SUM(wba.SUBTOTAL), 0)
                     FROM VIEW_WBANALYSE wba
@@ -145,26 +212,37 @@ def main() -> None:
                       AND wba.STATUS <> 'Cancelled'
                 """)
                 n, val = res[0][0], float(res[0][1] or 0)
-                print(f"    dated before {start} but captured during this FY: "
-                      f"{n:,} rows, R{val:,.2f}")
-                print("    A handful is normal — genuine late capture of old freight.")
-                print("    Hundreds would mean the floor is losing real business, and")
-                print("    the same keying problem runs in both directions.")
-            print()
+                say(f"    dated before {start} but captured during this FY: "
+                    f"{n:,} rows, R{val:,.2f}")
+                say("    A handful is normal — genuine late capture of old freight.")
+                say("    Hundreds would mean the floor is losing real business, and")
+                say("    the same keying problem runs in both directions.")
+            say("")
     finally:
         conn.close()
 
-    print("=" * 72)
-    print("If the dropped rows are all clearly historic and the invoice side is")
-    print("unchanged, the ceiling is doing what it should. Then run:")
-    print()
-    print("  uv run revenue_reports/run_daily.py --only pm --no-email \\")
-    print('      --data-dir "<synced>\\Dashboards and Data Analysis\\2. Revenue Data" \\')
-    print('      --report-dir "%TEMP%\\verify"')
-    print()
-    print("and check the unbilled headline reads tens of waybills and tens of")
-    print("thousands of rand, not four figures and millions. --no-email means")
-    print("nothing reaches exco.")
+    say("=" * 72)
+    say("If the dropped rows are all clearly historic and the invoice side is")
+    say("unchanged, the ceiling is doing what it should. Then run:")
+    say("")
+    say("  uv run revenue_reports/run_daily.py --only pm --no-email \\")
+    say('      --data-dir  "<synced>\\Dashboards and Data Analysis\\2. Revenue Data" \\')
+    say('      --report-dir "<synced>\\Dashboards and Data Analysis\\2. Revenue Data\\_diagnostics"')
+    say("")
+    say("and check the unbilled headline reads tens of waybills and tens of")
+    say("thousands of rand, not four figures and millions. --no-email means")
+    say("nothing reaches exco, and _diagnostics keeps it out of the reports folder.")
+
+    if out_dir:
+        csv_path = out_dir / f"dropped rows {stamp}.csv"
+        if csv_rows:
+            with csv_path.open("w", newline="", encoding="utf-8") as fh:
+                w = csv.DictWriter(fh, fieldnames=list(csv_rows[0]))
+                w.writeheader()
+                w.writerows(csv_rows)
+        say("")
+        say(f"Written to {out_dir}")
+    say.close()
 
 
 if __name__ == "__main__":
