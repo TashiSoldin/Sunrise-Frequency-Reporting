@@ -107,6 +107,38 @@ class TestPageOneStaysParseable:
         assert set(reps) == {"TF", "CN"}
         assert set(branches) == {"JHB", "Cape Town"}
 
+    def test_by_rep_keeps_its_label_in_B_and_revenue_in_C(self, workbook):
+        """Chg kg and R/kg were added to BY REP on 4 Aug at Larry's request.
+
+        The flash comparison reads column B for the rep and column C for the
+        revenue. Inserting the new columns to the LEFT of revenue would have
+        fed it chargeable mass instead, with no error and a plausible-looking
+        variance — so the column order is a contract, not a layout choice.
+        """
+        ws = workbook.active
+        r = next(r for r in range(1, ws.max_row + 1)
+                 if ws.cell(r, 2).value == "BY REP")
+        assert [ws.cell(r + 1, c).value for c in range(2, 7)] == [
+            "Rep", "Revenue", "Chg kg", "R/kg", "Waybills"]
+        # first data row: revenue in C, and R/kg consistent with C / D
+        rev, kg, rate = (ws.cell(r + 2, c).value for c in (3, 4, 5))
+        assert rate == pytest.approx(rev / kg)
+
+    def test_the_comparison_still_reads_revenue_not_mass(self, workbook):
+        """Replays the other builder's parser and checks the figure it picks
+        up for a rep is that rep's revenue."""
+        ws = workbook.active
+        f_rep, section = {}, None
+        for row in ws.iter_rows(min_col=2, max_col=3):
+            v = row[0].value
+            if v in PARSER_SECTIONS:
+                section = v
+            elif section == "BY REP" and v and row[1].value is not None and v != "Rep":
+                f_rep[str(v).split(" — ")[0]] = row[1].value
+        # TF ships 12 waybills at 1000 down to 890, CN one at 500
+        assert f_rep["CN"] == 500
+        assert f_rep["TF"] == pytest.approx(sum(1000 - i * 10 for i in range(12)))
+
     def test_front_page_lists_ten_customers(self, workbook):
         ws = workbook.active
         start = next(r for r in range(1, ws.max_row + 1)

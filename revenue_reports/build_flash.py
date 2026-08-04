@@ -98,17 +98,20 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
         br[b][2] += 1
     branches = [(b, *br[b]) for b in BRANCH_ORDER if b in br]
 
-    # by rep (revenue > 0), display "CODE — Full Name"
-    rep = defaultdict(lambda: [0.0, 0])
+    # by rep (revenue > 0), display "CODE — Full Name".
+    # Chargeable mass and R/kg added at Larry's request, 4 Aug 2026, matching
+    # the columns the branch and customer blocks already carry.
+    rep = defaultdict(lambda: [0.0, 0.0, 0])
     rep_names = {}
     for r in day_rows:
         c = str(r[iREP])
         rep[c][0] += r[iSUB] or 0
-        rep[c][1] += 1
+        rep[c][1] += r[iKG] or 0
+        rep[c][2] += 1
         if r[iREPN]:
             rep_names[c] = str(r[iREPN])
     reps = sorted(
-        ((f"{c} — {rep_names.get(c, c)}", v[0], v[1]) for c, v in rep.items() if v[0] > 0),
+        ((f"{c} — {rep_names.get(c, c)}", *v) for c, v in rep.items() if v[0] > 0),
         key=lambda t: -t[1],
     )
 
@@ -207,13 +210,20 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
 
     r = r + 2 + len(branches) + 1  # gap row then BY REP
     ws.merge_range(r, 1, r, 6, "BY REP", section)
-    for i, h in enumerate(["Rep", "Revenue", "Waybills"]):
+    # Chg kg and R/kg go to the RIGHT of Revenue, so the block keeps its label
+    # in column B and its revenue in column C. build_billing_detail's flash
+    # comparison reads exactly those two columns out of the frozen workbook;
+    # putting the new columns anywhere else would silently feed it mass as
+    # revenue. Waybills moves from D to F, which nothing reads.
+    for i, h in enumerate(["Rep", "Revenue", "Chg kg", "R/kg", "Waybills"]):
         ws.write(r + 1, 1 + i, h, th)
-    for j, (name, rev, n) in enumerate(reps):
-        t, num, _ = row_fmts(j % 2)
+    for j, (name, rev, rkg, n) in enumerate(reps):
+        t, num, dec = row_fmts(j % 2)
         ws.write(r + 2 + j, 1, name, t)
         ws.write(r + 2 + j, 2, rev, num)
-        ws.write(r + 2 + j, 3, n, num)
+        ws.write(r + 2 + j, 3, rkg, num)
+        ws.write(r + 2 + j, 4, rev / rkg if rkg else 0, dec)
+        ws.write(r + 2 + j, 5, n, num)
 
     r = r + 2 + len(reps) + 1
     ws.merge_range(r, 1, r, 6, "TOP 10 CUSTOMERS", section)
