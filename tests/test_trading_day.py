@@ -89,20 +89,31 @@ class TestDegenerate:
 
 
 class TestUnbilledBillingFrontier:
-    """The same class of bug on the unbilled report, found 4 Aug 2026.
+    """End-to-end: does the report itself exclude normal billing lag?
 
-    build_unbilled derives its billing frontier from the newest INVOICED
-    waybill date, so that freight still waiting for a normal invoice run is
-    not reported as unbilled. Capture typos put a few waybills in years 2803,
-    3000 and 9473, and two of them are marked Invoiced — so a plain max() put
-    the frontier in the year 9473, excluded nothing, and reported 1,050
-    waybills worth R3.07m against 35-85 and R10-265k in Larry's own reports.
+    build_unbilled derives a billing frontier — the first day whose invoicing
+    has not run — so freight still waiting for a normal invoice run is not
+    reported as unbilled. Two things have broken it, and this class drives the
+    whole builder rather than the frontier function, so it fails if either
+    returns and if the wiring between them ever comes loose.
 
-    A waybill cannot be invoiced before it ships, so future dates are rejected.
+    Mis-keyed years put waybills in 2522 and 9473, two marked Invoiced, which
+    pushed a plain max() into the year 9473 and excluded nothing: 1,050
+    waybills and R3.07m against 35-85 and R10-265k in Larry's own reports.
+
+    Then one real, current, correctly-dated early invoice moved that same max
+    and took the report from R41k to R731k with nothing about the day changed.
+
+    Volumes here are realistic on purpose. An earlier version of this class
+    used four rows, which sits under MIN_WAYBILLS, so every case quietly ran
+    down the fallback branch and the main rule was never executed at all.
     """
 
     HEADERS = ["Waybill", "Waybill Date", "Account", "Customer", "Service",
                "Status", "Subtotal"]
+
+    JUL30, JUL31 = date(2026, 7, 30), date(2026, 7, 31)
+    AUG3 = date(2026, 8, 3)
 
     def _build(self, tmp_path, rows):
         import openpyxl
@@ -126,18 +137,26 @@ class TestUnbilledBillingFrontier:
         out = build_unbilled.build(str(src), str(tmp_path))
         return openpyxl.load_workbook(out, data_only=True)
 
-    def _rows(self, typo: bool):
-        """Freight invoiced to 31 Jul, one older genuinely-unbilled waybill,
-        and one still awaiting its invoice run."""
-        rows = [
-            ["SL1", date(2026, 7, 30), "A1", "C1", "RDF", "Invoiced", 100],
-            ["SL2", date(2026, 7, 31), "A1", "C1", "RDF", "Invoiced", 100],
-            ["SL3", date(2026, 7, 29), "A2", "C2", "RDF", "Ready for Approval", 500],
-            ["SL4", date(2026, 8, 3), "A3", "C3", "RDF", "Ready for Approval", 9000],
-        ]
+    def _wb(self, n, day, status, value, tag):
+        return [[f"{tag}{i:04d}", day, f"A{tag}", f"C{tag}", "RDF", status, value]
+                for i in range(n)]
+
+    def _rows(self, *, typo=False, aug3_invoiced=0, aug3_total=100):
+        """July invoiced and done; August shipped but not yet invoiced.
+
+        R500 of genuinely unbilled freight sits inside July — that is the only
+        figure the report should ever report here. August is billing lag.
+        """
+        rows = []
+        rows += self._wb(50, self.JUL30, "Invoiced", 100, "P")
+        rows += self._wb(50, self.JUL31, "Invoiced", 100, "Q")
+        rows += self._wb(1, date(2026, 7, 29), "Ready for Approval", 500, "U")
+        rows += self._wb(aug3_invoiced, self.AUG3, "Invoiced", 90, "V")
+        rows += self._wb(aug3_total - aug3_invoiced, self.AUG3,
+                         "Ready for Approval", 90, "W")
         if typo:
-            # a real one from the export: an Invoiced waybill keyed to year 9473
-            rows.append(["SL5", date(9473, 7, 5), "A4", "C4", "RDF", "Invoiced", 100])
+            # straight from the export: an Invoiced waybill keyed to year 9473
+            rows += self._wb(1, date(9473, 7, 5), "Invoiced", 100, "Z")
         return rows
 
     def _headline(self, wb):
@@ -146,20 +165,44 @@ class TestUnbilledBillingFrontier:
             if str(ws.cell(r, 1).value or "").startswith("Unbilled value"):
                 return ws.cell(r, 3).value
 
-    def test_future_dated_invoiced_waybill_does_not_disable_the_frontier(self, tmp_path):
-        clean = self._headline(self._build(tmp_path / "a", self._rows(typo=False)))
+    def test_august_is_billing_lag_not_unbilled_freight(self, tmp_path):
+        """The baseline: only the July waybill counts."""
+        assert self._headline(self._build(tmp_path, self._rows())) == 500
+
+    def test_a_year_9473_invoice_does_not_disable_the_frontier(self, tmp_path):
+        clean = self._headline(self._build(tmp_path / "a", self._rows()))
         typo = self._headline(self._build(tmp_path / "b", self._rows(typo=True)))
         assert clean == typo == 500, (
-            "the 3 Aug waybill is normal billing lag and must stay excluded; "
-            "a year-9473 Invoiced row must not move the frontier"
+            "a waybill dated 9473 must not move the frontier — that is the "
+            "defect that reported R3.07m on 3 Aug 2026"
         )
 
-    def test_the_lagging_waybill_is_what_gets_excluded(self, tmp_path):
-        """Guards the assertion above against passing for the wrong reason."""
-        wb = self._build(tmp_path, self._rows(typo=True))
+    def test_one_early_august_invoice_does_not_move_the_frontier(self, tmp_path):
+        """The 10:40 case: real, current, correctly dated, and it moved a max."""
+        wb = self._build(tmp_path, self._rows(aug3_invoiced=1))
+        assert self._headline(wb) == 500, (
+            "one invoice is not evidence that 3 August has been billed; "
+            "counting it drags all 99 remaining waybills in as unbilled"
+        )
+
+    def test_the_frontier_moves_once_august_is_really_invoiced(self, tmp_path):
+        """And it must still move when the day genuinely is done — 60 of 100
+        invoiced leaves 40 at R90 truly unbilled, plus the July 500."""
+        wb = self._build(tmp_path, self._rows(aug3_invoiced=60))
+        assert self._headline(wb) == 500 + 40 * 90
+
+    def test_the_lagging_waybills_are_the_ones_excluded(self, tmp_path):
+        """Guards the assertions above against passing for the wrong reason."""
+        wb = self._build(tmp_path, self._rows(typo=True, aug3_invoiced=1))
         detail = wb["Unbilled Detail"]
-        listed = {detail.cell(r, 2).value for r in range(2, detail.max_row + 1)}
-        assert "SL3" in listed and "SL4" not in listed
+        # Skip the trailing TOTAL row, which carries no waybill number.
+        listed = {v for r in range(2, detail.max_row + 1)
+                  if (v := detail.cell(r, 2).value)}
+        assert "U0000" in listed, "the genuinely unbilled July waybill is missing"
+        assert not any(w.startswith("W") for w in listed), \
+            "August waybills awaiting their invoice run must not be listed"
+        assert not any(w.startswith("Z") for w in listed), \
+            "the year-9473 waybill must not be listed"
 
 
 class TestExtractionIsBoundedAtBothEnds:
@@ -245,3 +288,41 @@ class TestBillingFrontierIsNotAPlainMax:
         rows = self._rows(aug3_invoiced=0)
         rows += [[date(2026, 8, 8), "Invoiced"]] * 3
         assert self._frontier(rows) == date(2026, 8, 1)
+
+
+class TestBillingFrontierFallback:
+    """The branch taken when no day is big enough to judge.
+
+    It exists so a first run, or a sparse file, still produces a report rather
+    than failing. It is the OLD rule, so it must keep the future-date guard —
+    otherwise a year-9473 row walks straight back in through the back door.
+
+    Covered explicitly because the end-to-end tests deliberately use realistic
+    volumes now, which means nothing else reaches this branch.
+    """
+
+    IX = {"Waybill Date": 0, "Status": 1}
+
+    @staticmethod
+    def _norm(v):
+        return v
+
+    def _frontier(self, rows):
+        import build_unbilled
+        return build_unbilled.billing_frontier(rows, self.IX, self._norm)
+
+    def test_a_sparse_file_still_yields_a_frontier(self):
+        rows = [[date(2026, 7, 31), "Invoiced"],
+                [date(2026, 8, 3), "Ready for Approval"]]
+        assert self._frontier(rows) == date(2026, 8, 1)
+
+    def test_the_fallback_still_rejects_future_dates(self):
+        rows = [[date(2026, 7, 31), "Invoiced"],
+                [date(9473, 7, 5), "Invoiced"]]
+        assert self._frontier(rows) == date(2026, 8, 1), \
+            "the fallback must not reintroduce the year-9473 defect"
+
+    def test_no_invoiced_waybills_at_all_is_an_error_not_a_guess(self):
+        import pytest
+        with pytest.raises(SystemExit):
+            self._frontier([[date(2026, 8, 3), "Ready for Approval"]])
