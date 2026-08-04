@@ -7,19 +7,19 @@ REM 16:30 set (dashboard, billing detail, unbilled, credit notes).
 REM
 REM   run_dryrun.bat
 REM
-REM --no-email is the whole point: nothing is sent, to anyone. Everything lands
-REM in the synced _diagnostics folder, so it can be checked off the share and
-REM cannot be mistaken for a real report or overwrite one.
+REM --no-email is the whole point: nothing is sent, to anyone. Output goes to
+REM _diagnostics\dryrun, which is wiped and rebuilt each run, so it can be read
+REM off the share and there is only ever one set of it.
 REM
 REM Why the copy below. run_daily looks for the previous morning's FROZEN flash
 REM in --report-dir, to build the billing detail's Flash Comparison tab. Point
-REM --report-dir at _diagnostics and it looks there, finds nothing, warns, and
+REM --report-dir elsewhere and it looks there, finds nothing, warns, and
 REM builds four tabs instead of five. That is not a failure, but it looks
 REM exactly like one — so the existing flashes are copied across first and the
 REM tab builds as it would in production. Copy, not move: the reports folder is
 REM left untouched.
 REM
-REM What to check afterwards, in _diagnostics:
+REM What to check afterwards, in _diagnostics\dryrun:
 REM
 REM   Flash Revenue - <day>.xlsx
 REM     Two sheets: the front page, and "All Customers".
@@ -48,12 +48,34 @@ set SYNCED=C:\Users\AkhaM\OneDrive - Sunrise Express\Claude General - Documents
 set REPORTS=%SYNCED%\Dashboards and Data Analysis
 set DATA=%REPORTS%\2. Revenue Data
 set DIAG=%DATA%\_diagnostics
+set OUT=%DIAG%\dryrun
 cd /d C:\Users\AkhaM\Sunrise-Frequency-Reporting
 
-if not exist "%DIAG%" mkdir "%DIAG%"
+REM Its own subfolder, wiped each run. A dry run produces files with exactly
+REM the production names — "Revenue Dashboard.xlsx" among them — and this
+REM project has already lost a reference workbook to filename ambiguity once.
+REM Keeping them in _diagnostics\dryrun, and only ever the latest set, means
+REM there is no second copy of anything to open by mistake.
+if exist "%OUT%" rd /s /q "%OUT%"
+mkdir "%OUT%"
+
+REM A note for anyone who finds this folder without context.
+> "%DIAG%\README.txt" echo These files are DIAGNOSTICS, not reports.
+>>"%DIAG%\README.txt" echo.
+>>"%DIAG%\README.txt" echo   dryrun\        output of run_dryrun.bat. Same filenames as the real
+>>"%DIAG%\README.txt" echo                  reports, built with --no-email to check a change before
+>>"%DIAG%\README.txt" echo                  a scheduled run sends anything. NOT the reports Larry
+>>"%DIAG%\README.txt" echo                  receives - those are in "Dashboards and Data Analysis".
+>>"%DIAG%\README.txt" echo                  Overwritten every run.
+>>"%DIAG%\README.txt" echo.
+>>"%DIAG%\README.txt" echo   date-bounds check *.txt / dropped rows *.csv
+>>"%DIAG%\README.txt" echo                  output of run_verify_bounds.bat, a read-only check of
+>>"%DIAG%\README.txt" echo                  the extraction date range. Safe to delete once read.
+>>"%DIAG%\README.txt" echo.
+>>"%DIAG%\README.txt" echo Nothing in here is sent to anyone, and nothing here is a source of truth.
 
 REM Frozen flashes, so the Flash Comparison tab builds as it does in production.
-copy /y "%REPORTS%\Flash Revenue - *.xlsx" "%DIAG%\" >nul 2>nul
+copy /y "%REPORTS%\Flash Revenue - *.xlsx" "%OUT%\" >nul 2>nul
 
 where uv >nul 2>nul
 if %ERRORLEVEL%==0 goto :use_uv
@@ -68,18 +90,18 @@ exit /b 1
 
 :use_uv
 uv run revenue_reports/run_daily.py --only all --no-email ^
-    --data-dir "%DATA%" --report-dir "%DIAG%"
+    --data-dir "%DATA%" --report-dir "%OUT%"
 goto :done
 
 :use_venv
 echo uv not on PATH — using the project venv instead.
 .venv\Scripts\python.exe revenue_reports\run_daily.py --only all --no-email ^
-    --data-dir "%DATA%" --report-dir "%DIAG%"
+    --data-dir "%DATA%" --report-dir "%OUT%"
 goto :done
 
 :done
 echo.
 echo All reports written to:
-echo   %DIAG%
+echo   %OUT%
 echo Nothing was emailed. The reports folder was not modified.
 exit /b %ERRORLEVEL%
