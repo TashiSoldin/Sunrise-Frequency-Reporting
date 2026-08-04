@@ -160,3 +160,30 @@ class TestUnbilledBillingFrontier:
         detail = wb["Unbilled Detail"]
         listed = {detail.cell(r, 2).value for r in range(2, detail.max_row + 1)}
         assert "SL3" in listed and "SL4" not in listed
+
+
+class TestExtractionIsBoundedAtBothEnds:
+    """The manual export names a date RANGE; this query only had a floor.
+
+    Parcel Perfect holds waybills with mis-keyed dates — 340 in the FY27 pull
+    on 4 Aug 2026, years 2520 to 9473, the two Invoiced ones on records
+    captured in October 2008. With no ceiling they all read as FY27. Larry's
+    own export never showed one: a waybill dated 9473 is outside March26-Feb27.
+    """
+
+    def test_both_bounds_are_in_the_query(self):
+        from extract_revenue import extraction_sql
+        sql = extraction_sql("wb", date(2026, 3, 1))
+        assert "wba.WAYDATE >= DATE '2026-03-01'" in sql
+        assert "wba.WAYDATE < DATE '2027-03-01'" in sql
+
+    def test_the_ceiling_closes_the_financial_year_that_start_opens(self):
+        from extract_revenue import fy_end
+        assert fy_end(date(2026, 3, 1)) == date(2027, 3, 1)
+        assert fy_end(date(2025, 3, 1)) == date(2026, 3, 1)
+
+    def test_invoice_basis_is_bounded_the_same_way(self):
+        from extract_revenue import extraction_sql
+        sql = extraction_sql("inv", date(2026, 3, 1))
+        assert "wba.INVDATE >= DATE '2026-03-01'" in sql
+        assert "wba.INVDATE < DATE '2027-03-01'" in sql

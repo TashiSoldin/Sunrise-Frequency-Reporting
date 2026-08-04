@@ -386,8 +386,26 @@ def fy_label(start: date) -> str:
     return f"March{start.year % 100} - Feb{(start.year + 1) % 100}"
 
 
+def fy_end(start: date) -> date:
+    """Exclusive upper bound — the 1 March that closes the FY opened by start."""
+    return date(start.year + 1, 3, 1)
+
+
 def extraction_sql(basis: str, start: date) -> str:
-    """The manual-export-equivalent query. basis: 'wb' or 'inv'."""
+    """The manual-export-equivalent query. basis: 'wb' or 'inv'.
+
+    Bounded at both ends, because the manual export names a date RANGE and this
+    query only had a floor. Parcel Perfect holds waybills with mis-keyed dates —
+    340 of them in the FY27 pull on 4 Aug 2026, in years from 2520 to 9473, the
+    two Invoiced ones on records actually captured in October 2008. With no
+    ceiling they all read as FY27 and arrived in the export; Larry's own export
+    never showed one, because a waybill dated 9473 falls outside March26-Feb27.
+
+    They carried R3.49m of waybill-basis revenue and broke the unbilled report's
+    billing frontier, which takes a max() over the date column. Anything doing
+    max()/min() over these dates is only as sound as the range that produced
+    them, so the fix belongs here rather than in each builder.
+    """
     date_col = {"wb": "WAYDATE", "inv": "INVDATE"}[basis]
     cols = ", ".join(f"wba.{c}" for c in DB_COLS)
     return f"""
@@ -399,6 +417,7 @@ def extraction_sql(basis: str, start: date) -> str:
         LEFT JOIN VIEW_USERCODE ru ON ru.USERCODE = rc.USERCODE
         LEFT JOIN WAYBILL wb2 ON wb2.WAYBILL = wba.WAYBILL
         WHERE wba.{date_col} >= DATE '{start.isoformat()}'
+          AND wba.{date_col} < DATE '{fy_end(start).isoformat()}'
           AND wba.WAYBILL NOT LIKE '%~%'
           AND wba.STATUS <> 'Cancelled';
     """
