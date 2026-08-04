@@ -30,7 +30,8 @@ from datetime import date
 import xlsxwriter
 
 from data import col, load_export
-from style import GRID, TAB_BILLING
+from style import (DEC2, GRID, H_BILLING, NUM, PCT1, TAB_BILLING, freeze_below,
+                   set_rows, title_block)
 
 NAVY = "#05003C"
 NAVY2 = "#0A0050"
@@ -227,7 +228,7 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
         ws.write(r + 2 + j, 4, rev / ckg if ckg else 0, dec)
         ws.write(r + 2 + j, 5, n, num)
     ws.write(r + 2 + len(top10), 1,
-             f"Every client that moved freight on the {day.day}th is listed on the "
+             f"Every client that moved freight on {title_date} is listed on the "
              f"'{ALL_TAB}' tab.", fmt(border=0, font_size=8, font_color="#595959"))
 
     _all_customers(wb, fmt, customers, revenue, title_date, weekday)
@@ -257,39 +258,44 @@ def _all_customers(wb, fmt, customers, revenue, title_date, weekday):
     ws.set_column("A:A", 2)
     for c_, w in zip("BCDEFGHI", [10, 34, 14, 12, 9, 10, 9, 10]):
         ws.set_column(f"{c_}:{c_}", w)
-    for r_, h in {2: 24, 3: 30, 4: 16, 5: 4}.items():
-        ws.set_row(r_ - 1, h)
 
-    brand = fmt(border=0, bold=True, font_size=13, font_color=YELLOW, bg_color=NAVY)
-    title = fmt(border=0, bold=True, font_size=16, font_color="white", bg_color=NAVY)
-    subtitle = fmt(border=0, font_size=9, font_color="white", bg_color=NAVY2)
-    accent = fmt(border=0, bg_color=ORANGE)
+    # Shared house helpers, not the hand-rolled equivalents the rest of this
+    # module uses: the layout that matters here is the billing detail's "By
+    # Customer" tab — the other long per-customer list in the suite — and the
+    # point of style.py is that those two stay in step. Column headings stay
+    # NAVY2 rather than the NAVY that tab uses, because this sheet lives in the
+    # flash workbook and Larry's 27 Jul flash reference puts every heading band
+    # at NAVY2. Checked, not assumed.
+    class _Shim:
+        get = staticmethod(fmt)
+
+    title_block(ws, _Shim, "I", "SUNRISE LOGISTICS",
+                f"All Customers — {title_date} ({weekday})",
+                f"Every client that moved freight that day · {len(customers)} clients · "
+                f"grouped by account · waybill-date basis · gross Subtotal (ex-VAT) · ZAR")
+    set_rows(ws, H_BILLING)               # heading row 21.9, or it renders tight
+
     th = fmt(bold=True, font_size=9, font_color="white", bg_color=NAVY2)
-
-    ws.merge_range("B2:I2", "SUNRISE LOGISTICS", brand)
-    ws.merge_range("B3:I3", f"All Customers — {title_date} ({weekday})", title)
-    ws.merge_range(
-        "B4:I4",
-        f"Every client that moved freight that day · {len(customers)} clients · "
-        f"grouped by account · waybill-date basis · gross Subtotal (ex-VAT) · ZAR",
-        subtitle)
-    ws.merge_range("B5:I5", "", accent)
-
     hdr = ["Account", "Customer", "Revenue", "Chg kg", "R/kg", "Waybills",
            "% of day", "Cumulative"]
     for i, h in enumerate(hdr):
         ws.write(6, 1 + i, h, th)
-    ws.freeze_panes(7, 1)                 # headings row 7, detail scrolls below
+    freeze_below(ws, 7)                   # B8 — headings held, detail scrolls
 
     running = 0.0
     rr = 7
     for j, (acc, name, rev, ckg, n) in enumerate(customers):
         running += rev
         bg = ALT if j % 2 else "white"
-        txt = fmt(font_size=10, bg_color=bg)
-        num = fmt(font_size=10, font_color=BLUE, bg_color=bg, num_format="#,##0")
-        dec = fmt(font_size=10, font_color=BLUE, bg_color=bg, num_format="0.00")
-        pct = fmt(font_size=10, font_color=BLUE, bg_color=bg, num_format="0.0%")
+        # Size 9, matching the billing detail's per-customer list. The flash's
+        # front page is 10, but that block is ten rows and this one is ~100.
+        # Black is set explicitly, not left to default: commit a712fe3 found the
+        # billing detail carrying no font colours at all, and "looks black" and
+        # "is black" diff differently.
+        txt = fmt(font_size=9, font_color="black", bg_color=bg)
+        num = fmt(font_size=9, font_color=BLUE, bg_color=bg, num_format=NUM)
+        dec = fmt(font_size=9, font_color=BLUE, bg_color=bg, num_format=DEC2)
+        pct = fmt(font_size=9, font_color=BLUE, bg_color=bg, num_format=PCT1)
         ws.write(rr, 1, acc, txt)
         ws.write(rr, 2, name, txt)
         ws.write(rr, 3, rev, num)
@@ -300,16 +306,16 @@ def _all_customers(wb, fmt, customers, revenue, title_date, weekday):
         ws.write(rr, 8, running / revenue if revenue else 0, pct)
         rr += 1
 
-    tot = {"bold": True, "font_size": 10, "bg_color": ORANGE, "font_color": NAVY}
+    tot = {"bold": True, "font_size": 9, "bg_color": ORANGE, "font_color": NAVY}
     ws.write(rr, 1, "TOTAL", fmt(**tot))
     ws.write(rr, 2, f"{len(customers)} clients", fmt(**tot))
-    ws.write(rr, 3, sum(c[2] for c in customers), fmt(num_format="#,##0", **tot))
+    ws.write(rr, 3, sum(c[2] for c in customers), fmt(num_format=NUM, **tot))
     kg_t = sum(c[3] for c in customers)
-    ws.write(rr, 4, kg_t, fmt(num_format="#,##0", **tot))
-    ws.write(rr, 5, revenue / kg_t if kg_t else 0, fmt(num_format="0.00", **tot))
-    ws.write(rr, 6, sum(c[4] for c in customers), fmt(num_format="#,##0", **tot))
-    ws.write(rr, 7, 1 if revenue else 0, fmt(num_format="0.0%", **tot))
-    ws.write(rr, 8, 1 if revenue else 0, fmt(num_format="0.0%", **tot))
+    ws.write(rr, 4, kg_t, fmt(num_format=NUM, **tot))
+    ws.write(rr, 5, revenue / kg_t if kg_t else 0, fmt(num_format=DEC2, **tot))
+    ws.write(rr, 6, sum(c[4] for c in customers), fmt(num_format=NUM, **tot))
+    ws.write(rr, 7, 1 if revenue else 0, fmt(num_format=PCT1, **tot))
+    ws.write(rr, 8, 1 if revenue else 0, fmt(num_format=PCT1, **tot))
 
     # ~100 rows a day, so this one is meant to be printed as well as scrolled.
     ws.set_landscape()

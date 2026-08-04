@@ -158,3 +158,63 @@ class TestAllCustomersTab:
         ws = workbook[build_flash.ALL_TAB]
         assert ws.print_title_rows == "$7:$7"
         assert ws.page_setup.orientation == "landscape"
+
+
+class TestMatchesTheHouseFormatting:
+    """Read off Larry's "Flash Revenue - 27 Jul 2026" reference and the billing
+    detail's "By Customer" tab — the other long per-customer list in the suite.
+
+    Formatting drift is the failure mode this project has actually had: five
+    passes over four days in early August restored tab colours, freezes, row
+    heights, fills, fonts and borders, none of which diff_workbooks.py could
+    see because it compares values. So the conventions get asserted.
+    """
+
+    def test_tab_is_coloured_like_the_rest_of_the_workbook(self, workbook):
+        ws = workbook[build_flash.ALL_TAB]
+        assert ws.sheet_properties.tabColor.rgb.endswith("FF6900")   # ORANGE
+
+    def test_headings_are_navy2_as_the_flash_reference_has_them(self, workbook):
+        """NAVY2, not the NAVY the billing detail uses — this sheet lives in
+        the flash workbook, whose every heading band is NAVY2."""
+        ws = workbook[build_flash.ALL_TAB]
+        for c in range(2, 10):
+            cell = ws.cell(7, c)
+            assert cell.fill.start_color.rgb.endswith("0A0050"), cell.value
+            assert cell.font.bold and cell.font.size == 9
+
+    def test_heading_row_carries_the_house_height(self, workbook):
+        """H_BILLING. Left unset it falls back to Excel's 15 and renders
+        noticeably tighter than Larry's — the exact drift style.py warns about."""
+        ws = workbook[build_flash.ALL_TAB]
+        assert ws.row_dimensions[7].height == pytest.approx(21.9)
+
+    def test_headings_stay_visible_when_the_detail_scrolls(self, workbook):
+        assert workbook[build_flash.ALL_TAB].freeze_panes == "B8"
+
+    def test_figures_are_blue_labels_black_and_rows_stripe(self, workbook):
+        ws = workbook[build_flash.ALL_TAB]
+        assert ws.cell(8, 4).font.color.rgb.endswith("0000FF")     # revenue
+        assert ws.cell(8, 3).font.color.rgb.endswith("000000")     # customer name
+        assert ws.cell(8, 3).fill.start_color.rgb.endswith("FFFFFF")
+        assert ws.cell(9, 3).fill.start_color.rgb.endswith("F0F0F8")   # ALT
+        assert ws.cell(8, 3).font.size == 9        # the long-list size, not 10
+
+    def test_every_populated_cell_is_boxed(self, workbook):
+        """The reference draws a thin D9D9D9 grid round every populated cell."""
+        ws = workbook[build_flash.ALL_TAB]
+        for r in (7, 8, ws.max_row):
+            for c in range(2, 10):
+                assert ws.cell(r, c).border.left.style == "thin", f"r{r}c{c}"
+
+    def test_number_formats_come_from_the_shared_constants(self, workbook):
+        from style import DEC2, NUM, PCT1
+        ws = workbook[build_flash.ALL_TAB]
+        assert ws.cell(8, 4).number_format == NUM      # revenue
+        assert ws.cell(8, 6).number_format == DEC2     # R/kg
+        assert ws.cell(8, 8).number_format == PCT1     # % of day
+
+    def test_total_row_is_the_house_orange_band(self, workbook):
+        ws = workbook[build_flash.ALL_TAB]
+        cell = ws.cell(ws.max_row, 2)
+        assert cell.fill.start_color.rgb.endswith("FF6900") and cell.font.bold
