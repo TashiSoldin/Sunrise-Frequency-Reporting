@@ -30,7 +30,7 @@ import xlsxwriter
 from data import col, load_credit_sheet, load_export
 from style import (ALT, GREEN, NAVY, NAVY2, ORANGE, RED, RED_LIGHT, YELLOW, NUM, NUMP,
                    NUM1, NUM2, DEC2, PCT_SIGNED,
-                   PCT1, Styles, TAB_BILLING, TAB_CREDIT, TAB_SUMMARY, H_BILLING, H_BILLING_LATE,
+                   Styles, TAB_BILLING, TAB_CREDIT, TAB_SUMMARY, H_BILLING, H_BILLING_LATE,
                    freeze_below, ordinal, set_rows, title_block)
 
 BRANCH_MAP = {
