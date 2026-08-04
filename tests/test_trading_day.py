@@ -187,3 +187,61 @@ class TestExtractionIsBoundedAtBothEnds:
         sql = extraction_sql("inv", date(2026, 3, 1))
         assert "wba.INVDATE >= DATE '2026-03-01'" in sql
         assert "wba.INVDATE < DATE '2027-03-01'" in sql
+
+
+class TestBillingFrontierIsNotAPlainMax:
+    """One invoice must not decide that a day is billed.
+
+    On 4 Aug 2026 invoicing had not run for August at all — 0 of 807 waybills
+    dated the 3rd were invoiced in the 07:13 export. By 10:40 a single early
+    invoice carrying a 3 Aug waybill date had moved max() from 31 Jul to 3 Aug,
+    which reclassified all of Monday's freight as unbilled and took the report
+    from R41k to R731k. Nothing about the day had changed.
+
+    Fixing the extract's date range does not help here: this row is real,
+    current and correctly dated. Only judging a day by the SHARE invoiced does.
+    """
+
+    IX = {"Waybill Date": 0, "Status": 1}
+
+    @staticmethod
+    def _norm(v):
+        return v
+
+    def _rows(self, aug3_invoiced: int):
+        """July fully invoiced, August not — plus however many early invoices
+        happen to carry a 3 August waybill date."""
+        rows = []
+        for day in (30, 31):
+            rows += [[date(2026, 7, day), "Invoiced"] for _ in range(700)]
+            rows += [[date(2026, 7, day), "Ready for Approval"] for _ in range(10)]
+        rows += [[date(2026, 8, 3), "Invoiced"] for _ in range(aug3_invoiced)]
+        rows += [[date(2026, 8, 3), "Ready for Approval"]
+                 for _ in range(807 - aug3_invoiced)]
+        return rows
+
+    def _frontier(self, rows):
+        import build_unbilled
+        return build_unbilled.billing_frontier(rows, self.IX, self._norm)
+
+    def test_one_early_invoice_does_not_move_the_frontier(self):
+        assert self._frontier(self._rows(aug3_invoiced=1)) == date(2026, 8, 1)
+
+    def test_nor_does_a_handful(self):
+        assert self._frontier(self._rows(aug3_invoiced=40)) == date(2026, 8, 1)
+
+    def test_the_frontier_moves_once_the_day_is_actually_invoiced(self):
+        assert self._frontier(self._rows(aug3_invoiced=500)) == date(2026, 8, 4)
+
+    def test_a_future_dated_invoice_is_still_rejected(self):
+        """The year-9473 case, kept from the earlier fix."""
+        rows = self._rows(aug3_invoiced=0)
+        rows += [[date(9473, 7, 5), "Invoiced"]] * 50
+        assert self._frontier(rows) == date(2026, 8, 1)
+
+    def test_a_quiet_day_is_too_small_to_judge(self):
+        """A Saturday carrying three waybills, all invoiced, is not evidence
+        that invoicing has reached Saturday."""
+        rows = self._rows(aug3_invoiced=0)
+        rows += [[date(2026, 8, 8), "Invoiced"]] * 3
+        assert self._frontier(rows) == date(2026, 8, 1)

@@ -34,6 +34,60 @@ STATUS_CODES = {
 }
 
 
+# A waybill date counts as invoiced once this share of its waybills have been.
+# Same spirit as HOLIDAY_GUARD in build_flash and TRADING_GUARD in run_daily:
+# one row is not evidence that a day is done.
+INVOICED_GUARD = 0.5
+MIN_WAYBILLS = 20   # ignore weekend and holiday days carrying a handful
+
+
+def billing_frontier(rows, ix, norm) -> date:
+    """First day that is NOT yet invoiced — everything from here on is normal
+    billing lag rather than unbilled freight.
+
+    Not `max(invoiced waybill date) + 1`, which is what this was and which
+    breaks twice over.
+
+    Mis-keyed years put waybills in 2522 and 9473, two of them marked Invoiced,
+    which pushed the frontier to the year 9473 and excluded nothing: 1,050
+    waybills and R3.07m reported on 3 Aug 2026 against 35-85 and R10-265k in
+    Larry's own reports. Bounding the extract to the financial year fixes that
+    at source, but a report should not depend on its input being clean.
+
+    The subtler half is that one invoice moves a max. On 4 Aug 2026 invoicing
+    had not run for August at all — 0 of 807 waybills dated the 3rd were
+    invoiced at 07:13 — yet by 10:40 a single early invoice carrying a 3 Aug
+    waybill date had moved the frontier from 1 Aug to the 4th, reclassifying
+    all of Monday's freight as unbilled and taking the report from R41k to
+    R731k. Nothing about the day had changed.
+
+    So walk back to the newest day whose invoicing has actually happened, by
+    share rather than presence, skipping days too small to judge.
+    """
+    today = date.today()
+    per_day = defaultdict(lambda: [0, 0])          # day -> [invoiced, total]
+    for r in rows:
+        d = norm(r[ix["Waybill Date"]])
+        if not isinstance(d, date) or d > today:   # cannot invoice before shipping
+            continue
+        cell = per_day[d]
+        cell[1] += 1
+        if str(r[ix["Status"]]) == "Invoiced":
+            cell[0] += 1
+
+    done = [d for d, (inv, tot) in per_day.items()
+            if tot >= MIN_WAYBILLS and inv / tot >= INVOICED_GUARD]
+    if done:
+        return max(done) + timedelta(days=1)
+
+    # Nothing clears the bar — a very new deployment, or a sparse file. Fall
+    # back to the old rule so the report still builds, rather than failing.
+    any_inv = [d for d, (inv, _) in per_day.items() if inv]
+    if not any_inv:
+        raise SystemExit("No invoiced waybills found — cannot derive billing frontier.")
+    return max(any_inv) + timedelta(days=1)
+
+
 def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
     headers, rows = load_export(wb_file)
     ix = {n: col(headers, n) for n in
@@ -43,24 +97,7 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
         return v.date() if isinstance(v, datetime) else v
 
     if exclude_from is None:
-        # The billing frontier is the last waybill date whose invoicing has run;
-        # anything after it is normal billing lag, not unbilled freight.
-        #
-        # Capture typos put a handful of waybills in years 2803, 3000 and 9473,
-        # and two of them are marked Invoiced. A plain max() therefore put the
-        # frontier in the year 9473 and excluded nothing, so every waybill still
-        # waiting for a normal invoice run was reported as unbilled: 1,050
-        # waybills and R3.07m on 3 Aug 2026 against 35-85 and R10-265k in
-        # Larry's own reports. A waybill cannot be invoiced before it ships, so
-        # future dates are rejected outright.
-        today = date.today()
-        dates = [d for r in rows
-                 if str(r[ix["Status"]]) == "Invoiced"
-                 and isinstance(d := norm(r[ix["Waybill Date"]]), date)
-                 and d <= today]
-        if not dates:
-            raise SystemExit("No invoiced waybills found — cannot derive billing frontier.")
-        exclude_from = max(dates) + timedelta(days=1)
+        exclude_from = billing_frontier(rows, ix, norm)
 
     unbilled = []
     for r in rows:
