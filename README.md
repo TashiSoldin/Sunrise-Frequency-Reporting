@@ -11,6 +11,7 @@ This system generates booking and frequency reports for the Sunrise application.
    uv venv --python 3.13
    uv sync
    ```
+3. Copy `.env.example` to `.env` and fill in the database and email credentials
 
 ## Running Reports
 
