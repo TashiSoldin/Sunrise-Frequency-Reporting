@@ -910,9 +910,12 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
     for j, (c, hrow, first, last, srow) in enumerate(sections):
         summary_row(r, REP_DISPLAY[c], srow, mk_fmt(ALT if j % 2 == 0 else "white"))
         r += 1
-    summary_row(r, "Rep-allocated selling book", sb_row, mk_fmt(YELLOW, True)); r += 1
-    summary_row(r, "House accounts (zeroed)", house_sub, mk_fmt("white")); r += 1
-    summary_row(r, "Closed / lost accounts", closed_sub, mk_fmt(ALT)); r += 1
+    summary_row(r, "Rep-allocated selling book", sb_row, mk_fmt(YELLOW, True))
+    r += 1
+    summary_row(r, "House accounts (zeroed)", house_sub, mk_fmt("white"))
+    r += 1
+    summary_row(r, "Closed / lost accounts", closed_sub, mk_fmt(ALT))
+    r += 1
     summary_row(r, "TOTAL — ALL ACCOUNTS", total_row, mk_fmt(ORANGE, True))
 
     # --- detail
