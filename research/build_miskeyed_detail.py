@@ -55,9 +55,9 @@ import xlsxwriter
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "revenue_reports"))
 
-from style import (ALT, BLUE, DEC2, GRID, NAVY, NAVY2, NUM, NUM1, NUM2,  # noqa: E402
-                   ORANGE, RED, Styles, TAB_BILLING, TAB_SUMMARY,
-                   freeze_below, set_rows, title_block)
+from style import (ALT, BLUE, DEC2, NAVY, NUM, NUM1, NUM2, ORANGE, RED,  # noqa: E402
+                   Styles, TAB_BILLING, TAB_SUMMARY, freeze_below, set_rows,
+                   title_block)
 
 # Export-header -> VIEW_WBANALYSE column, taken from extract_revenue's map.
 COLS = [
