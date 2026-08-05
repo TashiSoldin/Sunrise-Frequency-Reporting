@@ -46,7 +46,7 @@ def show(conn, title: str, sql: str) -> None:
     print(f"== {title} ==")
     try:
         print(query_df(conn, sql).to_string(index=False))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"(failed: {e})")
     print()
 

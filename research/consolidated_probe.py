@@ -44,7 +44,7 @@ def show(conn, title: str, sql: str) -> None:
     print(f"== {title} ==")
     try:
         print(query_df(conn, sql).to_string(index=False))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"(failed: {e})")
     print()
 
@@ -63,7 +63,7 @@ def main() -> None:
         df.to_csv(out, index=False)
         print(f"{len(df)} rows x {len(df.columns)} cols -> {out}")
         print(f"(Yes: {CONSOL_YES} / No: {CONSOL_NO})")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"(failed: {e})")
     print()
 
@@ -92,7 +92,7 @@ def main() -> None:
         out = f"credits_trial_{date.today().isoformat()}.csv"
         df.to_csv(out, index=False)
         print(f"{len(df)} rows -> {out}")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"(FAILED — paste this error back: {e})")
 
     conn.close()

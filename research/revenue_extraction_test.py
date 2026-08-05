@@ -87,7 +87,7 @@ def main() -> None:
     print("== 1. Connecting ==")
     try:
         conn = connect()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"CONNECTION FAILED: {e}")
         sys.exit(1)
     print("Connected OK.\n")

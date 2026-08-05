@@ -45,7 +45,7 @@ class _Tee:
     """Duplicate stdout to a file so the whole run lands on disk too."""
 
     def __init__(self, path: str):
-        self.file = open(path, "w", encoding="utf-8")  # noqa: SIM115
+        self.file = open(path, "w", encoding="utf-8")
         self.stdout = sys.stdout
 
     def write(self, s):
@@ -107,7 +107,7 @@ def main() -> None:
             else:
                 print(f"({n} rows — first 20)")
                 print(query_df(conn, f"SELECT FIRST 20 * FROM {rel}").to_string(index=False))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"(could not read: {e})")
     print()
 
@@ -155,7 +155,7 @@ def main() -> None:
             num_col = "RECEIPT" if "RECEIPT" in cols else cols[0]
             sample = query_df(conn, f"SELECT FIRST 10 * FROM {cand} WHERE {num_col} < 0")
             print(sample.to_string(index=False))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"(sample failed: {e})")
         break
     else:

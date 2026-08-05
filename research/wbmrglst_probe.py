@@ -45,7 +45,7 @@ def main() -> None:
                 print(f"rows for probe waybills: {len(hits)}")
                 if len(hits):
                     print(hits.to_string(index=False))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"(failed: {e})")
         print()
 

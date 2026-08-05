@@ -24,6 +24,22 @@ dev = [
     "pytest>=8.3.0",
 ]
 
+[tool.ruff.lint]
+# Rules deliberately switched off, with the reason. Everything ruff could fix
+# on its own has already been applied; these are the findings where the rule
+# disagrees with how this codebase is meant to work.
+ignore = [
+    "RUF012",  # mutable class attrs: colour/config dicts on enums and test fixtures
+    "DTZ",     # naive datetimes are intentional; single-timezone (SAST) reporting
+    "PIE796",  # enum members deliberately share the same colour value
+    "BLE001",  # broad excepts in one-off research/probe scripts are intentional
+    "B023",    # closures are invoked in the same iteration, not deferred
+    "SIM115",  # workbook/file handles are closed explicitly by the writers
+    "PLW1510", # subprocess.run return codes are inspected by the caller
+    "S110",    # malformed source rows are skipped on purpose
+    "S112",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
