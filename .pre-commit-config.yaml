@@ -4,7 +4,9 @@ repos:
   hooks:
     - id: uv-lock
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.8.0
+  # Keep in step with CI: chartboost/ruff-action@v1 is unpinned and installs the
+  # latest ruff, so an older rev here disagrees with the linter that gates the PR.
+  rev: v0.16.1
   hooks:
       - id: ruff
         types_or: [ python, pyi ]
