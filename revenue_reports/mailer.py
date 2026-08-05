@@ -1,15 +1,15 @@
 """Email delivery for the daily revenue reports.
 
 Thin wrapper over the SMTP client already used by the frequency/booking
-reports (report_generation/clients/outlook_email_client.py), so there is one
-sender mailbox and one set of credentials on the BI server.
+reports (report_generation/clients/outlook_email_client.py). The client is
+shared; the mailbox is not.
 
 Recipients live in code, matching enums/email_enums.py — they are config, not
-secrets. Only the sender credentials come from the server .env, using the same
-keys the existing reports already rely on:
+secrets. Only the sender credentials come from the server .env, using this
+module's own pair — not the SENDER_EMAIL_* keys the frequency reports rely on:
 
-    SENDER_EMAIL_ADDRESS=...
-    SENDER_EMAIL_PASSWORD=...      # app password
+    DASHBOARDS_EMAIL_ADDRESS=...
+    DASHBOARDS_EMAIL_PASSWORD=...  # app password
 
 For a test send, pass --to your@address on the run_daily.py command line rather
 than editing this file.
@@ -85,12 +85,12 @@ def send_reports(subject: str, intro: str, attachments: list[str],
         return
 
     load_dotenv()
-    sender = os.getenv("SENDER_EMAIL_ADDRESS")
-    password = os.getenv("SENDER_EMAIL_PASSWORD")
+    sender = os.getenv("DASHBOARDS_EMAIL_ADDRESS")
+    password = os.getenv("DASHBOARDS_EMAIL_PASSWORD")
     if not sender or not password:
         logger.error(
-            "SENDER_EMAIL_ADDRESS / SENDER_EMAIL_PASSWORD missing from .env — "
-            "the reports were built but not emailed."
+            "DASHBOARDS_EMAIL_ADDRESS / DASHBOARDS_EMAIL_PASSWORD missing "
+            "from .env — the reports were built but not emailed."
         )
         raise SystemExit(1)
 

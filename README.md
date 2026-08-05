@@ -132,12 +132,14 @@ Use `--no-email` or `--to` for any test run. Without them, exco gets the mail.
 
 Recipients are in code (`revenue_reports/mailer.py`), matching the convention in
 `report_generation/enums/email_enums.py` — they are config, not secrets. Sending
-reuses the existing SMTP client, so it needs the same two keys already in the
-server `.env`:
+reuses the existing SMTP client but not its mailbox, so the server `.env` needs
+two pairs, with no fallback between them:
 
 ```
-SENDER_EMAIL_ADDRESS=...
-SENDER_EMAIL_PASSWORD=...    # app password
+DASHBOARDS_EMAIL_ADDRESS=...   # dashboarding reports (revenue_reports/)
+DASHBOARDS_EMAIL_PASSWORD=...  # app password
+SENDER_EMAIL_ADDRESS=...       # frequency, booking, POD (report_generation/)
+SENDER_EMAIL_PASSWORD=...      # app password
 ```
 
 If either is missing the run fails after the workbooks are written, so the files
