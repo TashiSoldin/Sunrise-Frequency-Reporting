@@ -85,9 +85,16 @@ def waybills_from_csv(path: str) -> list[str]:
 
 
 def pull(waybills: list[str]):
-    """One read-only SELECT for those waybills."""
+    """One read-only SELECT for those waybills.
+
+    _clean is applied to every value, which fetch() does NOT do for you — its
+    callers in extract_revenue apply it themselves. Without it the money
+    columns arrive as Decimal, and xlsxwriter raises on the first Decimal it
+    is asked to write. That would fail after the query, so the cost is a
+    wasted round trip rather than a wrong number, but it is avoidable.
+    """
     sys.path.insert(0, str(HERE.parent / "revenue_reports"))
-    from extract_revenue import connect, fetch
+    from extract_revenue import _clean, connect, fetch
 
     sel = ", ".join(f"wba.{db}" for _, db in COLS)
     inlist = ", ".join("'" + w.replace("'", "''") + "'" for w in waybills)
@@ -97,7 +104,43 @@ def pull(waybills: list[str]):
         _, rows = fetch(conn, sql)
     finally:
         conn.close()
-    return [dict(zip([h for h, _ in COLS], r)) for r in rows]
+    heads = [h for h, _ in COLS]
+    return [{h: _clean(v) for h, v in zip(heads, r)} for r in rows]
+
+
+def reconcile(rows: list[dict], csv_path: str) -> None:
+    """Check the pull against Monday's listing before anything is built.
+
+    Three things can go wrong and none of them raise on their own: a waybill
+    that no longer exists, a waybill that comes back more than once, and a
+    subtotal that has moved since. The last would put two workbooks in front
+    of Larry that disagree, so it is worth a line of output either way.
+    """
+    was = {}
+    for r in csv.DictReader(open(csv_path, encoding="utf-8")):
+        was[str(r["waybill"])] = float(r["subtotal"] or 0)
+    got = defaultdict(list)
+    for r in rows:
+        got[str(r["Waybill"])].append(float(r["Subtotal"] or 0))
+
+    missing = sorted(set(was) - set(got))
+    dupes = sorted(w for w, v in got.items() if len(v) > 1)
+    moved = sorted(w for w, v in got.items()
+                   if w in was and abs(sum(v) - was[w]) > 0.005)
+
+    print(f"reconciliation against {Path(csv_path).name}:")
+    print(f"   expected {len(was)} waybills, pulled {len(rows)} rows "
+          f"for {len(got)} distinct waybills")
+    for label, items in (("not found in Parcel Perfect", missing),
+                         ("returned on more than one row", dupes),
+                         ("sub-total differs from Monday", moved)):
+        if items:
+            print(f"   ** {len(items)} {label}: {items[:10]}"
+                  f"{' ...' if len(items) > 10 else ''}", file=sys.stderr)
+        else:
+            print(f"   none {label}")
+    if not (missing or dupes or moved):
+        print("   clean — the pull matches Monday's listing exactly")
 
 
 def norm(v):
@@ -294,11 +337,7 @@ def main() -> None:
     else:
         wanted = waybills_from_csv(a.csv)
         rows = pull(wanted)
-        print(f"pulled {len(rows)} rows for {len(wanted)} waybill numbers")
-        missing = set(wanted) - {str(r["Waybill"]) for r in rows}
-        if missing:
-            print(f"WARNING: {len(missing)} not found in Parcel Perfect: "
-                  f"{sorted(missing)[:10]}", file=sys.stderr)
+        reconcile(rows, a.csv)
         if a.save_pull:
             with open(a.save_pull, "w", newline="", encoding="utf-8") as fh:
                 w = csv.DictWriter(fh, fieldnames=[h for h, _ in COLS])
