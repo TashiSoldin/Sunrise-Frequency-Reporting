@@ -19,11 +19,17 @@ REM
 REM The raw pull is saved to _diagnostics, so the layout can be reworked
 REM later with --from-export instead of querying again.
 REM
+REM Two steps: pull from the database, then rebuild the workbook with the line
+REM detail as a sixth tab. ONE workbook, not two files - "Mis-keyed Waybill
+REM Dates" and "Mis-keyed Waybills - line detail" side by side in the folder
+REM Larry was pointed at is the filename ambiguity that already cost this
+REM project a reference workbook.
+REM
 REM Output:
 REM   Dashboards and Data Analysis\Data Quality\
-REM     Mis-keyed Waybills - line detail - 04 Aug 2026.xlsx   <- the deliverable
+REM     Mis-keyed Waybill Dates - 04 Aug 2026.xlsx   <- 6 tabs, the deliverable
 REM   2. Revenue Data\_diagnostics\
-REM     miskeyed pull 2026-08-05.csv                          <- the raw pull
+REM     miskeyed pull 2026-08-05.csv                 <- the raw pull, reusable
 REM
 REM The raw pull goes to _diagnostics, not next to the deliverable: Data Quality
 REM is the folder Larry has been pointed at, and a loose CSV beside the workbook
@@ -34,6 +40,7 @@ set SYNCED=C:\Users\AkhaM\OneDrive - Sunrise Express\Claude General - Documents
 set REPORTS=%SYNCED%\Dashboards and Data Analysis
 set DIAG=%REPORTS%\2. Revenue Data\_diagnostics
 set OUT=%REPORTS%\Data Quality
+set PULL=%DIAG%\miskeyed pull 2026-08-05.csv
 cd /d C:\Users\AkhaM\Sunrise-Frequency-Reporting
 
 if not exist "%OUT%" mkdir "%OUT%"
@@ -64,14 +71,16 @@ echo.
 exit /b 1
 
 :use_uv
-uv run research/build_miskeyed_detail.py --csv "%SRC%" --out-dir "%OUT%" ^
-    --save-pull "%DIAG%\miskeyed pull 2026-08-05.csv"
+uv run research/build_miskeyed_detail.py --csv "%SRC%" --save-pull "%PULL%"
+if %ERRORLEVEL% NEQ 0 goto :done
+uv run research/build_miskeyed_waybills.py --csv "%SRC%" --out-dir "%OUT%" --detail "%PULL%"
 goto :done
 
 :use_venv
 echo uv not on PATH — using the project venv instead.
-.venv\Scripts\python.exe research\build_miskeyed_detail.py --csv "%SRC%" --out-dir "%OUT%" ^
-    --save-pull "%DIAG%\miskeyed pull 2026-08-05.csv"
+.venv\Scripts\python.exe research\build_miskeyed_detail.py --csv "%SRC%" --save-pull "%PULL%"
+if %ERRORLEVEL% NEQ 0 goto :done
+.venv\Scripts\python.exe research\build_miskeyed_waybills.py --csv "%SRC%" --out-dir "%OUT%" --detail "%PULL%"
 goto :done
 
 :done
@@ -83,6 +92,6 @@ if %ERRORLEVEL% NEQ 0 (
 )
 echo.
 echo Written to:
-echo   %OUT%\Mis-keyed Waybills - line detail - 04 Aug 2026.xlsx
-echo   %DIAG%\miskeyed pull 2026-08-05.csv
+echo   %OUT%\Mis-keyed Waybill Dates - 04 Aug 2026.xlsx   (6 tabs)
+echo   %PULL%
 exit /b 0
