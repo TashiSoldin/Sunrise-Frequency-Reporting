@@ -14,9 +14,13 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from research.revenue_extraction_test import connect, list_columns, query_df  # noqa: E402
-from research.revenue_extract_verify import _Tee  # noqa: E402
-from research.consolidated_probe import CONSOL_NO, CONSOL_YES  # noqa: E402
+from research.consolidated_probe import CONSOL_NO, CONSOL_YES
+from research.revenue_extract_verify import _Tee
+from research.revenue_extraction_test import (
+    connect,
+    list_columns,
+    query_df,
+)
 
 
 def main() -> None:

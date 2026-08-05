@@ -1,11 +1,10 @@
 import pandas as pd
-
 from clients.parcel_perfect_database_client import (
     ParcelPerfectDatabaseClient,
 )
 from enums.report_enums import ReportTypes
-from utils.retry_decorator import retry
 from utils.log_execution_time_decorator import log_execution_time
+from utils.retry_decorator import retry
 
 
 class DataExtractor:

@@ -21,19 +21,40 @@ Derivations reconciled against the 24 Jul 2026 reference:
 """
 
 import argparse
-import sys
 import os
+import sys
 from collections import defaultdict
 from datetime import date
 
 import openpyxl
 import xlsxwriter
-
 from data import col, load_credit_sheet, load_export
-from style import (ALT, GREEN, NAVY, NAVY2, ORANGE, RED, RED_LIGHT, YELLOW, NUM, NUMP,
-                   NUM1, NUM2, DEC2, PCT_SIGNED,
-                   Styles, TAB_BILLING, TAB_CREDIT, TAB_SUMMARY, H_BILLING, H_BILLING_LATE,
-                   freeze_below, ordinal, set_rows, title_block)
+from style import (
+    ALT,
+    DEC2,
+    GREEN,
+    H_BILLING,
+    H_BILLING_LATE,
+    NAVY,
+    NAVY2,
+    NUM,
+    NUM1,
+    NUM2,
+    NUMP,
+    ORANGE,
+    PCT_SIGNED,
+    RED,
+    RED_LIGHT,
+    TAB_BILLING,
+    TAB_CREDIT,
+    TAB_SUMMARY,
+    YELLOW,
+    Styles,
+    freeze_below,
+    ordinal,
+    set_rows,
+    title_block,
+)
 
 BRANCH_MAP = {
     "JNB": "JHB", "PRY": "JHB", "CPT": "Cape Town",

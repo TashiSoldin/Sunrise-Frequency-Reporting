@@ -24,12 +24,33 @@ from collections import defaultdict
 from datetime import date, datetime
 
 import xlsxwriter
-from python_calamine import CalamineWorkbook
-
 from data import col, load_credit_sheet, load_export
-from style import (ALT, BLUE, NAVY, NAVY2, ORANGE, YELLOW, NUM, NUMP, DEC2, PCT1, Styles,
-                   TAB_BILLING, TAB_CREDIT, TAB_DAILY, TAB_SUMMARY, H_CUSTOMER, H_CREDIT,
-                   H_DAILY, H_FOOTNOTE, H_TAB1, freeze_below, set_rows, title_block)
+from python_calamine import CalamineWorkbook
+from style import (
+    ALT,
+    BLUE,
+    DEC2,
+    H_CREDIT,
+    H_CUSTOMER,
+    H_DAILY,
+    H_FOOTNOTE,
+    H_TAB1,
+    NAVY,
+    NAVY2,
+    NUM,
+    NUMP,
+    ORANGE,
+    PCT1,
+    TAB_BILLING,
+    TAB_CREDIT,
+    TAB_DAILY,
+    TAB_SUMMARY,
+    YELLOW,
+    Styles,
+    freeze_below,
+    set_rows,
+    title_block,
+)
 from xlsxvalues import BLANK, Vals, div, ratio_less_1
 from xlsxvalues import sub as guarded_sub  # build_daily_tab has a local named sub
 

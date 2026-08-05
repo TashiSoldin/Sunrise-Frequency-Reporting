@@ -24,9 +24,13 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from research.revenue_extraction_test import connect, list_columns, query_df  # noqa: E402
-from research.revenue_extract_verify import _Tee  # noqa: E402
-from revenue_reports.extract_revenue import CREDITS_SQL  # noqa: E402
+from research.revenue_extract_verify import _Tee
+from research.revenue_extraction_test import (
+    connect,
+    list_columns,
+    query_df,
+)
+from revenue_reports.extract_revenue import CREDITS_SQL
 
 # Iteration 5 sample: DIVERSE account/service pairs — each Yes has a No from
 # the SAME account + service (first sample was confounded: one account/invoice).

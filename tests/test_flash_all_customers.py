@@ -25,7 +25,7 @@ REPO = Path(__file__).resolve().parent.parent
 BUILDERS = REPO / "revenue_reports"
 sys.path.insert(0, str(BUILDERS))
 
-import build_flash  # noqa: E402
+import build_flash
 
 # Headers _flash_comparison switches on. Copied deliberately rather than
 # imported: they are string literals in the other builder, and the point of

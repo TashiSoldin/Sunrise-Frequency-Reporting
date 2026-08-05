@@ -31,8 +31,12 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from research.revenue_extraction_test import connect, list_columns, query_df  # noqa: E402
-from revenue_reports.extract_revenue import DB_COLS  # noqa: E402
+from research.revenue_extraction_test import (
+    connect,
+    list_columns,
+    query_df,
+)
+from revenue_reports.extract_revenue import DB_COLS
 
 WINDOW = ("2026-07-22", "2026-07-27")
 

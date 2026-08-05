@@ -28,10 +28,18 @@ from collections import defaultdict
 from datetime import date
 
 import xlsxwriter
-
 from data import col, load_export
-from style import (DEC2, H_BILLING, NUM, PCT1, Styles, TAB_BILLING,
-                   freeze_below, set_rows, title_block)
+from style import (
+    DEC2,
+    H_BILLING,
+    NUM,
+    PCT1,
+    TAB_BILLING,
+    Styles,
+    freeze_below,
+    set_rows,
+    title_block,
+)
 
 NAVY = "#05003C"
 NAVY2 = "#0A0050"

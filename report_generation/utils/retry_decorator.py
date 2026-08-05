@@ -1,7 +1,7 @@
 import functools
 import logging
 import time
-from typing import Callable, Union
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +10,7 @@ def retry(
     max_attempts: int = 3,
     delay: int = 5,
     backoff: int = 2,
-    exceptions: Union[Exception, list[Exception]] = Exception,
+    exceptions: Exception | list[Exception] = Exception,
 ) -> Callable:
     """
     Retry decorator with exponential backoff for functions.
@@ -36,11 +36,11 @@ def retry(
                     return func(*args, **kwargs)
                 except exceptions as e:
                     if attempt == max_attempts:
-                        logger.error(f"Failed after {max_attempts} attempts: {str(e)}")
+                        logger.error(f"Failed after {max_attempts} attempts: {e!s}")
                         raise
 
                     logger.warning(
-                        f"Attempt {attempt} failed: {str(e)}. "
+                        f"Attempt {attempt} failed: {e!s}. "
                         f"Retrying in {current_delay} seconds..."
                     )
                     time.sleep(current_delay)

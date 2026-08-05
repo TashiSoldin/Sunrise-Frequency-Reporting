@@ -19,10 +19,22 @@ from collections import defaultdict
 from datetime import date
 
 import xlsxwriter
-
 from data import excel_serial_to_date  # noqa: F401  (used via Credits loader pattern)
-from style import (ALT, NAVY, NAVY2, ORANGE, YELLOW, NUM, NUM2, PCT1, Styles,
-                   TAB_CREDIT, TAB_SUMMARY, freeze_below, set_rows, title_block)
+from style import (
+    ALT,
+    NAVY,
+    NAVY2,
+    NUM,
+    NUM2,
+    ORANGE,
+    PCT1,
+    TAB_CREDIT,
+    TAB_SUMMARY,
+    Styles,
+    freeze_below,
+    set_rows,
+    title_block,
+)
 from xlsxvalues import Vals, div
 
 CREDIT_TYPES = ("Credit Note", "Journal Credit")

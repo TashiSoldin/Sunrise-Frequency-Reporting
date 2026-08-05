@@ -21,7 +21,7 @@ REPO = Path(__file__).resolve().parent.parent
 BUILDERS = REPO / "revenue_reports"
 sys.path.insert(0, str(BUILDERS))
 
-from xlsxvalues import MissingFormulaValue, Vals, div, ratio_less_1, sub  # noqa: E402
+from xlsxvalues import MissingFormulaValue, Vals, div, ratio_less_1, sub
 
 BUILDER_FILES = sorted(BUILDERS.glob("build_*.py"))
 

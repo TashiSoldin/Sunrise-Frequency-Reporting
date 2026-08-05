@@ -14,8 +14,13 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "revenue_reports"))
 
-from build_dashboard import (  # noqa: E402
-    MONTHS_FY, cal_year, fy_label, fy_start_year, month_trading_days, month_win,
+from build_dashboard import (
+    MONTHS_FY,
+    cal_year,
+    fy_label,
+    fy_start_year,
+    month_trading_days,
+    month_win,
 )
 
 

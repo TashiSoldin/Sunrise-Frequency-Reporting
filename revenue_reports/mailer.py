@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "report_generation"))
 
-from clients.outlook_email_client import OutlookEmailClient  # noqa: E402
+from clients.outlook_email_client import OutlookEmailClient
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "revenue_reports"))
 
-from run_daily import last_trading_day  # noqa: E402
+from run_daily import last_trading_day
 
 MON = date(2026, 8, 3)
 
@@ -116,10 +116,9 @@ class TestUnbilledBillingFrontier:
     AUG3 = date(2026, 8, 3)
 
     def _build(self, tmp_path, rows):
+        import build_unbilled
         import openpyxl
         import xlsxwriter
-
-        import build_unbilled
         tmp_path.mkdir(parents=True, exist_ok=True)
         src = tmp_path / "wb.xlsx"
         w = xlsxwriter.Workbook(str(src))

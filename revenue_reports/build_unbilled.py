@@ -17,9 +17,18 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 import xlsxwriter
-
 from data import col, load_export
-from style import ALT, NAVY, ORANGE, YELLOW, NUM, Styles, freeze_below, ordinal, set_rows
+from style import (
+    ALT,
+    NAVY,
+    NUM,
+    ORANGE,
+    YELLOW,
+    Styles,
+    freeze_below,
+    ordinal,
+    set_rows,
+)
 from xlsxvalues import Vals
 
 # Parcel Perfect invoice-status codes (per PP manuals); ≤ 0 means not invoiced.

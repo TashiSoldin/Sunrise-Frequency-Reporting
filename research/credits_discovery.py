@@ -26,8 +26,12 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from research.revenue_extraction_test import connect, list_columns, query_df  # noqa: E402
-from research.revenue_extract_verify import _Tee  # noqa: E402
+from research.revenue_extract_verify import _Tee
+from research.revenue_extraction_test import (
+    connect,
+    list_columns,
+    query_df,
+)
 
 # From the 28 Jul manual WB export (22-27 Jul window):
 CONSOL_YES = ["BSC3254638", "BSC3254926", "BSC3254931", "BSC3254932",

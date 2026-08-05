@@ -19,7 +19,16 @@ REPO = Path(__file__).resolve().parent.parent
 BUILDERS = REPO / "revenue_reports"
 sys.path.insert(0, str(BUILDERS))
 
-from style import NAVY, ORANGE, RED, TAB_BILLING, TAB_CREDIT, TAB_DAILY, TAB_SUMMARY, YELLOW  # noqa: E402
+from style import (
+    NAVY,
+    ORANGE,
+    RED,
+    TAB_BILLING,
+    TAB_CREDIT,
+    TAB_DAILY,
+    TAB_SUMMARY,
+    YELLOW,
+)
 
 # Read straight off Larry's reference of 28 Jul 2026 (dashboard) and 24 Jul
 # (billing detail), via openpyxl's sheet_properties.tabColor.

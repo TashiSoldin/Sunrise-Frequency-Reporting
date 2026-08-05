@@ -1,21 +1,21 @@
 import argparse
 import logging
-from logging.handlers import TimedRotatingFileHandler
 import os
+from logging.handlers import TimedRotatingFileHandler
 
 from enums.email_enums import EmailConfig, EmailConfigs
 from enums.report_enums import ReportTypes
-from helpers.os_helper import OSHelper
 from helpers.datetime_helper import DatetimeHelper
+from helpers.os_helper import OSHelper
 from models.data_extractor import DataExtractor
 from models.data_manipulator import DataManipulator
 from models.email_sender import EmailSender
 from reports.booking_reports import BookingReports
+from reports.champion_reports import ChampionReports
 from reports.frequency_reports import FrequencyReports
 from reports.pod_agent_reports import PodAgentReports
 from reports.pod_ocd_reports import PodOcdReports
 from reports.summary_reports import SummaryReports
-from reports.champion_reports import ChampionReports
 from utils.log_execution_time_decorator import log_execution_time
 
 # Create logs directory if it doesn't exist
@@ -238,7 +238,7 @@ class ReportGeneration:
 
             logger.info("Reports generated successfully!")
         except Exception as e:
-            logger.error(f"Report generation failed: {str(e)}")
+            logger.error(f"Report generation failed: {e!s}")
             raise
 
     @classmethod
@@ -253,7 +253,7 @@ class ReportGeneration:
             report_gen.generate_reports(report_types)
             logger.info("Report generation completed successfully")
         except Exception as e:
-            logger.error(f"Report generation failed: {str(e)}")
+            logger.error(f"Report generation failed: {e!s}")
             raise
 
         # OSHelper.run_in_terminal("networksetup -disconnectpppoeservice SunriseVPN")
@@ -301,7 +301,7 @@ def main() -> None:
     try:
         ReportGeneration.run(output_file_path, report_types)
     except Exception as e:
-        logger.error(f"Report generation failed: {str(e)}")
+        logger.error(f"Report generation failed: {e!s}")
         exit(1)
 
 

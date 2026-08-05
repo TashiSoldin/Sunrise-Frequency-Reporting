@@ -40,7 +40,7 @@ def invalid_escapes(path: Path):
         prefix = re.match(r"[A-Za-z]*", tok.string).group().lower()
         if "r" in prefix or "b" in prefix:      # raw and bytes are exempt
             continue
-        for m in re.finditer(r"\\(.)", tok.string, re.S):
+        for m in re.finditer(r"\\(.)", tok.string, re.DOTALL):
             if m.group(1) not in VALID:
                 out.append((tok.start[0], "\\" + m.group(1)))
     return out

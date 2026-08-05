@@ -62,9 +62,9 @@ REPO_ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO_ROOT / "report_generation"))
 
-from data import col, load_export  # noqa: E402
-from mailer import flash_subject, pm_subject, send_reports  # noqa: E402
-from utils.log_execution_time_decorator import log_execution_time  # noqa: E402
+from data import col, load_export
+from mailer import flash_subject, pm_subject, send_reports
+from utils.log_execution_time_decorator import log_execution_time
 
 LOGS_DIR = REPO_ROOT / "logs" / "run_revenue"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -298,7 +298,7 @@ def main() -> None:
     except SystemExit:
         raise
     except Exception as e:
-        logger.error(f"Revenue pipeline failed: {str(e)}")
+        logger.error(f"Revenue pipeline failed: {e!s}")
         raise SystemExit(1)
     logger.info("Revenue pipeline completed successfully")
 

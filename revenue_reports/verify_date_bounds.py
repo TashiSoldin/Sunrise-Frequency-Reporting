@@ -80,7 +80,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from extract_revenue import connect, extraction_sql, fetch, fy_end, fy_start  # noqa: E402
+from extract_revenue import (
+    connect,
+    extraction_sql,
+    fetch,
+    fy_end,
+    fy_start,
+)
 
 FLOOR_ONLY = "floor only (before the fix)"
 BOUNDED = "bounded (after the fix)"
@@ -179,7 +185,7 @@ def main() -> None:
             i_acc, i_cust = cols_a.index("ACCNUM"), cols_a.index("CUSTNAME")
             cbd = [r for r in dropped if str(r[i_acc]).upper().startswith("CBD")]
             named = [r for r in dropped if not str(r[i_acc]).upper().startswith("CBD")]
-            v = lambda g: sum(float(r[i_sub] or 0) for r in g)  # noqa: E731
+            v = lambda g: sum(float(r[i_sub] or 0) for r in g)
             say("")
             say(f"  cash-before-delivery : {len(cbd):>5,} rows  R{v(cbd):>14,.2f}  (never invoiced by design)")
             say(f"  named accounts       : {len(named):>5,} rows  R{v(named):>14,.2f}  (the only slice worth chasing)")
@@ -194,7 +200,7 @@ def main() -> None:
             say("")
             say("  --- EVERY DROPPED ROW: check none of these is live freight ---")
             for r in sorted(dropped, key=lambda r: str(r[i_d])):
-                say(f"    {str(r[i_d]):>12} | {str(r[i_wb])[:16]:<16} | "
+                say(f"    {r[i_d]!s:>12} | {str(r[i_wb])[:16]:<16} | "
                     f"{str(r[cols_a.index('STATUS')])[:22]:<22} | "
                     f"{str(r[i_acc])[:8]:<8} | {str(r[i_cust])[:30]:<30} | "
                     f"R{float(r[i_sub] or 0):>11,.2f} | captured {str(r[i_cap])[:10]}")
