@@ -195,6 +195,14 @@ def build(rows: list[dict], out_dir: str) -> str:
         r["_likely"] = likely_date(r["_wb"], r["_cap"])
         r["_sub"] = float(r["Subtotal"] or 0)
         r["_invoiced"] = str(r["Status"]) == "Invoiced"
+        # The INVOICE column is not an invoice number until a waybill is
+        # invoiced — until then it carries the Parcel Perfect status code:
+        # 0 Ready for Approval, -99 Approved for Invoicing, -7 No Rate Found,
+        # -6 Recalc Required, -1 Summary Capture. The daily Billing Detail
+        # never meets these because it only ever lists invoiced lines, so the
+        # first build of this report printed "-99" under Invoice # on 82 rows
+        # while the Overview said the column was empty.
+        r["_invno"] = (int(r["Invoice"]) if r["_invoiced"] and r["Invoice"] else "")
         b, o, s_, f = (float(r[k] or 0) for k in
                        ("Basic Charge", "Outlying Charge", "Doc Charge", "Fuel"))
         r["_parts"] = (b, o, s_, f, r["_sub"] - b - o - s_ - f)
@@ -283,9 +291,7 @@ def build(rows: list[dict], out_dir: str) -> str:
             pcs = float(ln["Pieces"] or 0)
             akg = float(ln["Actual Mass"] or 0)
             ckg = float(ln["Chrg Mass"] or 0)
-            vals = [str(ln["Waybill"]), ln["_wb"], ln["_likely"],
-                    (int(ln["Invoice"]) if isinstance(ln["Invoice"], float)
-                     and ln["Invoice"] else (ln["Invoice"] or "")),
+            vals = [str(ln["Waybill"]), ln["_wb"], ln["_likely"], ln["_invno"],
                     acct, str(ln["Customer"]), str(ln["Shipper"] or ""),
                     str(ln["Consignee"] or ""), str(ln["Orig Hub"] or ""),
                     str(ln["Dest Hub"] or ""), str(ln["Dest Place"] or ""),
