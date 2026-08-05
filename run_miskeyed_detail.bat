@@ -75,7 +75,14 @@ echo uv not on PATH — using the project venv instead.
 goto :done
 
 :done
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo FAILED with exit code %ERRORLEVEL% — nothing was written.
+    echo The message above says why.
+    exit /b %ERRORLEVEL%
+)
 echo.
 echo Written to:
-echo   %OUT%
-exit /b %ERRORLEVEL%
+echo   %OUT%\Mis-keyed Waybills - line detail - 04 Aug 2026.xlsx
+echo   %DIAG%\miskeyed pull 2026-08-05.csv
+exit /b 0

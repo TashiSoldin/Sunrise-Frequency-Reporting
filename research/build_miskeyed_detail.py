@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import re
 import sys
 from collections import defaultdict
 from datetime import date, datetime
@@ -72,40 +71,56 @@ COLS = [
     ("Fuel", "SURCHARGE6"), ("Subtotal", "SUBTOTAL"),
 ]
 
+CHUNK = 100   # parameters per statement; Firebird caps this and builds differ
+
 
 def waybills_from_csv(path: str) -> list[str]:
-    """The 340 waybill numbers. Only the numbers survive locally."""
-    out = []
-    for r in csv.DictReader(open(path, encoding="utf-8")):
-        w = str(r["waybill"]).strip()
-        if not re.fullmatch(r"[A-Za-z0-9_\-/]+", w):     # keep the IN-list clean
-            raise SystemExit(f"Refusing to query an odd waybill number: {w!r}")
-        out.append(w)
-    return out
+    """The 340 waybill numbers. Only the numbers survive locally.
+
+    No character whitelist. The first version had one and it rejected
+    'SL0053788.' on the trailing full stop — Parcel Perfect waybill numbers
+    contain spaces, hyphens, slashes, full stops, parentheses, hashes and
+    ampersands (6,743 hyphens and 1,096 full stops across the FY27 export), so
+    any whitelist narrow enough to be worth having is narrow enough to reject
+    real data. The query is parameterised instead, which removes the reason
+    for one.
+    """
+    return [str(r["waybill"]).strip()
+            for r in csv.DictReader(open(path, encoding="utf-8"))
+            if str(r["waybill"]).strip()]
 
 
 def pull(waybills: list[str]):
-    """One read-only SELECT for those waybills.
+    """Read-only SELECTs for those waybills.
 
-    _clean is applied to every value, which fetch() does NOT do for you — its
-    callers in extract_revenue apply it themselves. Without it the money
-    columns arrive as Decimal, and xlsxwriter raises on the first Decimal it
-    is asked to write. That would fail after the query, so the cost is a
-    wasted round trip rather than a wrong number, but it is avoidable.
+    _clean is applied to every value, which fetch() does not do for you — its
+    callers in extract_revenue apply it themselves. It handles the latin1 to
+    cp1252 transcode that makes customer names match the manual export, and
+    truncates times to whole seconds. It also turns Decimal into float, though
+    that part is cosmetic: xlsxwriter writes Decimal correctly, contrary to
+    what an earlier version of this comment claimed.
     """
     sys.path.insert(0, str(HERE.parent / "revenue_reports"))
-    from extract_revenue import _clean, connect, fetch
+    from extract_revenue import _clean, connect
 
     sel = ", ".join(f"wba.{db}" for _, db in COLS)
-    inlist = ", ".join("'" + w.replace("'", "''") + "'" for w in waybills)
-    sql = f"SELECT {sel} FROM VIEW_WBANALYSE wba WHERE wba.WAYBILL IN ({inlist})"
-    conn = connect()
+    heads = [h for h, _ in COLS]
+    out, conn = [], connect()
     try:
-        _, rows = fetch(conn, sql)
+        # Parameterised, and in batches: Firebird caps how many parameters one
+        # statement may carry, and 340 is close enough to the limit on some
+        # builds to be worth not finding out on the only run that matters.
+        for i in range(0, len(waybills), CHUNK):
+            batch = waybills[i:i + CHUNK]
+            sql = (f"SELECT {sel} FROM VIEW_WBANALYSE wba "
+                   f"WHERE wba.WAYBILL IN ({', '.join('?' * len(batch))})")
+            with conn.cursor() as cur:
+                cur.execute(sql, batch)
+                out += [{h: _clean(v) for h, v in zip(heads, r)}
+                        for r in cur.fetchall()]
     finally:
         conn.close()
-    heads = [h for h, _ in COLS]
-    return [{h: _clean(v) for h, v in zip(heads, r)} for r in rows]
+    return out
 
 
 def reconcile(rows: list[dict], csv_path: str) -> None:
