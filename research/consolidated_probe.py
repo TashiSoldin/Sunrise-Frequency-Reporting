@@ -74,13 +74,13 @@ def main() -> None:
          f"SELECT * FROM INVWAY WHERE WAYBILL IN ('{wbs}');")
 
     print("== 1c. CUSTOMER consolidation-ish fields for those accounts ==")
-    show(conn, "CUSTOMER fields", """
+    show(conn, "CUSTOMER fields", f"""
         SELECT ACCNUM, INVWAYBILL, INVGROUP, CCINVSPLIT, CONPERPIECE,
                INVREQ, REDELMODE
         FROM CUSTOMER
         WHERE ACCNUM IN (SELECT ACCNUM FROM WAYBILL
-                         WHERE WAYBILL IN ('%s'));
-    """ % wbs)
+                         WHERE WAYBILL IN ('{wbs}'));
+    """)
 
     show(conn, "2a. BRANCH lookup", "SELECT * FROM BRANCH;")
     print(f"COSTCNTR columns: {', '.join(list_columns(conn, 'COSTCNTR'))}")

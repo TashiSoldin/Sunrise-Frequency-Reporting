@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import sys
 from logging.handlers import TimedRotatingFileHandler
 
 from enums.email_enums import EmailConfig, EmailConfigs
@@ -302,7 +303,7 @@ def main() -> None:
         ReportGeneration.run(output_file_path, report_types)
     except Exception as e:
         logger.error(f"Report generation failed: {e!s}")
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

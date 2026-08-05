@@ -105,10 +105,10 @@ def style(c, *, bold=False, size=10, colour="FF000000", fill=None, fmt=None,
 
 def banner(ws, last_col, title, subtitle):
     for row, text, kw in (
-        (2, "SUNRISE LOGISTICS", dict(bold=True, size=13, colour=YELLOW, fill=NAVY)),
-        (3, title, dict(bold=True, size=16, colour="FFFFFFFF", fill=NAVY)),
-        (4, subtitle, dict(size=9, colour="FFFFFFFF", fill=NAVY2)),
-        (5, "", dict(fill=ORANGE)),
+        (2, "SUNRISE LOGISTICS", {"bold": True, "size": 13, "colour": YELLOW, "fill": NAVY}),
+        (3, title, {"bold": True, "size": 16, "colour": "FFFFFFFF", "fill": NAVY}),
+        (4, subtitle, {"size": 9, "colour": "FFFFFFFF", "fill": NAVY2}),
+        (5, "", {"fill": ORANGE}),
     ):
         ws.merge_cells(f"B{row}:{last_col}{row}")
         style(ws[f"B{row}"], box=False, **kw)
@@ -172,17 +172,17 @@ def build(csv_path: str, out_dir: str, detail_csv: str | None = None) -> str:
 
     r = prose(ws, 7, [
         "What these are",
-        "A number of waybills in Parcel Perfect carry a year that was keyed incorrectly. "
+        ("A number of waybills in Parcel Perfect carry a year that was keyed incorrectly. "
         "2022 entered as 2522 accounts for most of them, 2023 as 2523 for the next largest "
-        "group, and a handful sit in years as far out as 9473.",
-        "Because the year reads as a future date, they were being counted as current-year "
+        "group, and a handful sit in years as far out as 9473."),
+        ("Because the year reads as a future date, they were being counted as current-year "
         "freight by the automated extract, which had no upper date limit. They are excluded "
         "from 4 August 2026 onward. Your own manual export never showed them, because it "
-        "always specified a date range.",
+        "always specified a date range."),
         "",
         "Almost none of them were ever invoiced",
-        "338 of the 340 have no invoice against them. For normally-dated waybills that "
-        "figure runs the other way, as below.",
+        ("338 of the 340 have no invoice against them. For normally-dated waybills that "
+        "figure runs the other way, as below."),
     ])
 
     r += 1
@@ -207,27 +207,27 @@ def build(csv_path: str, out_dir: str, detail_csv: str | None = None) -> str:
     r = prose(ws, r + 2, [
         "",
         "Where to look",
-        "'Never invoiced' lists all 338 by value. 'By likely year' shows how old they are. "
+        ("'Never invoiced' lists all 338 by value. 'By likely year' shows how old they are. "
         "'By account' groups them by customer. 'All waybills' is the full listing including "
         "the two that were invoiced. 'Line detail' is the same waybills with shipper, "
         "consignee, pieces, masses and the charge breakdown, in the layout of the daily "
-        "billing detail.",
-        "On the line detail, Invoice # is empty except on the two that were invoiced, and "
+        "billing detail."),
+        ("On the line detail, Invoice # is empty except on the two that were invoiced, and "
         "the date appears twice \u2014 the value stored in Parcel Perfect, and the likely actual "
-        "date beside it.",
+        "date beside it."),
         "",
         "How to read the dates",
-        "'Waybill date (as captured)' is the value stored in Parcel Perfect. 'Capture "
-        "date' is when the record was created. 'Likely actual date' puts the year back.",
-        "On normally-dated waybills in this financial year the capture date falls on the "
+        ("'Waybill date (as captured)' is the value stored in Parcel Perfect. 'Capture "
+        "date' is when the record was created. 'Likely actual date' puts the year back."),
+        ("On normally-dated waybills in this financial year the capture date falls on the "
         "waybill date itself 91.2% of the time, within a day 96.2% and within a week 99.3% "
         "— median gap zero days, across 88,585 waybills. On these 340 they do not match, "
-        "so the year has been taken from the capture date.",
-        "Every one of the 340 lands within twelve months of its capture date once corrected, "
+        "so the year has been taken from the capture date."),
+        ("Every one of the 340 lands within twelve months of its capture date once corrected, "
         "and about half within a week — so the year is the only part that was mistyped. "
         "Confidence reads 'high' where the day and month also line up with capture, 'likely' "
         "within three months, and 'year only' where the year is certain but the day and "
-        "month are worth checking against the physical waybill.",
+        "month are worth checking against the physical waybill."),
     ])
     style(ws.cell(r + 1, 2, "Source: Parcel Perfect FY27 waybill export, 4 August 2026. "
           "Comparison figures from the FY25, FY26 and FY27 exports. Produced by sam et al."),

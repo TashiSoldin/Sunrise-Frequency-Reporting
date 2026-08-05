@@ -115,10 +115,10 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
             continue
         s = str(r[ix["Status"]])
         if s in STATUS_CODES and STATUS_CODES[s] <= 0:
-            unbilled.append(dict(
-                date=d, waybill=str(r[ix["Waybill"]]), acct=str(r[ix["Account"]]),
-                cust=str(r[ix["Customer"]]), svc=str(r[ix["Service"]]),
-                status=s, code=STATUS_CODES[s], sub=r[ix["Subtotal"]] or 0))
+            unbilled.append({
+                "date": d, "waybill": str(r[ix["Waybill"]]), "acct": str(r[ix["Account"]]),
+                "cust": str(r[ix["Customer"]]), "svc": str(r[ix["Service"]]),
+                "status": s, "code": STATUS_CODES[s], "sub": r[ix["Subtotal"]] or 0})
     unbilled.sort(key=lambda u: (u["date"], u["waybill"]))
 
     gen = date.today()  # report generation date (export may contain post-dated waybills)
@@ -148,8 +148,8 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
                   f"Value = Subtotal (excl VAT).  Unbilled = Invoice status ≤ 0.  {cutoff_note}",
             F(font_size=9, font_color=GREY))
 
-    kpi_or = dict(bold=True, font_size=11, font_color=NAVY, bg_color=ORANGE)
-    kpi_ye = dict(bold=True, font_size=11, font_color=NAVY, bg_color=YELLOW)
+    kpi_or = {"bold": True, "font_size": 11, "font_color": NAVY, "bg_color": ORANGE}
+    kpi_ye = {"bold": True, "font_size": 11, "font_color": NAVY, "bg_color": YELLOW}
     o.write("A5", "UNBILLED waybills (ready for billing)", F(**kpi_or))
     o.write("B5", "", F(**kpi_or))
     o.write("C5", len(unbilled), F(num_format=NUM, **kpi_or))
@@ -157,8 +157,8 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
     o.write("B6", "", F(**kpi_ye))
     o.write("C6", round(total_v, 2), F(num_format=NUM, **kpi_ye))
 
-    sect = dict(bold=True, font_size=11, font_color="white", bg_color=NAVY)
-    body = dict(font_size=11, font_color=NAVY)
+    sect = {"bold": True, "font_size": 11, "font_color": "white", "bg_color": NAVY}
+    body = {"font_size": 11, "font_color": NAVY}
     o.write("A8", "Unbilled by status", F(**sect))
     o.write("A9", "Status", F(**sect))
     o.write("B9", "PP Code", F(**sect))
@@ -215,7 +215,7 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
         s_.write(1 + j, 2, n, F(num_format=NUM, bg_color=bg))
         s_.write(1 + j, 3, round(v, 2), F(num_format=NUM, bg_color=bg))
     tr = 1 + len(ranked)
-    tot = dict(bold=True, bg_color=ORANGE, font_color=NAVY)
+    tot = {"bold": True, "bg_color": ORANGE, "font_color": NAVY}
     s_.write(tr, 1, "TOTAL", F(**tot))
     Vals(s_).f(tr, 2, f"=SUM(C2:C{tr})", F(num_format=NUM, **tot),
                value=sum(n for _, (n, _, _) in ranked))
@@ -237,7 +237,7 @@ def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
         vals = [u["date"].isoformat(), u["waybill"], u["acct"], u["cust"], u["svc"],
                 u["status"], u["code"], round(u["sub"], 2)]
         for i, v in enumerate(vals):
-            kw = dict(bg_color=bg)
+            kw = {"bg_color": bg}
             if i == 7:
                 kw["num_format"] = NUM
             d_.write(1 + j, i, v, F(**kw))

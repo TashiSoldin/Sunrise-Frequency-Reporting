@@ -152,8 +152,8 @@ class Budget:
             for k, m in enumerate(MONTHS_FY):
                 v = r[6 + 2 * k]
                 targets[m] = float(v) if isinstance(v, (int, float)) else 0.0
-            self.info[c3] = dict(group=g, branch=str(r[2]).strip(),
-                                 name=str(r[4]).strip(), targets=targets, row=i)
+            self.info[c3] = {"group": g, "branch": str(r[2]).strip(),
+                                 "name": str(r[4]).strip(), "targets": targets, "row": i}
             self.order.append(c3)
         self.dedi = {a for a, d in self.info.items() if d["group"] == "DEDI"}
         self.nondedi = {a for a in self.info if a not in self.dedi}
@@ -300,16 +300,16 @@ class Credits:
             a = fold(acct_str(r[ic["Account"]]))
             v = r[ic["Subtotal"]] or 0
             self.day[a][d] += v
-            self.rows.append(dict(
-                date=d, acct=a, value=v,
-                ref=str(r[ic["Reference"]]).strip(),
-                reason=str(r[ic["Reason"]]).strip(),
-                rep=str(r[ic["Rep"]]).strip(),
-                branch=str(r[ic["Branch"]]).strip(),
-                controller=str(r[ic["Credit Controller"]]).strip(),
-                customer=str(r[ic["Customer Name"]]).strip(),
-                receipt=r[ic["Receipt"]],
-            ))
+            self.rows.append({
+                "date": d, "acct": a, "value": v,
+                "ref": str(r[ic["Reference"]]).strip(),
+                "reason": str(r[ic["Reason"]]).strip(),
+                "rep": str(r[ic["Rep"]]).strip(),
+                "branch": str(r[ic["Branch"]]).strip(),
+                "controller": str(r[ic["Credit Controller"]]).strip(),
+                "customer": str(r[ic["Customer Name"]]).strip(),
+                "receipt": r[ic["Receipt"]],
+            })
 
     def win(self, acct, a, b):
         return sum(v for d, v in self.day.get(acct, {}).items() if a <= d <= b)
@@ -387,14 +387,14 @@ def F(st, **kw):
 
 def detail_formats(st):
     def make(bg):
-        base = dict(font_size=9, bg_color=bg)
-        return dict(
-            txt=F(st, **base),
-            blue_num=F(st, font_color=BLUE, num_format=NUM, **base),
-            num=F(st, num_format=NUM, **base),
-            pct=F(st, num_format=PCT1, **base),
-            dec=F(st, num_format=DEC2, **base),
-        )
+        base = {"font_size": 9, "bg_color": bg}
+        return {
+            "txt": F(st, **base),
+            "blue_num": F(st, font_color=BLUE, num_format=NUM, **base),
+            "num": F(st, num_format=NUM, **base),
+            "pct": F(st, num_format=PCT1, **base),
+            "dec": F(st, num_format=DEC2, **base),
+        }
     return {0: make("white"), 1: make(ALT)}
 
 
@@ -508,8 +508,8 @@ def build_tab1(wb, st, M: Model, p):
             d = month_derived(g, c, gp, cp, kg, kgp, guarded)
         rowv[r] = d
         bg = blue_bg
-        base = dict(font_size=10, bg_color=bg, bold=bold)
-        blue = dict(font_size=10, font_color=BLUE, bg_color=bg, bold=bold)
+        base = {"font_size": 10, "bg_color": bg, "bold": bold}
+        blue = {"font_size": 10, "font_color": BLUE, "bg_color": bg, "bold": bold}
         ws.write(r - 1, 1, label, label_fmt)
         ws.write(r - 1, 2, g, F(st, num_format=NUM, **blue))
         ws.write(r - 1, 3, c, F(st, num_format="(#,##0)", **blue))
@@ -537,7 +537,7 @@ def build_tab1(wb, st, M: Model, p):
                         F(st, font_size=10, bg_color=bg), bg)
 
     r = R_YTD
-    ob = dict(font_size=10, bold=True, bg_color=ORANGE)
+    ob = {"font_size": 10, "bold": True, "bg_color": ORANGE}
     mrows = list(range(14, R_YTD))
     ytd = month_derived(*[sum(rowv[rr][cl] for rr in mrows)
                           for cl in (2, 3, 5, 6, 10, 11)], guarded=False)
@@ -573,8 +573,8 @@ def build_tab1(wb, st, M: Model, p):
     jul = month_derived(g, c, gp, cp, kg, kgp, guarded=False)
     if has_mtd:
         rowv[R_MTD] = jul
-    base = dict(font_size=10, bg_color="white")
-    blue = dict(font_size=10, font_color=BLUE, bg_color="white")
+    base = {"font_size": 10, "bg_color": "white"}
+    blue = {"font_size": 10, "font_color": BLUE, "bg_color": "white"}
     if has_mtd:
         ws.write(r - 1, 1, f"{cur_ab} MTD ({elapsed} trading days) ¹", F(st, **base))
         ws.write(r - 1, 2, g, F(st, num_format=NUM, **blue))
@@ -597,7 +597,7 @@ def build_tab1(wb, st, M: Model, p):
         incl = month_derived(*[rowv[R_YTD][cl] + rowv[R_MTD][cl] for cl in (2, 3, 5, 6, 10, 11)],
                              guarded=False)
         rowv[R_INC] = incl
-        yb = dict(font_size=10, bold=True, bg_color=YELLOW)
+        yb = {"font_size": 10, "bold": True, "bg_color": YELLOW}
         ws.write(r - 1, 1, f"YTD incl. {cur_ab} MTD", F(st, **yb))
         for cl, letter in [(2, "C"), (3, "D"), (5, "F"), (6, "G"), (10, "K"), (11, "L")]:
             V.f(r - 1, cl, f"={letter}{R_YTD}+{letter}{R_MTD}",
@@ -659,13 +659,13 @@ def build_tab1(wb, st, M: Model, p):
         V.f(r - 1, 9, f_, F(st, font_size=10, bg_color=bg, num_format=PCT1), value=val)
 
     fn = [
-        f"¹ FY27 July = {elapsed} invoiced trading days (1–{mtd.day} {mtd.strftime('%b %Y')}). "
+        (f"¹ FY27 July = {elapsed} invoiced trading days (1–{mtd.day} {mtd.strftime('%b %Y')}). "
         f"FY26 July shown like-for-like (first {elapsed} trading days) for valid comparison; "
-        f"full FY26 July net = {jul_full_py:,}.",
-        "Net revenue = gross invoiced (Subtotal, excl. VAT) less credit notes raised in the period. "
-        "Bad debt write-offs (excluded here) are treated separately as a cost.",
-        "Source: “INV Date” revenue files (invoice-date basis) and “Credits” file, Revenue Data folder. "
-        "Blue = source inputs; black = formulas.",
+        f"full FY26 July net = {jul_full_py:,}."),
+        ("Net revenue = gross invoiced (Subtotal, excl. VAT) less credit notes raised in the period. "
+        "Bad debt write-offs (excluded here) are treated separately as a cost."),
+        ("Source: “INV Date” revenue files (invoice-date basis) and “Credits” file, Revenue Data folder. "
+        "Blue = source inputs; black = formulas."),
     ]
     for j, t in enumerate(fn):
         ws.merge_range(32 + j, 1, 32 + j, 9, t, note8)
@@ -847,7 +847,7 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
     combine(total_row, [sb_row, house_sub, closed_sub])
 
     # --- row 7/8: assumptions
-    ye = dict(font_size=10, bg_color=YELLOW)
+    ye = {"font_size": 10, "bg_color": YELLOW}
     ws.merge_range("B7:D7", "Trading days elapsed:", F(st, bold=True, font_color=NAVY, **ye))
     ws.write("E7", elapsed, F(st, font_color=BLUE, bold=True, num_format="0", **ye))
     ws.merge_range("F7:G7", "Trading days in period:", F(st, bold=True, font_color=NAVY, **ye))
@@ -900,11 +900,11 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
         # Bold subtotal and total rows carry NAVY text in the reference, not
         # black; the plain summary rows above them stay black.
         fc = fc or (NAVY if bold else "black")
-        base = dict(font_size=size, bg_color=bg, bold=bold, font_color=fc)
-        return dict(txt=F(st, align="left", **base), num=F(st, align=align, num_format=NUM, **base),
-                    neg=F(st, align=align, num_format=NUMP, **base),
-                    pct=F(st, align=align, num_format=PCT1, **base),
-                    dec=F(st, align=align, num_format=DEC2, **base))
+        base = {"font_size": size, "bg_color": bg, "bold": bold, "font_color": fc}
+        return {"txt": F(st, align="left", **base), "num": F(st, align=align, num_format=NUM, **base),
+                    "neg": F(st, align=align, num_format=NUMP, **base),
+                    "pct": F(st, align=align, num_format=PCT1, **base),
+                    "dec": F(st, align=align, num_format=DEC2, **base)}
 
     r = 15
     for j, (c, hrow, first, last, srow) in enumerate(sections):
@@ -931,10 +931,10 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
         bg = ALT if stripe else "white"
         # the reference aligns text left, the branch centred and wrapped, and
         # every figure right
-        base = dict(font_size=9, bg_color=bg, align="right")
-        blue = dict(font_size=9, font_color=BLUE, bg_color=bg, align="right")
-        txt = dict(font_size=9, bg_color=bg, align="left")
-        ctr = dict(font_size=9, bg_color=bg, align="center", text_wrap=True)
+        base = {"font_size": 9, "bg_color": bg, "align": "right"}
+        blue = {"font_size": 9, "font_color": BLUE, "bg_color": bg, "align": "right"}
+        txt = {"font_size": 9, "bg_color": bg, "align": "left"}
+        ctr = {"font_size": 9, "bg_color": bg, "align": "center", "text_wrap": True}
         ws.write(r - 1, 1, a, F(st, **txt))
         ws.write(r - 1, 2, M.name(a), F(st, **txt))
         br = M.branch(a)
@@ -1052,20 +1052,20 @@ def build_customer_tab(wb, st, M: Model, sheet, title, subtitle, kpi_prefix, lyh
 
     note8 = F(st, font_size=8, font_color="#595959", border=0)
     fns = [
-        "Expected = target × (trading days elapsed ÷ trading days in period). Projected = actual ÷ "
+        ("Expected = target × (trading days elapsed ÷ trading days in period). Projected = actual ÷ "
         "elapsed × days in period. For completed months elapsed = days in period, so Expected = target "
-        "and Projected = actual.",
-        "Non-budget accounts are listed under the rep they are allocated to (invoice salesrep), 0 target. "
+        "and Projected = actual."),
+        ("Non-budget accounts are listed under the rep they are allocated to (invoice salesrep), 0 target. "
         "House and Closed/Lost accounts have no target (memo) and are NOT run-rated — their Projected = "
         "actual MTD (a lost account won't bill further), so one-off credits/closures don't distort the "
-        "projected total.",
-        "Last-year dedicated-load revenue is merged into each client's LY where still billed. Figures are "
-        "net invoiced (Subtotal excl VAT less credit notes), invoice-date.",
-        "Chg kg = chargeable weight (Chrg Mass) this period; LY kg = same period last year. kg Δ% compares "
+        "projected total."),
+        ("Last-year dedicated-load revenue is merged into each client's LY where still billed. Figures are "
+        "net invoiced (Subtotal excl VAT less credit notes), invoice-date."),
+        ("Chg kg = chargeable weight (Chrg Mass) this period; LY kg = same period last year. kg Δ% compares "
         "projected kg vs LY. R/kg = net ÷ chargeable kg (2 dp); LY R/kg = last-year rate; R/kg Δ% = rate "
-        "change.",
-        "Sources: INV Date FY26 & FY27, Credits file, FY26-27 Budget v30 (targets). Blue = source inputs / "
-        "assumptions; black = formulas.",
+        "change."),
+        ("Sources: INV Date FY26 & FY27, Credits file, FY26-27 Budget v30 (targets). Blue = source inputs / "
+        "assumptions; black = formulas."),
     ]
     for j, t in enumerate(fns):
         ws.merge_range(total_row + 1 + j, 1, total_row + 1 + j, 9, t, note8)
@@ -1138,7 +1138,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
         rr = closed_sub + 1
     total_row = rr
 
-    ye = dict(font_size=10, bg_color=YELLOW)
+    ye = {"font_size": 10, "bg_color": YELLOW}
     ws.write("B7", "Trading days in month:", F(st, bold=True, font_color=NAVY, **ye))
     ws.merge_range("C7:D7", "", F(st, **ye))
     days = month_trading_days(fy_start_year(day), day.month)
@@ -1173,7 +1173,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
         ws.write(13, 1 + i, h, th)
 
     rep_hdr_fmt = F(st, bold=True, font_size=10, font_color="white", bg_color=NAVY2)
-    sub_base = dict(font_size=9, bold=True, bg_color=ORANGE, font_color=NAVY)
+    sub_base = {"font_size": 9, "bold": True, "bg_color": ORANGE, "font_color": NAVY}
     lab_fmt = F(st, font_size=9, bold=True, italic=True)
 
     def tgt_str(a):
@@ -1193,10 +1193,10 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
         bg = ALT if stripe else "white"
         # the reference aligns text left, the branch centred and wrapped, and
         # every figure right
-        base = dict(font_size=9, bg_color=bg, align="right")
-        blue = dict(font_size=9, font_color=BLUE, bg_color=bg, align="right")
-        txt = dict(font_size=9, bg_color=bg, align="left")
-        ctr = dict(font_size=9, bg_color=bg, align="center", text_wrap=True)
+        base = {"font_size": 9, "bg_color": bg, "align": "right"}
+        blue = {"font_size": 9, "font_color": BLUE, "bg_color": bg, "align": "right"}
+        txt = {"font_size": 9, "bg_color": bg, "align": "left"}
+        ctr = {"font_size": 9, "bg_color": bg, "align": "center", "text_wrap": True}
         ws.write(r - 1, 1, a, F(st, **txt))
         ws.write(r - 1, 2, M.name(a), F(st, **txt))
         br = M.branch(a)
@@ -1236,7 +1236,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
                 r += 1
         write_sub(srow, f"{c} subtotal", first, last)
 
-    sbf = dict(font_size=10, bold=True, bg_color=YELLOW, font_color=NAVY)
+    sbf = {"font_size": 10, "bold": True, "bg_color": YELLOW, "font_color": NAVY}
     ws.merge_range(sb_row - 1, 1, sb_row - 1, 3, "SUBTOTAL — Rep-allocated (billed today)", F(st, **sbf))
     subrefs = [s[4] for s in sections]
     sbd = daily_derived(*[sum(dv[sr][cl] for sr in subrefs) for cl in (4, 5, 8)])
@@ -1267,7 +1267,7 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
         write_sub(sub_r, f"{label} subtotal", hdr_r + 1, sub_r - 1)
         parts.append(f"E{sub_r}")
 
-    tf = dict(font_size=11, bold=True, font_color="white", bg_color=NAVY)
+    tf = {"font_size": 11, "bold": True, "font_color": "white", "bg_color": NAVY}
     ws.merge_range(total_row - 1, 1, total_row - 1, 3, "TOTAL — ALL ACCOUNTS BILLED", F(st, **tf))
     refs = [p[1:] for p in parts]  # row numbers
     td = daily_derived(*[sum(dv[int(r)][cl] for r in refs) for cl in (4, 5, 8)])
@@ -1293,14 +1293,14 @@ def build_daily_tab(wb, st, M: Model, sheet, basis, day, pool: Pool, subtract_cr
 
     note8 = F(st, font_size=8, font_color="#595959", border=0)
     fns = [
-        "Each rep section lists customers billed on the day first, then targeted customers with no "
+        ("Each rep section lists customers billed on the day first, then targeted customers with no "
         "billing that day (Day Net 0). Day Tgt = monthly budget target ÷ trading days; subtotals & "
-        "totals sum through, so % Day Tgt is measured against the full budgeted book.",
-        "INV tab = invoice-date basis, net of credit notes raised that date. WB tab = waybill-date "
+        "totals sum through, so % Day Tgt is measured against the full budgeted book."),
+        ("INV tab = invoice-date basis, net of credit notes raised that date. WB tab = waybill-date "
         "basis (value of waybills raised that day), gross of credit notes. R/kg = day net ÷ "
-        "chargeable kg.",
-        "Non-budget accounts appear under their rep (0 target). Blue = source inputs / assumptions; "
-        "black = formulas.",
+        "chargeable kg."),
+        ("Non-budget accounts appear under their rep (0 target). Blue = source inputs / assumptions; "
+        "black = formulas."),
     ]
     for j, t in enumerate(fns):
         ws.merge_range(total_row + 1 + j, 1, total_row + 1 + j, 9, t, note8)
@@ -1366,13 +1366,13 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
     for j, (rs, (val, cnt)) in enumerate(ordered):
         r = r0 + j
         bg = ALT if r % 2 == 1 else "white"
-        base = dict(font_size=9, bg_color=bg)
+        base = {"font_size": 9, "bg_color": bg}
         ws.merge_range(r - 1, 1, r - 1, 5, rs, F(st, **base))
         ws.merge_range(r - 1, 6, r - 1, 7, round(val), F(st, num_format=NUM, font_color=BLUE, **base))
         ws.write(r - 1, 8, cnt, F(st, num_format=NUM, font_color=BLUE, **base))
         V.f(r - 1, 9, f"=G{r}/$G${total_r}", F(st, num_format=PCT1, **base),
             value=div(round(val), reason_tot, blank=0))
-    ob = dict(font_size=9, bold=True, bg_color=ORANGE)
+    ob = {"font_size": 9, "bold": True, "bg_color": ORANGE}
     ws.merge_range(total_r - 1, 1, total_r - 1, 5, "Total", F(st, **ob))
     V.mf(f"G{total_r}:H{total_r}", f"=SUM(G{r0}:G{total_r - 1})",
          F(st, num_format=NUM, **ob), value=reason_tot)
@@ -1394,7 +1394,7 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
     r = dh + 1
     for n in detail:
         bg = ALT if r % 2 == 0 else "white"
-        base = dict(font_size=9, bg_color=bg)
+        base = {"font_size": 9, "bg_color": bg}
         vals = [n["date"].strftime("%d %b"), n["ref"], n["acct"], n["customer"],
                 n["rep"], n["branch"], n["reason"] or "(unspecified)",
                 round(n["value"]), n["controller"]]
@@ -1412,12 +1412,12 @@ def build_credit_tab(wb, st, M: Model, mtd_max: date):
 
     note8 = F(st, font_size=8, font_color="#595959", border=0)
     fns = [
-        f"Listing of all credit notes processed in {calendar.month_name[mtd_max.month]} "
+        (f"Listing of all credit notes processed in {calendar.month_name[mtd_max.month]} "
         f"{fy_label(fy_start_year(mtd_max))} to date (by processing date). Value = "
-        "Subtotal (net, excl VAT); credit notes reduce revenue.",
-        f"The MTD Billing tab nets credit notes dated through {mtd_max.day} "
+        "Subtotal (net, excl VAT); credit notes reduce revenue."),
+        (f"The MTD Billing tab nets credit notes dated through {mtd_max.day} "
         f"{mtd_max.strftime('%b %Y')}; notes dated later appear here and will flow into billing as "
-        f"the data extends.",
+        f"the data extends."),
         "Reason and Credit Controller are as captured in the credits system. Blue = source values.",
     ]
     for j, t in enumerate(fns):
@@ -1449,8 +1449,8 @@ def build(inv_file, py_inv_file, wb_file, credits_file, budget_file, out_dir,
     cur_days = month_trading_days(FY, cur)
     elapsed = trading_days_between(date(cur_y, cur, 1), mtd_max)
     ly_mtd_max = nth_trading_day(cur_y - 1, cur, elapsed)
-    p = dict(mtd_max=mtd_max, cur=cur, cur_days=cur_days, elapsed=elapsed,
-             complete=complete, fy=FY, fyl=fyl, ly=ly, ly_mtd_max=ly_mtd_max)
+    p = {"mtd_max": mtd_max, "cur": cur, "cur_days": cur_days, "elapsed": elapsed,
+             "complete": complete, "fy": FY, "fyl": fyl, "ly": ly, "ly_mtd_max": ly_mtd_max}
 
     out_path = f"{out_dir}/Revenue Dashboard.xlsx"
     wb = xlsxwriter.Workbook(out_path)

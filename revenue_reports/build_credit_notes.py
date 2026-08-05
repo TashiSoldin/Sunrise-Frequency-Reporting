@@ -51,17 +51,17 @@ def load_credits(path):
     for r in rows:
         if str(r[ic["Type"]]) not in CREDIT_TYPES or r[ic["Date"]] is None:
             continue
-        out.append(dict(
-            date=r[ic["Date"]], acct=str(r[ic["Account"]]).strip(),
-            customer=str(r[ic["Customer Name"]]).strip(),
-            value=r[ic["Subtotal"]] or 0,
-            ref=str(r[ic["Reference"]]).strip(),
-            reason=str(r[ic["Reason"]]).strip() or "(unspecified)",
-            rep=str(r[ic["Rep"]]).strip(),
-            branch=str(r[ic["Branch"]]).strip(),
-            controller=str(r[ic["Credit Controller"]]).strip(),
-            type=str(r[ic["Type"]]).strip(),
-        ))
+        out.append({
+            "date": r[ic["Date"]], "acct": str(r[ic["Account"]]).strip(),
+            "customer": str(r[ic["Customer Name"]]).strip(),
+            "value": r[ic["Subtotal"]] or 0,
+            "ref": str(r[ic["Reference"]]).strip(),
+            "reason": str(r[ic["Reason"]]).strip() or "(unspecified)",
+            "rep": str(r[ic["Rep"]]).strip(),
+            "branch": str(r[ic["Branch"]]).strip(),
+            "controller": str(r[ic["Credit Controller"]]).strip(),
+            "type": str(r[ic["Type"]]).strip(),
+        })
     return out
 
 
@@ -149,19 +149,17 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
             F(font_size=10, bg_color=bg, num_format=NUM), value=div(c, d))
         ws.write(r - 1, 5, round(max(vals)), F(font_size=10, bg_color=bg, num_format=NUM))
         r += 1
-    ob = dict(bold=True, font_size=10, bg_color=ORANGE)
+    ob = {"bold": True, "font_size": 10, "bg_color": ORANGE}
     tv, tc = sum(trend_val), sum(trend_cnt)
     ws.write(r - 1, 1, "FY27 to date", F(**ob))
     V.f(r - 1, 2, f"=SUM(C{first_r}:C{r - 1})", F(num_format=NUM, **ob), value=tv)
     V.f(r - 1, 3, f"=SUM(D{first_r}:D{r - 1})", F(num_format=NUM, **ob), value=tc)
     V.f(r - 1, 4, f'=IF(D{r}=0,"",C{r}/D{r})', F(num_format=NUM, **ob), value=div(tv, tc))
-    total_trend_row = r
 
     # MTD by reason
     r += 2
     ws.merge_range(r - 1, 1, r - 1, 9, f"CREDIT NOTES BY REASON — {mon_short} MTD", sect)
     r += 1
-    hdr_r = r
     ws.merge_range(r - 1, 1, r - 1, 4, "Reason", th)
     ws.write(r - 1, 5, "Value", th)
     ws.write(r - 1, 6, "# Notes", th)
@@ -263,7 +261,7 @@ def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
         vals = [n["date"].strftime("%d %b"), n["ref"], n["acct"], n["customer"],
                 n["rep"], n["branch"], n["reason"], round(n["value"]), n["controller"]]
         for j, v in enumerate(vals):
-            kw = dict(font_size=9, bg_color=bg)
+            kw = {"font_size": 9, "bg_color": bg}
             if j == 7:
                 kw.update(num_format=NUM, font_color="#0000FF")
             ws3.write(rr - 1, 1 + j, v, F(**kw))
