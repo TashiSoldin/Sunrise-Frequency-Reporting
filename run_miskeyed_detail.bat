@@ -16,13 +16,18 @@ REM this needs about twenty-two, and the rows are no longer in the FY27 export
 REM because the bounded extract correctly excludes them. So the detail can only
 REM come from Parcel Perfect.
 REM
-REM The raw pull is saved alongside the workbook, so the layout can be reworked
+REM The raw pull is saved to _diagnostics, so the layout can be reworked
 REM later with --from-export instead of querying again.
 REM
 REM Output:
 REM   Dashboards and Data Analysis\Data Quality\
-REM     Mis-keyed Waybills - line detail - 04 Aug 2026.xlsx
-REM     miskeyed pull YYYY-MM-DD.csv          (the raw pull)
+REM     Mis-keyed Waybills - line detail - 04 Aug 2026.xlsx   <- the deliverable
+REM   2. Revenue Data\_diagnostics\
+REM     miskeyed pull 2026-08-05.csv                          <- the raw pull
+REM
+REM The raw pull goes to _diagnostics, not next to the deliverable: Data Quality
+REM is the folder Larry has been pointed at, and a loose CSV beside the workbook
+REM invites the wrong file being opened.
 
 setlocal
 set SYNCED=C:\Users\AkhaM\OneDrive - Sunrise Express\Claude General - Documents
@@ -60,13 +65,13 @@ exit /b 1
 
 :use_uv
 uv run research/build_miskeyed_detail.py --csv "%SRC%" --out-dir "%OUT%" ^
-    --save-pull "%OUT%\miskeyed pull 2026-08-05.csv"
+    --save-pull "%DIAG%\miskeyed pull 2026-08-05.csv"
 goto :done
 
 :use_venv
 echo uv not on PATH — using the project venv instead.
 .venv\Scripts\python.exe research\build_miskeyed_detail.py --csv "%SRC%" --out-dir "%OUT%" ^
-    --save-pull "%OUT%\miskeyed pull 2026-08-05.csv"
+    --save-pull "%DIAG%\miskeyed pull 2026-08-05.csv"
 goto :done
 
 :done
