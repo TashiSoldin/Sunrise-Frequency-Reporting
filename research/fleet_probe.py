@@ -112,17 +112,41 @@ def main() -> None:
 
     today = date.today()
     since = (today - timedelta(days=args.days)).isoformat()
+    until = today.isoformat()
+    # Bounded at BOTH ends. The 6 Aug run was bounded only below, and MANIFEST
+    # turned out to hold AGENTDATEs in 2027 and 4015 — empty shells carrying no
+    # freight, which sat inside the window and dragged every population
+    # percentage down. That is the fourth time on this project that an
+    # unbounded date has produced a wrong number, and it did not raise.
+    window = f"m.AGENTDATE >= DATE '{since}' AND m.AGENTDATE <= DATE '{until}'"
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     log_path = out_dir / f"fleet_probe_{today.isoformat()}.txt"
     sys.stdout = _Tee(str(log_path))
     print(f"(also writing this output to {log_path})")
-    print(f"window for population checks: {since} to {today.isoformat()}\n")
+    print(f"window for population checks: {since} to {until} (bounded both ends)\n")
 
     conn = connect()
 
+    # ---- how dirty is the date column? --------------------------------------
+    show(conn, "0. MANIFEST.AGENTDATE sanity — how much of it is junk", f"""
+        SELECT m.MTYPE,
+               COUNT(*) AS ROWS_TOTAL,
+               SUM(CASE WHEN m.AGENTDATE < DATE '2015-01-01' THEN 1 ELSE 0 END) AS BEFORE_2015,
+               SUM(CASE WHEN m.AGENTDATE > DATE '{until}' THEN 1 ELSE 0 END) AS IN_THE_FUTURE,
+               SUM(CASE WHEN m.AGENTDATE > DATE '{until}' AND COALESCE(m.NOWB, 0) = 0
+                        THEN 1 ELSE 0 END) AS FUTURE_AND_EMPTY
+        FROM MANIFEST m
+        GROUP BY m.MTYPE;
+    """)
+    print("READ THIS AS: FUTURE_AND_EMPTY rows are shells — a trip record with a\n"
+          "mis-keyed date and no freight on it. They are excluded from everything\n"
+          "below by the upper bound, but they are worth seeing rather than\n"
+          "silently filtering: they are also what any max() over this column\n"
+          "would land on.\n")
+
     # ---- hypothesis 1: does MTYPE separate manifests from tripsheets? --------
-    show(conn, "1. MANIFEST by MTYPE, with date range and scale", """
+    show(conn, "1. MANIFEST by MTYPE, within the window", f"""
         SELECT m.MTYPE,
                COUNT(*) AS TRIPS,
                MIN(m.AGENTDATE) AS FIRST_DATE,
@@ -131,6 +155,7 @@ def main() -> None:
                COUNT(DISTINCT m.ORIGHUB) AS ORIG_HUBS,
                COUNT(DISTINCT m.DESTHUB) AS DEST_HUBS
         FROM MANIFEST m
+        WHERE {window}
         GROUP BY m.MTYPE
         ORDER BY 2 DESC;
     """)
@@ -166,13 +191,35 @@ def main() -> None:
           "definition is available for most of the fleet, whatever the manifests\n"
           "say. That is a finding to take to Larry, not a problem to work around.\n")
 
+    # The 6 Aug run found REGNO empty on all 1 220 agents and CAPACITY set on
+    # one. But the agent NAMES read like "DBN OCD - KR12JP GP 5T" — hub, a
+    # three-letter class, then what looks like a registration and a size. If
+    # that convention holds it is where the fleet is actually described, and
+    # it is a convention rather than data, so Larry has to confirm it.
+    show(conn, "3b. Does the agent NAME convention hold against OWNRESOURCE?", """
+        SELECT a.OWNRESOURCE,
+               COUNT(*) AS AGENTS,
+               SUM(CASE WHEN a.NAME LIKE '%OCD%' THEN 1 ELSE 0 END) AS NAME_OCD,
+               SUM(CASE WHEN a.NAME LIKE '%ACD%' THEN 1 ELSE 0 END) AS NAME_ACD,
+               SUM(CASE WHEN a.NAME LIKE '%LH%'  THEN 1 ELSE 0 END) AS NAME_LH,
+               SUM(CASE WHEN a.NAME LIKE '%T' OR a.NAME LIKE '%T %' THEN 1 ELSE 0 END) AS NAME_ENDS_TONNAGE,
+               SUM(CASE WHEN a.DISABLE = 1 THEN 1 ELSE 0 END) AS DISABLED
+        FROM AGENT a
+        GROUP BY a.OWNRESOURCE;
+    """)
+    print("READ THIS AS: if OCD names sit almost entirely under OWNRESOURCE = 1\n"
+          "and ACD/LH under 0, then own vehicles are identifiable by flag and by\n"
+          "name, and the tonnage in the name is the only capacity there is.\n"
+          "Parsing a naming convention is a judgement, not a measurement — put it\n"
+          "to Larry before anything is built on it.\n")
+
     show(conn, "4. Agents that actually ran trips in the window", f"""
         SELECT FIRST 25 a.AGENT, a.NAME, a.REGNO, a.VEHICLE, a.CAPACITY,
                a.VOLCAPACITY, a.OWNRESOURCE, a.AGENTTYPE,
                COUNT(m.MANIFEST) AS TRIPS
         FROM AGENT a
         JOIN MANIFEST m ON m.AGENT = a.AGENT
-        WHERE m.AGENTDATE >= DATE '{since}'
+        WHERE {window}
         GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
         ORDER BY 9 DESC;
     """)
@@ -193,7 +240,7 @@ def main() -> None:
         pop = query_df(conn, f"""
             SELECT m.MTYPE, COUNT(*) AS TRIPS, {", ".join(parts)}
             FROM MANIFEST m
-            WHERE m.AGENTDATE >= DATE '{since}'
+            WHERE {window}
             GROUP BY m.MTYPE;
         """)
     except Exception as e:
@@ -218,29 +265,48 @@ def main() -> None:
     print()
 
     # ---- does the join hold? ------------------------------------------------
-    show(conn, "6. ROUTING legs against MANIFEST trips in the window", f"""
-        SELECT m.MTYPE,
-               COUNT(DISTINCT m.MANIFEST) AS MANIFEST_TRIPS,
-               COUNT(DISTINCT r.MANIFEST) AS TRIPS_SEEN_IN_ROUTING,
-               COUNT(r.WAYBILL) AS LEGS,
-               SUM(m.NOWB) AS NOWB_TOTAL
-        FROM MANIFEST m
-        LEFT JOIN ROUTING r ON r.MANIFEST = m.MANIFEST AND r.MTYPE = m.MTYPE
-        WHERE m.AGENTDATE >= DATE '{since}'
-        GROUP BY m.MTYPE;
+    # Aggregate each side separately and join the aggregates. The 6 Aug version
+    # joined MANIFEST to ROUTING and then did SUM(m.NOWB) over the result, which
+    # counts every trip's NOWB once per leg — it reported 4 165 109 waybills
+    # across 1 377 trips. Fanned-out sums are the same failure as an unbounded
+    # date: a large plausible-looking number that nothing raises on.
+    show(conn, "6. ROUTING legs against MANIFEST trips (aggregates joined, no fan-out)", f"""
+        SELECT t.MTYPE, t.TRIPS, t.NOWB_TOTAL,
+               r.TRIPS_SEEN_IN_ROUTING, r.LEGS
+        FROM (
+            SELECT m.MTYPE, COUNT(*) AS TRIPS, SUM(COALESCE(m.NOWB, 0)) AS NOWB_TOTAL
+            FROM MANIFEST m
+            WHERE {window}
+            GROUP BY m.MTYPE
+        ) t
+        LEFT JOIN (
+            SELECT rr.MTYPE,
+                   COUNT(DISTINCT rr.MANIFEST) AS TRIPS_SEEN_IN_ROUTING,
+                   COUNT(*) AS LEGS
+            FROM ROUTING rr
+            WHERE rr.MANIFEST IN (
+                SELECT m2.MANIFEST FROM MANIFEST m2
+                WHERE m2.AGENTDATE >= DATE '{since}' AND m2.AGENTDATE <= DATE '{until}'
+            )
+            GROUP BY rr.MTYPE
+        ) r ON r.MTYPE = t.MTYPE;
     """)
-    print("READ THIS AS: LEGS should land near NOWB_TOTAL. A large gap means the\n"
-          "join needs more than MANIFEST + MTYPE — check MBRANCH — and any trip\n"
-          "level figure built on it would be quietly short.\n")
+    print("READ THIS AS: LEGS should land near NOWB_TOTAL, and\n"
+          "TRIPS_SEEN_IN_ROUTING near TRIPS. A large gap means the join needs\n"
+          "more than MANIFEST + MTYPE — check MBRANCH — and any trip-level figure\n"
+          "built on it would be quietly short.\n")
 
-    show(conn, "7. A recent trip end to end, for eyeballing", f"""
+    show(conn, "7. Recent trips end to end, for eyeballing", f"""
         SELECT FIRST 15 m.MANIFEST, m.MTYPE, m.AGENTDATE, m.AGENT, m.DRIVER,
                m.ROUTE, m.ORIGHUB, m.DESTHUB, m.NOWB, m.PIECES, m.CHARGEMASS,
                m.ACTKG, m.VOLCM, m.STARTKM, m.ENDKM, m.CLOSED, m.ALLDELIVERED
         FROM MANIFEST m
-        WHERE m.AGENTDATE >= DATE '{since}'
+        WHERE {window} AND COALESCE(m.NOWB, 0) > 0
         ORDER BY m.AGENTDATE DESC, m.MANIFEST DESC;
     """)
+    print("Filtered to trips that carried something. The 6 Aug run showed mostly\n"
+          "empty shells dated 2027 and 4015, which told you about the date column\n"
+          "rather than about a trip.\n")
 
     conn.close()
     print("Done. Drop the txt and csv in the Database Reference folder and paste "
