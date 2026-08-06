@@ -65,6 +65,7 @@ that reason — read the two together, and use --probe-write if you need certain
 """
 
 import argparse
+import math
 import sys
 import time
 from datetime import date
@@ -141,19 +142,37 @@ DOMAINS = [
 ]
 
 
+def as_int(value, default: int | None = None) -> int | None:
+    """Read one Firebird metadata number as an int, or fall back.
+
+    Every numeric column here arrives as a float once pandas has widened it to
+    hold nulls, and most of them are null for most rows: RDB$FIELD_PRECISION is
+    only set on NUMERIC and DECIMAL. `value or default` does NOT handle that --
+    NaN is truthy, so it returns the NaN and int() then raises. That is exactly
+    how this crashed on the first live run against the BI server.
+    """
+    if value is None:
+        return default
+    try:
+        if isinstance(value, float) and math.isnan(value):
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def field_type_name(row) -> str:
     """Render a column's type the way you would write it in DDL."""
-    base = FIELD_TYPES.get(row["FTYPE"], f"type {row['FTYPE']}")
-    scale = int(row["FSCALE"] or 0)
+    base = FIELD_TYPES.get(as_int(row["FTYPE"], -1), f"type {row['FTYPE']}")
+    scale = as_int(row["FSCALE"], 0)
     if base in ("SMALLINT", "INTEGER", "BIGINT") and scale < 0:
-        # int() because pandas widens these to float when any row is null, and
-        # NUMERIC(8.0,5) in a schema reference is a typo waiting to be copied.
-        precision = int(row["FPREC"] or 18)
-        return f"NUMERIC({precision},{abs(scale)})"
+        # Firebird's default precision when the field carries none of its own.
+        return f"NUMERIC({as_int(row['FPREC'], 18)},{abs(scale)})"
     if base in ("CHAR", "VARCHAR", "CSTRING"):
-        return f"{base}({row['FLEN']})"
+        length = as_int(row["FLEN"])
+        return f"{base}({length})" if length is not None else base
     if base == "BLOB":
-        return "BLOB (text)" if row["FSUB"] == 1 else "BLOB (binary)"
+        return "BLOB (text)" if as_int(row["FSUB"], 0) == 1 else "BLOB (binary)"
     return base
 
 
