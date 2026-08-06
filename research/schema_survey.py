@@ -20,14 +20,24 @@ Deliberately a FULL inventory, not a keyword scan. The credits pool was invisibl
 for a week in July because the smoke test scanned %CREDIT%/%INVOICE%/%DEBTOR% and
 the data sat on the receipts side. Pull everything, filter afterwards.
 
-What it writes (dated; drop them in the Claude General folder):
+What it writes, into --out-dir (run_schema_survey.bat points that at the synced
+"Database Reference" folder, so the results can be read off the share instead of
+only existing inside the RDP session):
 
     schema_relations_<date>.csv    one row per table/view: kind, columns, rows, owner
     schema_columns_<date>.csv      one row per column: type, length, nullable
     schema_privileges_<date>.csv   what CURRENT_USER and CURRENT_ROLE are granted
     schema_survey_<date>.txt       the console log, including the domain groupings
 
+Every filename carries the run date. Nothing is overwritten and nothing is
+wiped: the schema changes when Parcel Perfect is upgraded, so an older survey is
+evidence of what was true then, not clutter. The newest set is the current one.
+
 Flags:
+
+    --out-dir DIR   Where the four files land. Defaults to the current directory,
+                    which is the repo root when run by hand. The .bat points it
+                    at the share.
 
     --no-counts     Skip SELECT COUNT(*) per table. The counts are the slow part
                     and the only part that reads data pages rather than metadata.
@@ -42,9 +52,11 @@ Flags:
                     production, and the privilege metadata usually answers the
                     question on its own. Nothing is committed either way.
 
-    --like PATTERN  Restrict the inventory to relations matching a SQL LIKE
-                    pattern, e.g. --like %VEH%. For follow-up runs; the first
-                    run should be unfiltered.
+    --like PATTERN  Restrict the inventory to relations matching a pattern, e.g.
+                    --like *VEH*. For follow-up runs; the first run should be
+                    unfiltered. Write the wildcard as * rather than SQL's %:
+                    cmd.exe eats a bare %VEH% on the command line, and this is
+                    driven from a .bat. Both are accepted; * is translated.
 
 A note on what the privilege section can and cannot tell you. If our login owns
 the objects, or connects with RDB$ADMIN, it has full rights whether or not any
@@ -262,17 +274,27 @@ def group_by_domain(relations: pd.DataFrame) -> dict[str, list[str]]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--out-dir", default=".",
+                    help="where the four output files land (default: current directory)")
     ap.add_argument("--no-counts", action="store_true",
                     help="skip SELECT COUNT(*) per table (the only part that reads data)")
     ap.add_argument("--probe-write", action="store_true",
                     help="definitively test write access with a rolled-back UPDATE")
     ap.add_argument("--like", default=None,
-                    help="restrict to relations matching a SQL LIKE pattern, e.g. %%VEH%%")
+                    help="restrict to relations matching a pattern, e.g. *VEH* "
+                         "(* is translated to SQL's %%, which cmd.exe would eat)")
     args = ap.parse_args()
 
+    # cmd.exe strips a bare %VEH% off the command line before Python sees it, and
+    # this is driven from a .bat, so * is the wildcard people can actually type.
+    like = args.like.replace("*", "%") if args.like else None
+
     today = date.today().isoformat()
-    sys.stdout = _Tee(f"schema_survey_{today}.txt")
-    print(f"(also writing this output to schema_survey_{today}.txt)\n")
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    log_path = out_dir / f"schema_survey_{today}.txt"
+    sys.stdout = _Tee(str(log_path))
+    print(f"(also writing this output to {log_path})\n")
 
     conn = connect()
 
@@ -293,8 +315,8 @@ def main() -> None:
     print()
 
     print("== 2. Inventory ==")
-    relations = survey_relations(conn, args.like)
-    columns = survey_columns(conn, args.like)
+    relations = survey_relations(conn, like)
+    columns = survey_columns(conn, like)
     tables = relations.loc[relations["KIND"] == "table", "REL"].tolist()
     views = relations.loc[relations["KIND"] == "view", "REL"].tolist()
     print(f"{len(relations)} user relations: {len(tables)} tables, {len(views)} views")
@@ -348,7 +370,7 @@ def main() -> None:
         print("== 5. Write probe ==")
         candidates = [(r, n) for r, n in counts.items() if n] or [(t, None) for t in tables]
         if candidates:
-            target = sorted(candidates, key=lambda kv: kv[1] or 0)[0][0]
+            target = min(candidates, key=lambda kv: kv[1] or 0)[0]
             column = columns.loc[columns["REL"] == target, "COL"]
             if len(column):
                 print(probe_write(conn, target, column.iloc[0]))
@@ -373,18 +395,18 @@ def main() -> None:
             print(f"  {rel:<32} {shown:>14} rows")
         print()
 
-    rel_out = f"schema_relations_{today}.csv"
-    col_out = f"schema_columns_{today}.csv"
-    priv_out = f"schema_privileges_{today}.csv"
+    rel_out = out_dir / f"schema_relations_{today}.csv"
+    col_out = out_dir / f"schema_columns_{today}.csv"
+    priv_out = out_dir / f"schema_privileges_{today}.csv"
     relations[["REL", "KIND", "COLUMNS", "ROWS", "OWNER", "DESCRIPTION"]].to_csv(rel_out, index=False)
     columns.to_csv(col_out, index=False)
     grants.to_csv(priv_out, index=False)
 
     conn.close()
     print("== Files ==")
-    for f in (rel_out, col_out, priv_out, f"schema_survey_{today}.txt"):
+    for f in (rel_out, col_out, priv_out, log_path):
         print(f"  {f}")
-    print("\nDone. Drop these in the Claude General folder.")
+    print("\nDone.")
     print("Next: read the vehicle/fleet group against what Larry asked for on the "
           "acceptance call, and settle whether line 4's allowlist reaches it.")
 
