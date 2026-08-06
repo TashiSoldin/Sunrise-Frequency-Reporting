@@ -144,9 +144,11 @@ DOMAINS = [
 def field_type_name(row) -> str:
     """Render a column's type the way you would write it in DDL."""
     base = FIELD_TYPES.get(row["FTYPE"], f"type {row['FTYPE']}")
-    scale = row["FSCALE"] or 0
+    scale = int(row["FSCALE"] or 0)
     if base in ("SMALLINT", "INTEGER", "BIGINT") and scale < 0:
-        precision = row["FPREC"] or 18
+        # int() because pandas widens these to float when any row is null, and
+        # NUMERIC(8.0,5) in a schema reference is a typo waiting to be copied.
+        precision = int(row["FPREC"] or 18)
         return f"NUMERIC({precision},{abs(scale)})"
     if base in ("CHAR", "VARCHAR", "CSTRING"):
         return f"{base}({row['FLEN']})"
