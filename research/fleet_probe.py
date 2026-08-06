@@ -202,16 +202,19 @@ def main() -> None:
                SUM(CASE WHEN a.NAME LIKE '%OCD%' THEN 1 ELSE 0 END) AS NAME_OCD,
                SUM(CASE WHEN a.NAME LIKE '%ACD%' THEN 1 ELSE 0 END) AS NAME_ACD,
                SUM(CASE WHEN a.NAME LIKE '%LH%'  THEN 1 ELSE 0 END) AS NAME_LH,
-               SUM(CASE WHEN a.NAME LIKE '%T' OR a.NAME LIKE '%T %' THEN 1 ELSE 0 END) AS NAME_ENDS_TONNAGE,
-               SUM(CASE WHEN a.DISABLE = 1 THEN 1 ELSE 0 END) AS DISABLED
+               SUM(CASE WHEN a.DISABLE = 1 THEN 1 ELSE 0 END) AS DISABLED,
+               SUM(CASE WHEN COALESCE(a.DISABLE, 0) <> 1 THEN 1 ELSE 0 END) AS ACTIVE
         FROM AGENT a
         GROUP BY a.OWNRESOURCE;
     """)
-    print("READ THIS AS: if OCD names sit almost entirely under OWNRESOURCE = 1\n"
-          "and ACD/LH under 0, then own vehicles are identifiable by flag and by\n"
-          "name, and the tonnage in the name is the only capacity there is.\n"
-          "Parsing a naming convention is a judgement, not a measurement — put it\n"
-          "to Larry before anything is built on it.\n")
+    print("READ THIS AS: OCD against OWNRESOURCE = 1 is the test. On 6 Aug it\n"
+          "held directionally but not universally — OCD appeared on 75 of 360\n"
+          "own-resource agents and 2 of 860 others — so the flag is the reliable\n"
+          "discriminator and the name is a partial convention on top of it.\n"
+          "A tonnage count was here and has been removed: it matched any name\n"
+          "ending in T, which is not the same question, and 'GP BK' carries a\n"
+          "size that does not end in T at all. A bad measure is worse than none.\n"
+          "Parsing names is a judgement either way — put it to Larry.\n")
 
     show(conn, "4. Agents that actually ran trips in the window", f"""
         SELECT FIRST 25 a.AGENT, a.NAME, a.REGNO, a.VEHICLE, a.CAPACITY,
@@ -284,9 +287,17 @@ def main() -> None:
                    COUNT(DISTINCT rr.MANIFEST) AS TRIPS_SEEN_IN_ROUTING,
                    COUNT(*) AS LEGS
             FROM ROUTING rr
-            WHERE rr.MANIFEST IN (
-                SELECT m2.MANIFEST FROM MANIFEST m2
-                WHERE m2.AGENTDATE >= DATE '{since}' AND m2.AGENTDATE <= DATE '{until}'
+            WHERE EXISTS (
+                -- Matched on MTYPE as well as MANIFEST. Manifest numbers are
+                -- not unique across MTYPE: filtering on the number alone let
+                -- R-leg numbers pull in M-leg routing rows, and the 6 Aug run
+                -- reported more trips seen in ROUTING (1 441) than existed in
+                -- the window (1 376). About 5% over, and it read as a finding.
+                SELECT 1 FROM MANIFEST m2
+                WHERE m2.MANIFEST = rr.MANIFEST
+                  AND m2.MTYPE = rr.MTYPE
+                  AND m2.AGENTDATE >= DATE '{since}'
+                  AND m2.AGENTDATE <= DATE '{until}'
             )
             GROUP BY rr.MTYPE
         ) r ON r.MTYPE = t.MTYPE;
