@@ -9,7 +9,7 @@ REM Writes a dated .txt log and a dropped-rows .csv into the synced
 REM _diagnostics folder, so the results can be read off the share afterwards
 REM instead of only existing inside the RDP session.
 REM
-REM   run_verify_bounds.bat
+REM   research\run_verify_bounds.bat
 REM
 REM The other two bats assume uv is on PATH, which it is for the Task Scheduler
 REM user but often is not in an interactive shell — hence the fallback below to
@@ -30,7 +30,7 @@ echo.
 echo Found neither uv on PATH nor .venv\Scripts\python.exe in the repo.
 echo.
 echo   - uv is usually at %%USERPROFILE%%\.local\bin\uv.exe, so try:
-echo       "%USERPROFILE%\.local\bin\uv.exe" run revenue_reports/verify_date_bounds.py --out-dir "%DIAG%"
+echo       "%USERPROFILE%\.local\bin\uv.exe" run research/verify_date_bounds.py --out-dir "%DIAG%"
 echo   - or rebuild the environment from the repo:
 echo       uv venv --python 3.13
 echo       uv sync
@@ -38,12 +38,12 @@ echo.
 exit /b 1
 
 :use_uv
-uv run revenue_reports/verify_date_bounds.py --out-dir "%DIAG%"
+uv run research/verify_date_bounds.py --out-dir "%DIAG%"
 goto :done
 
 :use_venv
 echo uv not on PATH — using the project venv instead.
-.venv\Scripts\python.exe revenue_reports\verify_date_bounds.py --out-dir "%DIAG%"
+.venv\Scripts\python.exe research\verify_date_bounds.py --out-dir "%DIAG%"
 goto :done
 
 :done

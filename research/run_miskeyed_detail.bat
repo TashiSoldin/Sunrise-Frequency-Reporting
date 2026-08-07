@@ -52,7 +52,7 @@ if not exist "%SRC%" (
     echo   %SRC%
     echo.
     echo That file supplies the waybill numbers and is the only surviving record
-    echo of them. If it has been deleted, re-run run_verify_bounds.bat first —
+    echo of them. If it has been deleted, re-run research\run_verify_bounds.bat first —
     echo but note the bounded extract no longer produces those rows, so it will
     echo come back empty. Recover the CSV from the SharePoint version history.
     echo.

@@ -8,19 +8,19 @@ Read-only against the database. Runs SELECTs only, sends nothing, and does not
 touch the production export files. Safe to run at any time, including between
 the 07:00 and 16:30 jobs.
 
-    .\run_verify_bounds.bat        PowerShell
-    run_verify_bounds.bat          cmd
+    .\research\run_verify_bounds.bat        PowerShell
+    research\run_verify_bounds.bat          cmd
 
 which fills in the paths and copes with uv not being on PATH. By hand, note
 that the line continuation differs between shells — backtick in PowerShell,
 caret in cmd — so the single-line forms are safer:
 
-    uv run revenue_reports/verify_date_bounds.py --out-dir "<diagnostics folder>"
+    uv run research/verify_date_bounds.py --out-dir "<diagnostics folder>"
 
 If uv is not recognised — it is on PATH for the Task Scheduler user but often
 not in an interactive shell — use the venv interpreter that "uv sync" built:
 
-    .\.venv\Scripts\python.exe revenue_reports\verify_date_bounds.py --out-dir "..."
+    .\.venv\Scripts\python.exe research\verify_date_bounds.py --out-dir "..."
 
 Plain "python" will not do: firebirdsql, python-calamine and python-dotenv are
 installed in that venv, not system-wide.

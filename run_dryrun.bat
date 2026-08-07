@@ -69,7 +69,7 @@ REM A note for anyone who finds this folder without context.
 >>"%DIAG%\README.txt" echo                  Overwritten every run.
 >>"%DIAG%\README.txt" echo.
 >>"%DIAG%\README.txt" echo   date-bounds check *.txt / dropped rows *.csv
->>"%DIAG%\README.txt" echo                  output of run_verify_bounds.bat, a read-only check of
+>>"%DIAG%\README.txt" echo                  output of research\run_verify_bounds.bat, a read-only check of
 >>"%DIAG%\README.txt" echo                  the extraction date range. Safe to delete once read.
 >>"%DIAG%\README.txt" echo.
 >>"%DIAG%\README.txt" echo Nothing in here is sent to anyone, and nothing here is a source of truth.

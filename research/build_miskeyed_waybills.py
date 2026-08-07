@@ -1,6 +1,6 @@
 """Build the mis-keyed waybill-date listing Larry asked for on 4 Aug 2026.
 
-Source is the dropped-rows CSV written by revenue_reports/verify_date_bounds.py
+Source is the dropped-rows CSV written by research/verify_date_bounds.py
 on the BI server, which is now the ONLY record of these rows: the bounded
 extract (commit 21fef49) correctly excludes them, so they are no longer in the
 FY27 export. Do not delete that CSV without archiving it.
