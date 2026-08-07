@@ -5,7 +5,7 @@ REM Pulls the full line detail for the 340 mis-keyed waybills straight from
 REM Parcel Perfect and writes a workbook in the daily Billing Detail layout:
 REM shipper, consignee, pieces, masses, charge components, sub-total.
 REM
-REM   run_miskeyed_detail.bat
+REM   research\run_miskeyed_detail.bat
 REM
 REM Read-only against the database: one SELECT keyed on the waybill numbers,
 REM no writes, no email. Safe to run at any time.

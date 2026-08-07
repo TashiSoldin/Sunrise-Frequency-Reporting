@@ -18,7 +18,7 @@ nothing else does, and the detail has to come from Parcel Perfect directly.
 
 Read-only: one SELECT keyed on those waybill numbers, no writes, no email.
 
-    run_miskeyed_detail.bat
+    research\run_miskeyed_detail.bat
 
 or by hand on the BI server:
 
