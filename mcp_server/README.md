@@ -36,3 +36,28 @@ Entra ID — see `docs/entra-app-registration.md`) is wired in at that point
 
 Waybill tracking, revenue tools, and the guarded open query path arrive per
 the execution plan (Coda → Database Query Interface → Execution Plan).
+
+## OAuth behaviour (Day 6)
+
+What the server implements when the endpoint goes public. Moved from
+`docs/entra-app-registration.md`, which is now the send-to-Innate
+requirements only. `<hostname>` = the published hostname Innate choose.
+
+- Unauthenticated requests are answered with
+  `401 WWW-Authenticate: Bearer resource_metadata="https://<hostname>/.well-known/oauth-protected-resource/mcp"`.
+- That RFC 9728 document carries `resource` = the exact MCP URL and
+  `authorization_servers` = the Entra issuer
+  (`https://login.microsoftonline.com/<tenant-id>/v2.0`).
+- Every request: validate token signature, issuer and audience. With
+  Entra's default v1-format tokens the audience is the Application ID URI
+  (`https://<hostname>/mcp`), accepted in canonical URL form. If Innate use
+  the v2-token fallback (`requestedAccessTokenVersion = 2`), the audience
+  becomes the application (client) ID — configure validation to whichever
+  they report back.
+- Claude-side, no server action: PKCE `S256` on every authorization
+  request; `offline_access` appended for refresh tokens; Claude's
+  token-endpoint timeout is 10 s.
+- Design note: the MCP spec's default OAuth flow uses Dynamic Client
+  Registration; Entra does not support DCR, so Claude uses a pre-registered
+  client ID/secret instead (supported on custom connectors per Anthropic's
+  docs, 12 Aug 2026).

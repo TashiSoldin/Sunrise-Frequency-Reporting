@@ -1,89 +1,45 @@
 # Entra ID app registration — Claude connector for the DB query interface
 
-Prepared 12 Aug 2026, as promised in the 10 Aug reply to Darren (thread
-"BI Server: Claude Connector Endpoint, and a second database login").
-**Send-ready the moment Darren agrees to the Entra approach.** The only value
-we cannot fill in yet is the published hostname — that is Innate's choice.
-Everywhere below, `https://<hostname>/mcp` means the final public MCP URL,
-exactly as it will be entered in Claude (lowercase scheme and host, no
-trailing slash).
+Current as at 12 Aug 2026. `<hostname>` is the published hostname Innate
+choose; `https://<hostname>/mcp` means the final public MCP URL, exactly as
+it will be entered in Claude (lowercase scheme and host, no trailing slash).
 
-All of this was verified against Anthropic's current connector documentation
-on 12 Aug 2026 (claude.com/docs/connectors/building and its authentication
-and troubleshooting subpages; support.claude.com article 11175166;
-platform.claude.com/docs/en/api/ip-addresses).
-
-## What to create
+## The registration
 
 One app registration in Sunrise's Entra tenant, representing the MCP server
-(the protected API). Claude is the OAuth client and uses the pre-registered
-client ID and secret from this same registration — Entra does not support
-Dynamic Client Registration, and Anthropic's docs support supplying a
-pre-registered client ID/secret on a custom connector for exactly this case.
+(the protected API). Claude is the OAuth client, authenticating with the
+client ID and secret from this registration.
 
-| Setting | Value |
-| --- | --- |
-| Name | `Claude DB Query Interface` (suggestion — any clear name) |
-| Supported account types | Single tenant (Sunrise only) |
-| Platform / redirect URI | **Web** → `https://claude.ai/api/mcp/auth_callback` |
-| Client secret | One secret, 12–24 month expiry; note the expiry date for rotation |
+What it needs to satisfy:
 
-## Expose an API — the part that is easy to get wrong
+| Requirement | Value | Why |
+| --- | --- | --- |
+| Account types | Single tenant (Sunrise only) | Only Sunrise identities sign in |
+| Redirect URI (web) | `https://claude.ai/api/mcp/auth_callback` | Fixed on Anthropic's side; not configurable |
+| Client secret | One secret; expiry noted for rotation | Claude authenticates with client ID + secret |
+| Application ID URI | `https://<hostname>/mcp` — the connector URL exactly, including path, no trailing slash | Must match the `resource` value Claude sends — see below |
+| Delegated scope | One scope on that URI, e.g. `MCP.Access` ("Query the Parcel Perfect database through Claude"). Admin + users consent | Claude requests it during sign-in |
+| Access token version | `requestedAccessTokenVersion` at default (v1); if set to `2` (see fallback below), state it when returning the details | The token audience differs by version; the server validates it |
+| User assignment | Required, with only Larry Serman and Akha Manjezi assigned | The Entra-side access gate; the connector is additionally restricted on Sunrise's Claude tenant when registered |
 
-Claude sends an RFC 8707 `resource` parameter set to the **full MCP server
-URL including the path**. Entra rejects the token request with
-`AADSTS9010010` / `invalid_target` unless that exact value is registered as
-an Application ID URI. The default `api://{client-id}` URI is **not**
+## The Application ID URI
+
+Claude sends the full MCP URL as the OAuth `resource` parameter (RFC 8707);
+the token request fails with `AADSTS9010010` unless that exact URL is
+registered as an Application ID URI. The default `api://{client-id}` is not
 sufficient.
 
-Under **Expose an API**:
+Entra only accepts an `https://` Application ID URI whose host is on a
+domain verified in the tenant (subdomains included), so the published
+hostname must sit on one. If it cannot, the two documented fallbacks are
+`requestedAccessTokenVersion = 2` (see table) or an admin exemption —
+learn.microsoft.com identifier-uri-restrictions.
 
-1. Set (or add) the Application ID URI: `https://<hostname>/mcp` — must match
-   the connector URL exactly, including the path, **no trailing slash**.
-2. Add one delegated scope, e.g. `MCP.Access` ("Query the Parcel Perfect
-   database through Claude"). Admin + users consent. The full scope value is
-   then `https://<hostname>/mcp/MCP.Access`.
-
-**Prerequisite — the hostname must be a verified domain in Sunrise's tenant.**
-Microsoft's identifier-URI protection policy (enabled by default across
-tenants since June–July 2025) only accepts an `https://` Application ID URI
-whose host is a **tenant-verified custom domain** (or a subdomain of one), or
-the `*.onmicrosoft.com` initial domain — `https://<verifiedCustomDomain>/mcp`
-is fine, an unverified host is rejected with *"All newly added URIs must
-contain a tenant verified domain, tenant ID, or app ID."* So before this can
-be registered, `<hostname>` must be added and verified under **Entra →
-Custom domain names**. If that is not possible, the two Microsoft-documented
-fallbacks are: set the app's `requestedAccessTokenVersion` to `2` (v2 tokens
-exempt the app from the restriction), or have a tenant admin grant the app an
-explicit exemption. Ref: learn.microsoft.com identifier-uri-restrictions
-(verified 12 Aug 2026). Path components and the no-trailing-slash rule are
-both fine under the policy.
-
-## Restricting to Larry and Akha
-
-On the **Enterprise application** side of the registration:
-
-- **Properties → Assignment required = Yes**
-- **Users and groups**: assign only Larry Serman and Akha Manjezi
-
-This is the Entra-side gate. The connector itself is additionally restricted
-on Sunrise's Claude tenant when it is registered (Day 6).
-
-## Token details (for reference / server-side validation)
-
-- **Issuer / authorization server**: `https://login.microsoftonline.com/<tenant-id>/v2.0`
-- **Token audience (`aud`)**: the Application ID URI above — the MCP server
-  validates it, accepting the canonical URL form.
-- **PKCE**: Claude sends `code_challenge_method=S256` on every authorization
-  request; Entra supports this natively — nothing to configure.
-- **Refresh tokens**: Claude appends `offline_access` (advertised in Entra's
-  metadata) — nothing to configure.
-
-## Network prerequisites (already in the 10 Aug reply, unchanged)
+## Network prerequisites
 
 - Inbound HTTPS on 443 only, allowlisting Anthropic's published egress range
-  **`160.79.104.0/21`** (re-confirmed current, 12 Aug 2026). Claude connects
-  from Anthropic's cloud, not from Larry's machine.
+  **`160.79.104.0/21`**. Claude connects from Anthropic's cloud, not from
+  Larry's machine.
 - SSL certificate on the published hostname — Claude requires a valid cert.
 - The hostname must resolve to a **public, globally-routable IPv4 address**
   from public DNS. Private/CGNAT addresses and split-horizon DNS fail before
@@ -96,19 +52,11 @@ on Sunrise's Claude tenant when it is registered (Day 6).
   but any Conditional Access policy that blocks token issuance by IP or
   device state for Larry/Akha would surface here.
 
-## What we need back from Innate once created
+## What we need back once created
 
 1. Directory (tenant) ID
 2. Application (client) ID
-3. Client secret value (and its expiry date)
+3. Client secret value and its expiry date — via password-manager share,
+   one-time secret link, or phone; not email.
 4. Confirmation of the final hostname, so the Application ID URI and our
    server's metadata match it exactly
-
-## What our server does with it (our side, not Innate's)
-
-The MCP server answers unauthenticated requests with
-`401 WWW-Authenticate: Bearer resource_metadata="https://<hostname>/.well-known/oauth-protected-resource/mcp"`,
-serves that RFC 9728 document with `resource` = the exact MCP URL and
-`authorization_servers` = the Entra issuer, and validates token signature,
-issuer and audience on every request. Claude's token-endpoint timeout is
-10 seconds; Entra is comfortably inside that.
