@@ -36,6 +36,7 @@ from research.revenue_extraction_test import (
     list_columns,
     query_df,
 )
+
 from revenue_reports.extract_revenue import DB_COLS
 
 WINDOW = ("2026-07-22", "2026-07-27")
