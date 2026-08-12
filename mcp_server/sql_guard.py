@@ -30,6 +30,13 @@ _ALLOWED_HEADS = {"SELECT", "WITH"}
 # `EXECUTE BLOCK` or `FOR UPDATE` is caught too. COMMENT (the DDL statement)
 # is deliberately absent: it can only ever open a statement, the head check
 # already refuses it there, and RECEIPT has a column named COMMENT.
+#
+# GEN_ID is here because it is a *side effect that reads like a read*:
+# `SELECT GEN_ID(g, n)` advances a sequence, the head is SELECT, and no DML
+# keyword shows — yet Firebird sequence changes are outside transaction
+# control, so layer 2 (the read-only transaction) does NOT roll them back.
+# The same is true of `NEXT VALUE FOR`, handled as a phrase below because its
+# words (NEXT/VALUE/FOR) are innocuous individually.
 _FORBIDDEN = {
     "INSERT",
     "UPDATE",
@@ -50,7 +57,13 @@ _FORBIDDEN = {
     "ROLLBACK",
     "SAVEPOINT",
     "RELEASE",
+    "GEN_ID",
 }
+
+# `NEXT VALUE FOR <seq>` — the SQL-standard spelling of a generator bump.
+# Checked as a whitespace-tolerant phrase against the cleaned body (literals
+# and comments already blanked), so 'NEXT VALUE FOR' inside a string is data.
+_NEXT_VALUE_FOR = re.compile(r"\bNEXT\s+VALUE\s+FOR\b", re.IGNORECASE)
 
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
 
@@ -119,5 +132,8 @@ def assert_select_only(sql: str) -> str:
     for w in words:
         if w.upper() in _FORBIDDEN:
             raise GuardError(f"forbidden keyword: {w.upper()}")
+
+    if _NEXT_VALUE_FOR.search(body):
+        raise GuardError("forbidden: NEXT VALUE FOR (sequence generator)")
 
     return sql

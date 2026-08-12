@@ -26,6 +26,12 @@ from mcp_server.sql_guard import GuardError, assert_select_only
         "SELECT * FROM RECEIPT WHERE COMMENT = 'please update the address'",
         # word-boundary: UPDATED/CREATED are not UPDATE/CREATE
         "SELECT UPDATEDATE FROM RDB$DATABASE",
+        # sequence-side-effect guard must not over-reach onto lookalikes:
+        # a literal is data, a single word is not the NEXT VALUE FOR phrase,
+        # and GENID/NEXTVALUE are not the GEN_ID/NEXT VALUE FOR tokens
+        "SELECT 'NEXT VALUE FOR X' FROM RDB$DATABASE",
+        "SELECT NEXTVALUE FROM RDB$DATABASE",
+        "SELECT GENID FROM RDB$DATABASE",
     ],
 )
 def test_allows_selects(sql):
@@ -62,6 +68,13 @@ def test_allows_selects(sql):
         # unterminated literal / comment is refused, not guessed at
         "SELECT 'unterminated FROM RDB$DATABASE",
         "SELECT 1 /* unterminated",
+        # Firebird sequence side-effects: these mutate a generator and the
+        # read-only transaction does NOT roll them back, so the guard must
+        # refuse them even though the head is SELECT and no DML keyword shows
+        "SELECT GEN_ID(MY_GEN, 1) FROM RDB$DATABASE",
+        "select gen_id(my_gen, 1) from rdb$database",
+        "SELECT NEXT VALUE FOR MY_SEQ FROM RDB$DATABASE",
+        "SELECT NEXT   VALUE\nFOR MY_SEQ FROM RDB$DATABASE",
     ],
 )
 def test_refuses_everything_else(sql):
