@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from helpers.datetime_helper import DatetimeHelper
 from enums.report_enums import ReportTypes
+from helpers.datetime_helper import DatetimeHelper
 
 
 class EmailRecipientType(Enum):

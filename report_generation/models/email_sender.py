@@ -1,8 +1,9 @@
 import logging
-from tqdm import tqdm
+
 from clients.outlook_email_client import OutlookEmailClient
 from enums.email_enums import EmailConfig, EmailRecipientType
 from helpers.os_helper import OSHelper
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 

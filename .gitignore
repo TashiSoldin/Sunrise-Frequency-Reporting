@@ -7,3 +7,4 @@ logs/
 .venv/
 .env
 .ruff_cache
+PR-DESCRIPTION.md

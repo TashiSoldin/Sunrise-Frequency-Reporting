@@ -1,9 +1,8 @@
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-import smtplib
-
 import logging
+import smtplib
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +71,10 @@ class OutlookEmailClient:
             for file_path in attachments:
                 with open(file_path, "rb") as f:
                     attachment = MIMEApplication(f.read(), _subtype="xlsx")
-                    filename = file_path.split("/")[-1]
+                    # Handle both separators — on Windows the caller may pass a
+                    # backslash path, which a plain "/" split would leave intact
+                    # and send as an attachment named after the full path.
+                    filename = file_path.replace("\\", "/").split("/")[-1]
                     attachment.add_header(
                         "Content-Disposition", "attachment", filename=filename
                     )

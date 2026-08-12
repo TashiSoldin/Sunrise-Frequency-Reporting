@@ -1,11 +1,12 @@
 from datetime import timedelta
-from openpyxl import load_workbook
+
 import pandas as pd
-from tqdm import tqdm
 from enums.frequency_report_enums import LastEventTypes
+from helpers.datetime_helper import DatetimeHelper
 from helpers.excel_helper import ExcelHelper
 from helpers.os_helper import OSHelper
-from helpers.datetime_helper import DatetimeHelper
+from openpyxl import load_workbook
+from tqdm import tqdm
 
 
 class FrequencyReports:
