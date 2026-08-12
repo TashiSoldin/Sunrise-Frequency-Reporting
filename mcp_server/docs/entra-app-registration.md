@@ -44,6 +44,21 @@ Under **Expose an API**:
    database through Claude"). Admin + users consent. The full scope value is
    then `https://<hostname>/mcp/MCP.Access`.
 
+**Prerequisite — the hostname must be a verified domain in Sunrise's tenant.**
+Microsoft's identifier-URI protection policy (enabled by default across
+tenants since June–July 2025) only accepts an `https://` Application ID URI
+whose host is a **tenant-verified custom domain** (or a subdomain of one), or
+the `*.onmicrosoft.com` initial domain — `https://<verifiedCustomDomain>/mcp`
+is fine, an unverified host is rejected with *"All newly added URIs must
+contain a tenant verified domain, tenant ID, or app ID."* So before this can
+be registered, `<hostname>` must be added and verified under **Entra →
+Custom domain names**. If that is not possible, the two Microsoft-documented
+fallbacks are: set the app's `requestedAccessTokenVersion` to `2` (v2 tokens
+exempt the app from the restriction), or have a tenant admin grant the app an
+explicit exemption. Ref: learn.microsoft.com identifier-uri-restrictions
+(verified 12 Aug 2026). Path components and the no-trailing-slash rule are
+both fine under the policy.
+
 ## Restricting to Larry and Akha
 
 On the **Enterprise application** side of the registration:
