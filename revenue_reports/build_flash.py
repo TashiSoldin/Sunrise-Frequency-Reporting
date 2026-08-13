@@ -28,7 +28,6 @@ from collections import defaultdict
 from datetime import date
 
 import xlsxwriter
-from data import col, load_export
 from style import (
     DEC2,
     H_BILLING,
@@ -40,6 +39,8 @@ from style import (
     set_rows,
     title_block,
 )
+
+from data import col, load_export
 
 NAVY = "#05003C"
 NAVY2 = "#0A0050"
@@ -74,9 +75,7 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
     iCUST = col(headers, "Customer")
     iACC = col(headers, "Account")
 
-    day_rows = [
-        r for r in rows if r[iWD] == day and "~" not in str(r[iWB])
-    ]
+    day_rows = [r for r in rows if r[iWD] == day and "~" not in str(r[iWB])]
     if not day_rows:
         raise SystemExit(f"No waybills found for {day} — wrong file or date?")
 
@@ -136,8 +135,9 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
         cust[a][0] += r[iSUB] or 0
         cust[a][1] += r[iKG] or 0
         cust[a][2] += 1
-    customers = sorted(((a, cust_names[a], *v) for a, v in cust.items()),
-                       key=lambda t: -t[2])
+    customers = sorted(
+        ((a, cust_names[a], *v) for a, v in cust.items()), key=lambda t: -t[2]
+    )
     top10 = [(name, *v) for _, name, *v in customers[:10]]
 
     # ---- write workbook ----
@@ -169,12 +169,44 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
     subtitle = fmt(border=0, font_size=9, font_color="white", bg_color=NAVY2)
     accent = fmt(border=0, bg_color=ORANGE)
     kpi_l_navy = fmt(bold=True, font_size=8, font_color="white", bg_color=NAVY)
-    kpi_v_navy = fmt(bold=True, font_size=16, font_color="white", bg_color=NAVY, num_format="#,##0", align="left", valign="vcenter")
+    kpi_v_navy = fmt(
+        bold=True,
+        font_size=16,
+        font_color="white",
+        bg_color=NAVY,
+        num_format="#,##0",
+        align="left",
+        valign="vcenter",
+    )
     kpi_l_or = fmt(bold=True, font_size=8, font_color=NAVY, bg_color=ORANGE)
-    kpi_v_or = fmt(bold=True, font_size=16, font_color=NAVY, bg_color=ORANGE, num_format="0.00", align="left", valign="vcenter")
+    kpi_v_or = fmt(
+        bold=True,
+        font_size=16,
+        font_color=NAVY,
+        bg_color=ORANGE,
+        num_format="0.00",
+        align="left",
+        valign="vcenter",
+    )
     kpi_l_ye = fmt(bold=True, font_size=8, font_color=NAVY, bg_color=YELLOW)
-    kpi_v_ye = fmt(bold=True, font_size=16, font_color=NAVY, bg_color=YELLOW, num_format="#,##0", align="left", valign="vcenter")
-    kpi_v_pct = fmt(bold=True, font_size=16, font_color=NAVY, bg_color=YELLOW, num_format="0.0%;(0.0%)", align="left", valign="vcenter")
+    kpi_v_ye = fmt(
+        bold=True,
+        font_size=16,
+        font_color=NAVY,
+        bg_color=YELLOW,
+        num_format="#,##0",
+        align="left",
+        valign="vcenter",
+    )
+    kpi_v_pct = fmt(
+        bold=True,
+        font_size=16,
+        font_color=NAVY,
+        bg_color=YELLOW,
+        num_format="0.0%;(0.0%)",
+        align="left",
+        valign="vcenter",
+    )
     section = fmt(bold=True, font_size=11, font_color="white", bg_color=NAVY)
     th = fmt(bold=True, font_size=9, font_color="white", bg_color=NAVY2)
 
@@ -188,7 +220,9 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
 
     ws.merge_range("B2:G2", "SUNRISE LOGISTICS", brand)
     ws.merge_range("B3:G3", f"Flash Revenue Report — {title_date} ({weekday})", title)
-    ws.merge_range("B4:G4", "Waybill-date basis · gross Subtotal (ex-VAT) · ZAR", subtitle)
+    ws.merge_range(
+        "B4:G4", "Waybill-date basis · gross Subtotal (ex-VAT) · ZAR", subtitle
+    )
     ws.merge_range("B5:G5", "", accent)
 
     ws.merge_range("B7:C7", "REVENUE", kpi_l_navy)
@@ -244,9 +278,13 @@ def build(day: date, wb_file: str, out_dir: str) -> str:
         ws.write(r + 2 + j, 3, ckg, num)
         ws.write(r + 2 + j, 4, rev / ckg if ckg else 0, dec)
         ws.write(r + 2 + j, 5, n, num)
-    ws.write(r + 2 + len(top10), 1,
-             f"Every client that moved freight on {title_date} is listed on the "
-             f"'{ALL_TAB}' tab.", fmt(border=0, font_size=8, font_color="#595959"))
+    ws.write(
+        r + 2 + len(top10),
+        1,
+        f"Every client that moved freight on {title_date} is listed on the "
+        f"'{ALL_TAB}' tab.",
+        fmt(border=0, font_size=8, font_color="#595959"),
+    )
 
     _all_customers(wb, fmt, customers, revenue, title_date, weekday)
 
@@ -286,18 +324,31 @@ def _all_customers(wb, fmt, customers, revenue, title_date, weekday):
     class _Shim:
         get = staticmethod(fmt)
 
-    title_block(ws, _Shim, "I", "SUNRISE LOGISTICS",
-                f"All Customers — {title_date} ({weekday})",
-                f"Every client that moved freight that day · {len(customers)} clients · "
-                f"grouped by account · waybill-date basis · gross Subtotal (ex-VAT) · ZAR")
-    set_rows(ws, H_BILLING)               # heading row 21.9, or it renders tight
+    title_block(
+        ws,
+        _Shim,
+        "I",
+        "SUNRISE LOGISTICS",
+        f"All Customers — {title_date} ({weekday})",
+        f"Every client that moved freight that day · {len(customers)} clients · "
+        f"grouped by account · waybill-date basis · gross Subtotal (ex-VAT) · ZAR",
+    )
+    set_rows(ws, H_BILLING)  # heading row 21.9, or it renders tight
 
     th = fmt(bold=True, font_size=9, font_color="white", bg_color=NAVY2)
-    hdr = ["Account", "Customer", "Revenue", "Chg kg", "R/kg", "Waybills",
-           "% of day", "Cumulative"]
+    hdr = [
+        "Account",
+        "Customer",
+        "Revenue",
+        "Chg kg",
+        "R/kg",
+        "Waybills",
+        "% of day",
+        "Cumulative",
+    ]
     for i, h in enumerate(hdr):
         ws.write(6, 1 + i, h, th)
-    freeze_below(ws, 7)                   # B8 — headings held, detail scrolls
+    freeze_below(ws, 7)  # B8 — headings held, detail scrolls
 
     running = 0.0
     rr = 7
@@ -336,9 +387,9 @@ def _all_customers(wb, fmt, customers, revenue, title_date, weekday):
 
     # ~100 rows a day, so this one is meant to be printed as well as scrolled.
     ws.set_landscape()
-    ws.set_paper(9)                       # A4
-    ws.fit_to_pages(1, 0)                 # one page wide, as many tall as needed
-    ws.repeat_rows(6)                     # headings on every printed page
+    ws.set_paper(9)  # A4
+    ws.fit_to_pages(1, 0)  # one page wide, as many tall as needed
+    ws.repeat_rows(6)  # headings on every printed page
     ws.print_area(1, 1, rr, 8)
 
 

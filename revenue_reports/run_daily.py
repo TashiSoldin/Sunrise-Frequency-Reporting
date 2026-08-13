@@ -62,9 +62,10 @@ REPO_ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO_ROOT / "report_generation"))
 
-from data import col, load_export
 from mailer import flash_subject, pm_subject, send_reports
 from utils.log_execution_time_decorator import log_execution_time
+
+from data import col, load_export
 
 LOGS_DIR = REPO_ROOT / "logs" / "run_revenue"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -105,8 +106,9 @@ def run(step: str, args: list[str]) -> str:
     """Run a builder and return the workbook path it printed on its last line."""
     logger.info(f"Running {step}")
     start_time = time.perf_counter()
-    proc = subprocess.run([sys.executable, *args], cwd=HERE,
-                          capture_output=True, text=True)
+    proc = subprocess.run(
+        [sys.executable, *args], cwd=HERE, capture_output=True, text=True
+    )
 
     for line in proc.stdout.splitlines():
         if line.strip():
@@ -197,16 +199,19 @@ def generate_reports(args: argparse.Namespace) -> None:
 
     if not args.skip_extract:
         logger.info("Extracting data from database")
-        run("extract (WB / INV / credits)",
-            ["extract_revenue.py", "--out-dir", str(data_dir)])
+        run(
+            "extract (WB / INV / credits)",
+            ["extract_revenue.py", "--out-dir", str(data_dir)],
+        )
 
     label = fy_label(fy_start())
     wb_file = data_dir / f"WB Date - {label}..xlsx"
     inv_file = data_dir / f"INV Date - {label}..xlsx"
     cred_start = fy_start().year - 2
-    credits_file = (data_dir /
-                    f"Credits - March{cred_start % 100} - "
-                    f"Feb{(fy_start().year + 1) % 100}.xlsx")
+    credits_file = (
+        data_dir / f"Credits - March{cred_start % 100} - "
+        f"Feb{(fy_start().year + 1) % 100}.xlsx"
+    )
     py_inv = data_dir / PY_INV_NAME
     budget = data_dir / BUDGET_NAME
     for f in (wb_file, inv_file, credits_file, py_inv, budget):
@@ -215,20 +220,36 @@ def generate_reports(args: argparse.Namespace) -> None:
             raise SystemExit(1)
 
     wb_day, inv_day = latest_dates(wb_file, inv_file)
-    logger.info(f"Flash day (waybill basis): {wb_day}; "
-                f"billing day (invoice basis): {inv_day}")
+    logger.info(
+        f"Flash day (waybill basis): {wb_day}; billing day (invoice basis): {inv_day}"
+    )
 
     if args.only in ("all", "flash"):
-        flash = run("flash", ["build_flash.py", "--date", wb_day.isoformat(),
-                              "--wb-file", str(wb_file),
-                              "--out-dir", str(report_dir)])
+        flash = run(
+            "flash",
+            [
+                "build_flash.py",
+                "--date",
+                wb_day.isoformat(),
+                "--wb-file",
+                str(wb_file),
+                "--out-dir",
+                str(report_dir),
+            ],
+        )
         if not args.no_email:
             logger.info("Sending flash revenue email")
             send_reports(
                 subject=flash_subject(wb_day),
-                intro=("Please find attached the Flash Revenue report for "
-                       f"{wb_day.strftime('%A, %d %B %Y')}."),
-                attachments=[flash], to=to, cc=cc, dry_run=args.dry_run_email)
+                intro=(
+                    "Please find attached the Flash Revenue report for "
+                    f"{wb_day.strftime('%A, %d %B %Y')}."
+                ),
+                attachments=[flash],
+                to=to,
+                cc=cc,
+                dry_run=args.dry_run_email,
+            )
 
     if args.only in ("all", "pm"):
         # The Flash Comparison tab reads that day's FROZEN flash workbook — the
@@ -236,60 +257,123 @@ def generate_reports(args: argparse.Namespace) -> None:
         # rather than recomputing from the live export, which keeps firming up
         # as waybills are captured. Skipped if that file isn't there, e.g. the
         # first run of a new deployment or a morning the flash didn't run.
-        flash_name = f"Flash Revenue - {inv_day.day:02d} {inv_day.strftime('%b %Y')}.xlsx"
+        flash_name = (
+            f"Flash Revenue - {inv_day.day:02d} {inv_day.strftime('%b %Y')}.xlsx"
+        )
         flash_path = report_dir / flash_name
-        billing_args = ["build_billing_detail.py", "--date", inv_day.isoformat(),
-                        "--inv-file", str(inv_file),
-                        "--credits-file", str(credits_file),
-                        "--out-dir", str(report_dir)]
+        billing_args = [
+            "build_billing_detail.py",
+            "--date",
+            inv_day.isoformat(),
+            "--inv-file",
+            str(inv_file),
+            "--credits-file",
+            str(credits_file),
+            "--out-dir",
+            str(report_dir),
+        ]
         if flash_path.exists():
             billing_args += ["--flash-file", str(flash_path)]
         else:
-            logger.warning(f"No frozen flash at {flash_name} — billing detail "
-                           f"will build without the Flash Comparison tab")
+            logger.warning(
+                f"No frozen flash at {flash_name} — billing detail "
+                f"will build without the Flash Comparison tab"
+            )
         billing = run("billing detail", billing_args)
-        dashboard = run("dashboard",
-                        ["build_dashboard.py", "--inv-file", str(inv_file),
-                         "--py-inv-file", str(py_inv), "--wb-file", str(wb_file),
-                         "--credits-file", str(credits_file),
-                         "--budget-file", str(budget),
-                         "--inv-asof", inv_day.isoformat(),
-                         "--wb-asof", wb_day.isoformat(),
-                         "--out-dir", str(report_dir)])
-        unbilled = run("unbilled", ["build_unbilled.py", "--wb-file", str(wb_file),
-                                    "--out-dir", str(report_dir)])
-        credits = run("credit notes",
-                      ["build_credit_notes.py", "--credits-file", str(credits_file),
-                       "--month", inv_day.strftime("%Y-%m"),
-                       "--out-dir", str(report_dir)])
+        dashboard = run(
+            "dashboard",
+            [
+                "build_dashboard.py",
+                "--inv-file",
+                str(inv_file),
+                "--py-inv-file",
+                str(py_inv),
+                "--wb-file",
+                str(wb_file),
+                "--credits-file",
+                str(credits_file),
+                "--budget-file",
+                str(budget),
+                "--inv-asof",
+                inv_day.isoformat(),
+                "--wb-asof",
+                wb_day.isoformat(),
+                "--out-dir",
+                str(report_dir),
+            ],
+        )
+        unbilled = run(
+            "unbilled",
+            [
+                "build_unbilled.py",
+                "--wb-file",
+                str(wb_file),
+                "--out-dir",
+                str(report_dir),
+            ],
+        )
+        credits = run(
+            "credit notes",
+            [
+                "build_credit_notes.py",
+                "--credits-file",
+                str(credits_file),
+                "--month",
+                inv_day.strftime("%Y-%m"),
+                "--out-dir",
+                str(report_dir),
+            ],
+        )
         if not args.no_email:
             logger.info("Sending daily revenue reports email")
             send_reports(
                 subject=pm_subject(inv_day),
-                intro=("Please find attached the daily revenue reports for "
-                       f"{inv_day.strftime('%A, %d %B %Y')}."),
+                intro=(
+                    "Please find attached the daily revenue reports for "
+                    f"{inv_day.strftime('%A, %d %B %Y')}."
+                ),
                 attachments=[dashboard, billing, unbilled, credits],
-                to=to, cc=cc, dry_run=args.dry_run_email)
+                to=to,
+                cc=cc,
+                dry_run=args.dry_run_email,
+            )
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--data-dir", required=True,
-                    help='The "2. Revenue Data" folder (extracts land here)')
-    ap.add_argument("--report-dir", required=True,
-                    help="Where the report workbooks are written")
-    ap.add_argument("--only", choices=["all", "flash", "pm"], default="all",
-                    help="flash = 07:00 run; pm = 16:30 run; all = both")
-    ap.add_argument("--skip-extract", action="store_true",
-                    help="Rebuild reports from the existing files only")
-    ap.add_argument("--no-email", action="store_true",
-                    help="Build and save the reports but send no email")
-    ap.add_argument("--dry-run-email", action="store_true",
-                    help="Print what would be emailed without sending")
-    ap.add_argument("--to", default=None,
-                    help="Comma-separated recipient override (test sends)")
-    ap.add_argument("--cc", default=None,
-                    help="Comma-separated cc override")
+    ap.add_argument(
+        "--data-dir",
+        required=True,
+        help='The "2. Revenue Data" folder (extracts land here)',
+    )
+    ap.add_argument(
+        "--report-dir", required=True, help="Where the report workbooks are written"
+    )
+    ap.add_argument(
+        "--only",
+        choices=["all", "flash", "pm"],
+        default="all",
+        help="flash = 07:00 run; pm = 16:30 run; all = both",
+    )
+    ap.add_argument(
+        "--skip-extract",
+        action="store_true",
+        help="Rebuild reports from the existing files only",
+    )
+    ap.add_argument(
+        "--no-email",
+        action="store_true",
+        help="Build and save the reports but send no email",
+    )
+    ap.add_argument(
+        "--dry-run-email",
+        action="store_true",
+        help="Print what would be emailed without sending",
+    )
+    ap.add_argument(
+        "--to", default=None, help="Comma-separated recipient override (test sends)"
+    )
+    ap.add_argument("--cc", default=None, help="Comma-separated cc override")
     args = ap.parse_args()
 
     logger.info(f"Starting revenue pipeline: {args.only}")

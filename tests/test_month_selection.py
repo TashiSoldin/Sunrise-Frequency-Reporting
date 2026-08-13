@@ -31,13 +31,16 @@ def completed(as_of: date):
 
 
 class TestFinancialYear:
-    @pytest.mark.parametrize("d, fy", [
-        (date(2026, 3, 1), 2026),    # first day of FY27
-        (date(2026, 7, 31), 2026),
-        (date(2027, 2, 28), 2026),   # last day of FY27
-        (date(2027, 3, 1), 2027),    # rolls to FY28
-        (date(2026, 1, 15), 2025),   # Jan belongs to the FY that opened last March
-    ])
+    @pytest.mark.parametrize(
+        "d, fy",
+        [
+            (date(2026, 3, 1), 2026),  # first day of FY27
+            (date(2026, 7, 31), 2026),
+            (date(2027, 2, 28), 2026),  # last day of FY27
+            (date(2027, 3, 1), 2027),  # rolls to FY28
+            (date(2026, 1, 15), 2025),  # Jan belongs to the FY that opened last March
+        ],
+    )
     def test_start_year(self, d, fy):
         assert fy_start_year(d) == fy
 
@@ -72,22 +75,40 @@ class TestCompletedMonths:
 
 
 class TestTradingDays:
-    def test_matches_larrys_reference_workbook(self):
-        """The five values read out of the reference's own assumption cells.
+    """Weekdays minus SA public holidays — changed 13 Aug 2026.
 
-        Plain Mon-Fri with public holidays left in. Weekdays minus SA public
-        holidays would give Apr 19 / May 20 / Jun 21, which is a different
-        report - see the Questions for Larry note before changing this.
-        """
-        assert [month_trading_days(2026, m) for m in (3, 4, 5, 6, 7)] == [22, 22, 21, 22, 23]
+    Larry, by email re the 12 Aug flash: "Monday was a public holiday so we
+    should be on day 6" — public holidays come OUT of the day count. The
+    previous holidays-left-in reading came from his 28 Jul reference
+    workbook, but that only ever showed completed months (elapsed = period,
+    so the choice cancels) and July, which had no weekday holiday. August
+    2026 was the first month the two readings diverged, and Larry picked
+    holidays-out.
+    """
 
-    def test_ytd_to_june_is_87(self):
-        assert sum(month_trading_days(2026, m) for m in (3, 4, 5, 6)) == 87
+    def test_fy27_month_counts(self):
+        # Mar 22 (Human Rights Day is a Saturday), Apr 19 (Good Friday,
+        # Family Day, Freedom Day), May 20 (Workers' Day), Jun 21 (Youth
+        # Day), Jul 23 (no weekday holidays), Aug 20 (Women's Day observed
+        # Mon 10th).
+        assert [month_trading_days(2026, m) for m in (3, 4, 5, 6, 7, 8)] == [
+            22,
+            19,
+            20,
+            21,
+            23,
+            20,
+        ]
 
-    def test_holidays_are_not_deducted(self):
+    def test_august_womens_day_observance_is_deducted(self):
+        # 9 Aug 2026 is a Sunday, so Mon 10 Aug is the public holiday —
+        # the exact day Larry flagged.
+        assert month_trading_days(2026, 8) == 20
+
+    def test_holidays_are_deducted(self):
         # April 2026 contains Good Friday (3rd), Family Day (6th) and Freedom
-        # Day (27th). All three still count.
-        assert month_trading_days(2026, 4) == 22
+        # Day (27th). All three come out.
+        assert month_trading_days(2026, 4) == 19
 
     def test_every_fy_month_is_plausible(self):
         for m in MONTHS_FY:
