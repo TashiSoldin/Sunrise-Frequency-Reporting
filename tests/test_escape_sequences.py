@@ -27,18 +27,21 @@ REPO = Path(__file__).resolve().parent.parent
 VALID = set("\n\\'\"abfnrtv01234567xNuU")
 
 SOURCES = sorted(
-    p for p in REPO.rglob("*.py")
+    p
+    for p in REPO.rglob("*.py")
     if ".venv" not in p.parts and "__pycache__" not in p.parts
 )
 
 
 def invalid_escapes(path: Path):
     out = []
-    for tok in tokenize.generate_tokens(io.StringIO(path.read_text()).readline):
+    for tok in tokenize.generate_tokens(
+        io.StringIO(path.read_text(encoding="utf-8")).readline
+    ):
         if tok.type != tokenize.STRING:
             continue
         prefix = re.match(r"[A-Za-z]*", tok.string).group().lower()
-        if "r" in prefix or "b" in prefix:      # raw and bytes are exempt
+        if "r" in prefix or "b" in prefix:  # raw and bytes are exempt
             continue
         for m in re.finditer(r"\\(.)", tok.string, re.DOTALL):
             if m.group(1) not in VALID:

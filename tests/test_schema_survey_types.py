@@ -39,7 +39,8 @@ def _load_module():
     stub.connect = lambda: None
     stub.query_df = lambda *a, **k: None
     sys.modules.setdefault("research.revenue_extraction_test", stub)
-    return importlib.import_module("research.schema_survey")
+    # moved from research/ in ff891e70 ("move to db query interface")
+    return importlib.import_module("research.db_query_interface.schema_survey")
 
 
 _survey = _load_module()
@@ -64,7 +65,13 @@ def row(ftype, sub=None, length=None, prec=None, scale=None):
     """
     frame = pd.DataFrame(
         [
-            {"FTYPE": ftype, "FSUB": sub, "FLEN": length, "FPREC": prec, "FSCALE": scale},
+            {
+                "FTYPE": ftype,
+                "FSUB": sub,
+                "FLEN": length,
+                "FPREC": prec,
+                "FSCALE": scale,
+            },
             _NUMERIC_ROW,
         ]
     )

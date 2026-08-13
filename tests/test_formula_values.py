@@ -31,8 +31,11 @@ class TestNoBareFormulaWrites:
 
     @pytest.mark.parametrize("path", BUILDER_FILES, ids=lambda p: p.name)
     def test_no_direct_write_formula(self, path):
-        hits = [f"{path.name}:{i}" for i, ln in enumerate(path.read_text().splitlines(), 1)
-                if ".write_formula(" in ln]
+        hits = [
+            f"{path.name}:{i}"
+            for i, ln in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+            if ".write_formula(" in ln
+        ]
         assert not hits, (
             f"write_formula called directly in {hits}. Use Vals.f(), which requires "
             f"value=, or the cell will cache 0 and read as 0 outside desktop Excel."
@@ -42,8 +45,11 @@ class TestNoBareFormulaWrites:
     def test_no_formula_smuggled_through_merge_range(self, path):
         """merge_range auto-detects a leading '=' and writes a 0-cached formula."""
         pattern = re.compile(r'merge_range\([^)]*?["\']=')
-        hits = [f"{path.name}:{i}" for i, ln in enumerate(path.read_text().splitlines(), 1)
-                if pattern.search(ln)]
+        hits = [
+            f"{path.name}:{i}"
+            for i, ln in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+            if pattern.search(ln)
+        ]
         assert not hits, (
             f"merge_range given a formula in {hits}. Use Vals.mf(), which merges "
             f"blank and then writes the formula with its value."
@@ -67,7 +73,7 @@ class TestGuardMirrors:
     """The helpers must return exactly what the Excel guard returns."""
 
     def test_div_blanks_on_zero_denominator(self):
-        assert div(10, 0) == ""          # =IF(b=0,"",a/b)
+        assert div(10, 0) == ""  # =IF(b=0,"",a/b)
         assert div(10, 4) == 2.5
 
     def test_ratio_less_1_blanks_on_zero_denominator(self):
@@ -75,7 +81,7 @@ class TestGuardMirrors:
         assert ratio_less_1(10, 4) == 1.5
 
     def test_sub_blanks_on_zero_guard(self):
-        assert sub(10, 0) == ""          # =IF(F=0,"",J-F)
+        assert sub(10, 0) == ""  # =IF(F=0,"",J-F)
         assert sub(10, 4) == 6
         assert sub(10, 4, guard=0) == ""
 
