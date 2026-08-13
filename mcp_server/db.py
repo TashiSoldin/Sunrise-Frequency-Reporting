@@ -43,7 +43,16 @@ def run_select(
 ) -> tuple[list[str], list[tuple]]:
     """Run one guarded SELECT and return (column_names, rows), capped."""
     assert_select_only(sql)
-    with closing(connect()) as conn, closing(conn.cursor()) as cur:
+    try:
+        conn = connect()
+    except Exception as e:
+        # Said in the tool error the client relays: a raw WinError/socket
+        # message must never be mistaken for an answer about the data.
+        raise ConnectionError(
+            f"the Parcel Perfect database is unreachable ({e}) — the query "
+            "did not run, so this says nothing about the data asked for"
+        ) from e
+    with closing(conn), closing(conn.cursor()) as cur:
         cur.execute(sql, params)
         columns = [d[0] for d in cur.description]
         rows = cur.fetchmany(max_rows)

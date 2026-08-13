@@ -120,6 +120,55 @@ def test_tilde_lookup_parameter_and_variants_surfaced():
     assert "do not silently pick one" in answer["message"]
 
 
+def test_trailing_tilde_input_finds_the_family():
+    # 'PTM317433~' typed off a screen means "and its amended copies" — it must
+    # find the base and variants, never answer NOT FOUND (live counterexample,
+    # 13 Aug: base + ~1 exist, the un-normalised lookup found neither).
+    run = _runner({"SLX123456": [_row("SLX123456"), _row("SLX123456~1")]})
+    answer = lookup_waybill("SLX123456~", run=run)
+    assert run.calls[0][1] == ("SLX123456", "SLX123456~")
+    assert answer["found"] is True
+    assert answer["match_count"] == 2
+
+
+def test_typed_tilde_variant_is_looked_up_exactly():
+    # Typing the variant itself returns that record (plus any deeper copies),
+    # not the whole family — the exact parameter keeps the tilde suffix.
+    run = _runner({"SLX123456~1": [_row("SLX123456~1")]})
+    answer = lookup_waybill("SLX123456~1", run=run)
+    assert run.calls[0][1] == ("SLX123456~1", "SLX123456~1~")
+    (m,) = answer["matches"]
+    assert m["is_tilde_variant"] is True
+
+
+def test_times_serialise_to_seconds_not_microseconds():
+    # Live TIME columns carry microseconds (LASTEVENTTIME 16:29:07.101000);
+    # the answer must read like the Parcel Perfect screen, to the second.
+    row = _row(
+        LASTEVENTTIME=datetime.time(16, 29, 7, 101000),
+        PODTIME=datetime.time(23, 0),
+        PODCAPTURETIME=datetime.time(16, 28, 28, 902000),
+    )
+    answer = lookup_waybill("SLX123456", run=_runner({"SLX123456": [row]}))
+    (m,) = answer["matches"]
+    assert m["last_event"]["time"] == "16:29:07"
+    assert m["pod"]["time"] == "23:00:00"
+    assert m["pod"]["capture_time"] == "16:28:28"
+
+
+def test_db_unreachable_error_names_the_database(monkeypatch):
+    # A dead connection must surface as "database unreachable", never as a
+    # bare socket error a caller could misread as an answer about the waybill.
+    from mcp_server import db
+
+    def refuse():
+        raise ConnectionRefusedError("[WinError 10061] target machine refused")
+
+    monkeypatch.setattr(db, "connect", refuse)
+    with pytest.raises(ConnectionError, match="Parcel Perfect database is unreachable"):
+        db.run_select("SELECT 1 FROM RDB$DATABASE")
+
+
 def test_case_fallback_tries_as_typed_after_uppercase():
     run = _runner({"slx123456": [_row("slx123456")]})
     answer = lookup_waybill("slx123456", run=run)
@@ -143,7 +192,7 @@ def test_cap_is_flagged_never_silent():
 
 @pytest.mark.parametrize(
     "bad",
-    ["", "   ", "SLX%", "*", "SLX?123", "x", "A" * 31, "WAY;BILL", "O'BRIEN’S"],
+    ["", "   ", "SLX%", "*", "SLX?123", "x", "A" * 31, "WAY;BILL", "O'BRIEN’S", "~~"],
 )
 def test_bad_input_refused_before_any_query(bad):
     run = _runner({})

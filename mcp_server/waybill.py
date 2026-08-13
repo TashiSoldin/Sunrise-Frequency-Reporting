@@ -85,9 +85,14 @@ def _validate(waybill_no: str) -> str:
         raise WaybillInputError(
             "wildcards are not supported — provide the full waybill number"
         )
+    # A trailing ~ means "and its amended copies", not part of the number:
+    # 'PTM317433~' must find PTM317433 and PTM317433~1, not answer NOT FOUND.
+    # Nothing is lost if a literal trailing-tilde row existed — STARTING WITH
+    # '<no>~' matches the string equal to the prefix too.
+    wb = wb.rstrip("~")
     if not _VALID_WAYBILL.fullmatch(wb):
         raise WaybillInputError(
-            f"{wb!r} does not look like a waybill number "
+            f"{waybill_no.strip()!r} does not look like a waybill number "
             "(2-30 characters: letters, digits, ~ - / . _)"
         )
     return wb
@@ -98,7 +103,11 @@ def _value(v):
     if isinstance(v, str):
         v = v.strip()
         return v if v else None
-    if isinstance(v, (datetime.datetime, datetime.date, datetime.time)):
+    if isinstance(v, (datetime.datetime, datetime.time)):
+        # The live TIME columns carry microseconds (16:29:07.101000); the
+        # Parcel Perfect screen shows seconds. datetime before date — subclass.
+        return v.isoformat(timespec="seconds")
+    if isinstance(v, datetime.date):
         return v.isoformat()
     if isinstance(v, Decimal):
         return float(v)
