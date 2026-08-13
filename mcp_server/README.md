@@ -33,9 +33,17 @@ Entra ID — see `docs/entra-app-registration.md`) is wired in at that point
 
 - `health` — trivial guarded query (`SELECT CURRENT_USER, CURRENT_ROLE,
   CURRENT_TIMESTAMP FROM RDB$DATABASE`); proves DB reachability.
+- `waybill_status(waybill_no)` — latest delivery status for one waybill from
+  `VIEW_WBANALYSE` (the view Alex's production POD reports query): status,
+  last event/hub/date/time, POD recipient + date/time + capture date/time +
+  discrepancy + image present, delivery agent, service, origin→destination.
+  One row per waybill — the **last** recorded movement; full EVENT-table
+  history is a separate future quote. Indexed lookup only (exact match +
+  `STARTING WITH '<no>~'` for tilde variants, ~25 ms live). Not-found is
+  explicit, tilde copies are flagged, multiple matches are all returned.
 
-Waybill tracking, revenue tools, and the guarded open query path arrive per
-the execution plan (Coda → Database Query Interface → Execution Plan).
+Revenue tools and the guarded open query path arrive per the execution plan
+(Coda → Database Query Interface → Execution Plan).
 
 ## OAuth behaviour (Day 6)
 
