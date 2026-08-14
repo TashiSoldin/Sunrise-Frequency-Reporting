@@ -527,9 +527,24 @@ def extraction_sql(
     interpolated into the SQL. The only f-string pieces are column names from
     fixed internal maps.
 
-    account filters on exact ACCNUM. date_from/date_to bound the basis date
-    column (WAYDATE or INVDATE) inclusively at both ends, inside the FY window
-    — they narrow the extract, they cannot widen it past the FY bounds.
+    account filters on exact ACCNUM. Checked live 14 Aug 2026: the match is
+    CASE-SENSITIVE ('b35' returns an empty extract where 'B35' returns 91
+    rows — an empty answer, not an error), trailing spaces are ignored
+    (Firebird VARCHAR comparison), and a value longer than the column
+    (VARCHAR(6)) raises DataError "string right truncation" before the query
+    runs. Callers must pass a validated account code, uppercased — never a
+    customer name. date_from/date_to bound the basis date column (WAYDATE or
+    INVDATE) inclusively at both ends, inside the FY window — they narrow the
+    extract, they cannot widen it past the FY bounds.
+
+    Filtered extracts feed INLINE ANSWERS ONLY — never a report builder. The
+    builders derive whole-FY statistics from whatever rows they are given:
+    build_flash's typical-weekday benchmark, build_unbilled's billing
+    frontier and build_dashboard's completed-month spine all silently change
+    meaning on a filtered extract (a one-account frontier, a one-customer
+    "typical Thursday"). A workbook build always starts from the unfiltered
+    FY extract; the filters exist so a question like "sales for TOM001 in
+    July" can be answered without pulling the year.
 
     Bounded at both ends, because the manual export names a date RANGE and this
     query only had a floor. Parcel Perfect holds waybills with mis-keyed dates —

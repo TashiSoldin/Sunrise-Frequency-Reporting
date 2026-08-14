@@ -102,7 +102,7 @@ def billing_frontier(rows, ix, norm) -> date:
 
 
 def build(
-    wb_file: str,
+    wb_file: str | None,
     out_dir: str,
     exclude_from: date | None = None,
     data: tuple[list[str], list[list]] | None = None,
@@ -110,7 +110,7 @@ def build(
     """data, when given, is injected (headers, rows) in export shape — as
     load_export returns them, or extract_revenue.export_shaped builds them
     from a live query — and wb_file is only used as the source label in the
-    Overview note, not read."""
+    Overview note, not read (None labels the source as a live query)."""
     headers, rows = data if data is not None else load_export(wb_file)
     ix = {
         n: col(headers, n)
@@ -183,9 +183,10 @@ def build(
         F(font_size=11, font_color="white", bg_color=NAVY),
     )
     cutoff_note = f"Excludes waybills dated {exclude_from.day} {exclude_from.strftime('%b %Y')} and later."
+    src = wb_file.split("/")[-1] if wb_file else "live query"
     o.write(
         "A3",
-        f"Generated {gen_str}  ·  Source: {wb_file.split('/')[-1]}  ·  "
+        f"Generated {gen_str}  ·  Source: {src}  ·  "
         f"Value = Subtotal (excl VAT).  Unbilled = Invoice status ≤ 0.  {cutoff_note}",
         F(font_size=9, font_color=GREY),
     )
