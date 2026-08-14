@@ -241,17 +241,30 @@ UNRESOLVED = [h for h, src in COLUMN_MAP if src is None]
 # Select-list aliases that come from joins, not VIEW_WBANALYSE columns.
 ALIAS_COLS = {"RECEIPT_USERNAME", "WB_TOTSURCHARGE"}
 # CUSTOMSGROUP feeds the "Customs Group" calc but has no direct map entry.
-DB_COLS = sorted(({src for _, src in COLUMN_MAP if isinstance(src, str)}
-                  - ALIAS_COLS) | {"CUSTOMSGROUP"})
+DB_COLS = sorted(
+    ({src for _, src in COLUMN_MAP if isinstance(src, str)} - ALIAS_COLS)
+    | {"CUSTOMSGROUP"}
+)
 
 # Code -> display-name maps (from the 29 Jul per-column diff).
 VALUE_MAPS = {
-    "Waybill Input Method": {"": "Parcel Perfect", "0": "Parcel Perfect",
-                             "1": "PPOnline", "2": "PPMobile"},
-    "Collect Status": {"": "Unknown", "W": "Unknown", "N": "Unknown",
-                       "V": "Unknown", "F": "Checked In",
-                       "C": "Collected", "U": "Unassigned",
-                       "A": "Assigned to Agent", "X": "Cancelled"},
+    "Waybill Input Method": {
+        "": "Parcel Perfect",
+        "0": "Parcel Perfect",
+        "1": "PPOnline",
+        "2": "PPMobile",
+    },
+    "Collect Status": {
+        "": "Unknown",
+        "W": "Unknown",
+        "N": "Unknown",
+        "V": "Unknown",
+        "F": "Checked In",
+        "C": "Collected",
+        "U": "Unassigned",
+        "A": "Assigned to Agent",
+        "X": "Cancelled",
+    },
 }
 
 # Export renders these as Excel TRUE/FALSE; the view holds 0/1 or Y/N.
@@ -263,12 +276,33 @@ _TRUTHY = {"1", "1.0", "Y", "T", "TRUE"}
 # Columns summed in the totals row the manual export appends. Waybill and
 # MinShip carry the row count; Avg R per kg is the weighted overall figure.
 TOTAL_SUM_HEADERS = {
-    "Pieces", "Actual Mass", "Chrg Mass", "Subtotal", "Fuel", "Chainstore",
-    "DC Chainstore", "Handling", "Insurance Amount", "VAT", "Total",
-    "Decl Value", "Sameday", "Tail - lift Truck", "Late / Early Collection",
-    "Saturday / Sunday Morning", "Futile Trip", "Townships", "Customs Duties",
-    "Customs VAT", "Currency Subtotal", "Non Dox Charge", "Doc Charge",
-    "Special Surcharge", "Basic Charge", "Outlying Charge", "Volcm",
+    "Pieces",
+    "Actual Mass",
+    "Chrg Mass",
+    "Subtotal",
+    "Fuel",
+    "Chainstore",
+    "DC Chainstore",
+    "Handling",
+    "Insurance Amount",
+    "VAT",
+    "Total",
+    "Decl Value",
+    "Sameday",
+    "Tail - lift Truck",
+    "Late / Early Collection",
+    "Saturday / Sunday Morning",
+    "Futile Trip",
+    "Townships",
+    "Customs Duties",
+    "Customs VAT",
+    "Currency Subtotal",
+    "Non Dox Charge",
+    "Doc Charge",
+    "Special Surcharge",
+    "Basic Charge",
+    "Outlying Charge",
+    "Volcm",
     "Chrg Unit",
 }
 
@@ -291,15 +325,42 @@ TOTAL_SUM_HEADERS = {
 # captured after the export pull (drift). Capture Date/Time source unknown
 # (no RECEIPT column; not consumed by any report builder — left blank).
 # The dump includes ALL types — type-level exclusions happen in the builders.
-RECTYPE_MAP = {"N": "Credit Note", "J": "Journal Credit",
-               "B": "Bad Debt", "X": "Cancelled"}
+RECTYPE_MAP = {
+    "N": "Credit Note",
+    "J": "Journal Credit",
+    "B": "Bad Debt",
+    "X": "Cancelled",
+}
 
 CREDITS_HEADERS = [
-    "Receipt", "Account", "Customer Name", "Date", "Subtotal", "Vat",
-    "Customs Duties", "Customs Vat", "Amount", "Discount", "Reference",
-    "Cost Centre", "Type", "Allocated", "Unallocated", "AIF", "Export",
-    "User Name", "Comment", "Rep", "Reason", "Bank", "Capture Date",
-    "Capture Time", "Branch", "VAT Type", "Cash", "Credit Controller",
+    "Receipt",
+    "Account",
+    "Customer Name",
+    "Date",
+    "Subtotal",
+    "Vat",
+    "Customs Duties",
+    "Customs Vat",
+    "Amount",
+    "Discount",
+    "Reference",
+    "Cost Centre",
+    "Type",
+    "Allocated",
+    "Unallocated",
+    "AIF",
+    "Export",
+    "User Name",
+    "Comment",
+    "Rep",
+    "Reason",
+    "Bank",
+    "Capture Date",
+    "Capture Time",
+    "Branch",
+    "VAT Type",
+    "Cash",
+    "Credit Controller",
 ]
 
 CREDITS_SQL = """
@@ -322,15 +383,19 @@ WHERE r.RECDATE >= DATE '{start}'
 """
 
 
-def write_credits_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
+def credits_export_rows(
+    db_cols: list[str], rows: list[tuple]
+) -> tuple[list[list], list]:
+    """DB credit rows -> (export-shaped rows, totals row) in CREDITS_HEADERS
+    order, with the export's derived arithmetic applied. One pass, because the
+    totals sum the UNROUNDED per-row components exactly as the export always
+    has — recomputing them from the rounded row values would drift by cents."""
     ix = {c: i for i, c in enumerate(db_cols)}
 
     def g(r, c):
         return _clean(r[ix[c]])
 
-    wb = Workbook(write_only=True)
-    ws = wb.create_sheet()
-    ws.append(CREDITS_HEADERS)
+    out_rows = []
     tot = collections.defaultdict(float)  # totals row, like the staff export
     for r in rows:
         amount = float(g(r, "AMOUNT") or 0)
@@ -339,26 +404,82 @@ def write_credits_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None
         cdut = float(g(r, "CUSTOMSDUTIES") or 0)
         disc = float(g(r, "DISCOUNT") or 0)
         alloc = float(g(r, "ALLOCATED") or 0)
-        for k, v in (("Subtotal", amount - vat - cvat - cdut), ("Vat", vat),
-                     ("Customs Duties", cdut), ("Customs Vat", cvat),
-                     ("Amount", amount), ("Discount", disc),
-                     ("Allocated", alloc),
-                     ("Unallocated", amount + disc - alloc)):
+        for k, v in (
+            ("Subtotal", amount - vat - cvat - cdut),
+            ("Vat", vat),
+            ("Customs Duties", cdut),
+            ("Customs Vat", cvat),
+            ("Amount", amount),
+            ("Discount", disc),
+            ("Allocated", alloc),
+            ("Unallocated", amount + disc - alloc),
+        ):
             tot[k] += v
-        ws.append([
-            g(r, "RECEIPT"), g(r, "ACCNUM"), g(r, "CUSTNAME"), g(r, "RECDATE"),
-            round(amount - vat - cvat - cdut, 2), vat, cdut, cvat, amount,
-            disc, g(r, "REFERENCE"), g(r, "COSTCNTRNAME"),
-            RECTYPE_MAP.get(str(g(r, "RECTYPE") or "").strip(), ""),
-            alloc, round(amount + disc - alloc, 2) + 0.0, g(r, "AIF"), g(r, "EXPORT"),
-            g(r, "USERNAME"), g(r, "COMMENT"), g(r, "REPNAME"), g(r, "REASON"),
-            g(r, "BANK"), None, None, g(r, "BRANCHNAME"), g(r, "VATTYPE"),
-            False, g(r, "CREDCONTROLLER"),
-        ])
+        out_rows.append(
+            [
+                g(r, "RECEIPT"),
+                g(r, "ACCNUM"),
+                g(r, "CUSTNAME"),
+                g(r, "RECDATE"),
+                round(amount - vat - cvat - cdut, 2),
+                vat,
+                cdut,
+                cvat,
+                amount,
+                disc,
+                g(r, "REFERENCE"),
+                g(r, "COSTCNTRNAME"),
+                RECTYPE_MAP.get(str(g(r, "RECTYPE") or "").strip(), ""),
+                alloc,
+                round(amount + disc - alloc, 2) + 0.0,
+                g(r, "AIF"),
+                g(r, "EXPORT"),
+                g(r, "USERNAME"),
+                g(r, "COMMENT"),
+                g(r, "REPNAME"),
+                g(r, "REASON"),
+                g(r, "BANK"),
+                None,
+                None,
+                g(r, "BRANCHNAME"),
+                g(r, "VATTYPE"),
+                False,
+                g(r, "CREDCONTROLLER"),
+            ]
+        )
     # Totals row, mirroring the staff export's final row: Receipt = row count,
     # sums for the eight money columns, everything else blank.
-    ws.append([len(rows) if c == "Receipt" else round(tot[c], 2) if c in tot
-               else None for c in CREDITS_HEADERS])
+    totals = [
+        len(rows) if c == "Receipt" else round(tot[c], 2) if c in tot else None
+        for c in CREDITS_HEADERS
+    ]
+    return out_rows, totals
+
+
+def credits_shaped(
+    db_cols: list[str], rows: list[tuple]
+) -> tuple[list[str], list[list]]:
+    """DB credit rows -> (headers, rows) as load_credit_sheet returns them:
+    blanks read back as '' — except the Date column, which load_credit_sheet
+    leaves as None when missing and the builders test with `is None`. No
+    totals row (load_credit_sheet drops it too: real credits are negative
+    receipt numbers, the query only returns those)."""
+    date_i = CREDITS_HEADERS.index("Date")
+    out_rows, _ = credits_export_rows(db_cols, rows)
+    return CREDITS_HEADERS, [
+        [v if (v is not None or i == date_i) else "" for i, v in enumerate(out)]
+        for out in out_rows
+    ]
+
+
+def write_credits_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
+    out_rows, totals = credits_export_rows(db_cols, rows)
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet()
+    ws.append(CREDITS_HEADERS)
+    for out in out_rows:
+        ws.append(out)
+    ws.append(totals)
     wb.save(path)
 
 
@@ -391,8 +512,24 @@ def fy_end(start: date) -> date:
     return date(start.year + 1, 3, 1)
 
 
-def extraction_sql(basis: str, start: date) -> str:
+def extraction_sql(
+    basis: str,
+    start: date,
+    *,
+    account: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> tuple[str, list]:
     """The manual-export-equivalent query. basis: 'wb' or 'inv'.
+
+    Returns (sql, params) for cursor.execute(sql, params). Every value — the
+    FY bounds and the optional filters — travels as a bound parameter, never
+    interpolated into the SQL. The only f-string pieces are column names from
+    fixed internal maps.
+
+    account filters on exact ACCNUM. date_from/date_to bound the basis date
+    column (WAYDATE or INVDATE) inclusively at both ends, inside the FY window
+    — they narrow the extract, they cannot widen it past the FY bounds.
 
     Bounded at both ends, because the manual export names a date RANGE and this
     query only had a floor. Parcel Perfect holds waybills with mis-keyed dates —
@@ -408,7 +545,7 @@ def extraction_sql(basis: str, start: date) -> str:
     """
     date_col = {"wb": "WAYDATE", "inv": "INVDATE"}[basis]
     cols = ", ".join(f"wba.{c}" for c in DB_COLS)
-    return f"""
+    sql = f"""
         SELECT {cols},
                ru.NAME AS RECEIPT_USERNAME,
                wb2.TOTSURCHARGE AS WB_TOTSURCHARGE
@@ -416,16 +553,26 @@ def extraction_sql(basis: str, start: date) -> str:
         LEFT JOIN RECEIPT rc ON rc.RECEIPT = wba.RECEIPT
         LEFT JOIN VIEW_USERCODE ru ON ru.USERCODE = rc.USERCODE
         LEFT JOIN WAYBILL wb2 ON wb2.WAYBILL = wba.WAYBILL
-        WHERE wba.{date_col} >= DATE '{start.isoformat()}'
-          AND wba.{date_col} < DATE '{fy_end(start).isoformat()}'
+        WHERE wba.{date_col} >= ?
+          AND wba.{date_col} < ?
           AND wba.WAYBILL NOT LIKE '%~%'
-          AND wba.STATUS <> 'Cancelled';
-    """
+          AND wba.STATUS <> 'Cancelled'"""
+    params: list = [start, fy_end(start)]
+    if account is not None:
+        sql += "\n          AND wba.ACCNUM = ?"
+        params.append(account)
+    if date_from is not None:
+        sql += f"\n          AND wba.{date_col} >= ?"
+        params.append(date_from)
+    if date_to is not None:
+        sql += f"\n          AND wba.{date_col} <= ?"
+        params.append(date_to)
+    return sql + ";\n    ", params
 
 
-def fetch(conn, sql: str) -> tuple[list[str], list[tuple]]:
+def fetch(conn, sql: str, params: tuple | list = ()) -> tuple[list[str], list[tuple]]:
     with conn.cursor() as cur:
-        cur.execute(sql)
+        cur.execute(sql, params)
         cols = [d[0].strip() for d in cur.description]
         return cols, cur.fetchall()
 
@@ -462,17 +609,19 @@ def _round2(x: float) -> float:
     return round(x, 2)
 
 
-def write_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
+EXPORT_HEADERS = [h for h, _ in COLUMN_MAP]
+
+
+def export_rows(db_cols: list[str], rows: list[tuple]) -> list[list]:
+    """DB rows -> export-shaped rows: COLUMN_MAP order, VALUE_MAPS applied,
+    derived fields computed (R/kg, customs group, consolidated). Exactly the
+    cell values write_xlsx writes — blanks are None, no totals row."""
     ix = {c: i for i, c in enumerate(db_cols)}
     sub_i, kg_i = ix["SUBTOTAL"], ix["CHARGEMASS"]
     cg_i = ix["CUSTOMSGROUP"]
     st_i, svc_i, acc_i = ix["STATUS"], ix["SERVICE"], ix["ACCNUM"]
-    headers = [h for h, _ in COLUMN_MAP]
-    tot = collections.defaultdict(float)
 
-    wb = Workbook(write_only=True)
-    ws = wb.create_sheet()
-    ws.append(headers)
+    out_rows = []
     for r in rows:
         out = []
         for hdr, src in COLUMN_MAP:
@@ -488,10 +637,12 @@ def write_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
                 elif src[1] == "consolidated":
                     out.append(
                         "Yes"
-                        if (str(r[st_i]).strip() == "Invoiced"
+                        if (
+                            str(r[st_i]).strip() == "Invoiced"
                             and float(r[sub_i] or 0) == 0
                             and str(r[svc_i]).strip() not in NO_CHARGE_SERVICES
-                            and str(r[acc_i]).strip() not in INTERNAL_ACCOUNTS)
+                            and str(r[acc_i]).strip() not in INTERNAL_ACCOUNTS
+                        )
                         else "No"
                     )
             elif hdr in BOOL_HEADERS:
@@ -502,33 +653,69 @@ def write_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
                 out.append(VALUE_MAPS[hdr].get(raw, raw))
             else:
                 out.append(_clean(r[ix[src]]))
-        for hdr, v in zip(headers, out):
+        out_rows.append(out)
+    return out_rows
+
+
+def totals_row(out_rows: list[list]) -> list:
+    """The totals row the manual export appends, computed from export-shaped
+    rows in row order (same float accumulation write_xlsx always did)."""
+    tot = collections.defaultdict(float)
+    for out in out_rows:
+        for hdr, v in zip(EXPORT_HEADERS, out):
             if hdr in TOTAL_SUM_HEADERS and isinstance(v, (int, float)):
                 tot[hdr] += v
-        ws.append(out)
-    # Totals row, mirroring the manual export's final row.
     kg_total = tot.get("Chrg Mass", 0)
     totals = []
-    for hdr in headers:
+    for hdr in EXPORT_HEADERS:
         if hdr in ("Waybill", "MinShip"):
-            totals.append(len(rows))
+            totals.append(len(out_rows))
         elif hdr == "Avg R per kg":
-            totals.append(_round2(tot.get("Subtotal", 0) / kg_total) if kg_total else None)
+            totals.append(
+                _round2(tot.get("Subtotal", 0) / kg_total) if kg_total else None
+            )
         elif hdr in tot:
             totals.append(round(tot[hdr], 2))
         else:
             totals.append(None)
-    ws.append(totals)
+    return totals
+
+
+def export_shaped(
+    db_cols: list[str], rows: list[tuple]
+) -> tuple[list[str], list[list]]:
+    """DB rows -> (headers, rows) as the report builders expect them: the shape
+    load_export returns after a write/read round trip, where blank cells read
+    back as '' rather than None. No totals row — every builder already skips
+    it by its date/type checks, so injected data simply omits it.
+
+    This is the live-query join: fetch(...extraction_sql(...)) -> here -> a
+    builder's injected-data parameter."""
+    return EXPORT_HEADERS, [
+        ["" if v is None else v for v in out] for out in export_rows(db_cols, rows)
+    ]
+
+
+def write_xlsx(path: str, db_cols: list[str], rows: list[tuple]) -> None:
+    out_rows = export_rows(db_cols, rows)
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet()
+    ws.append(EXPORT_HEADERS)
+    for out in out_rows:
+        ws.append(out)
+    ws.append(totals_row(out_rows))
     wb.save(path)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out-dir", default=".", help="Where the export files land")
-    ap.add_argument("--fy-start", default=None,
-                    help="FY start date YYYY-MM-DD (default: most recent 1 March)")
-    ap.add_argument("--basis", choices=["wb", "inv", "credits", "all"],
-                    default="all")
+    ap.add_argument(
+        "--fy-start",
+        default=None,
+        help="FY start date YYYY-MM-DD (default: most recent 1 March)",
+    )
+    ap.add_argument("--basis", choices=["wb", "inv", "credits", "all"], default="all")
     args = ap.parse_args()
 
     start = date.fromisoformat(args.fy_start) if args.fy_start else fy_start()
@@ -537,12 +724,12 @@ def main() -> None:
 
     try:
         if args.basis in ("wb", "all"):
-            cols, rows = fetch(conn, extraction_sql("wb", start))
+            cols, rows = fetch(conn, *extraction_sql("wb", start))
             path = os.path.join(args.out_dir, f"WB Date - {label}..xlsx")
             write_xlsx(path, cols, rows)
             print(f"WB basis: {len(rows)} rows -> {path}")
         if args.basis in ("inv", "all"):
-            cols, rows = fetch(conn, extraction_sql("inv", start))
+            cols, rows = fetch(conn, *extraction_sql("inv", start))
             path = os.path.join(args.out_dir, f"INV Date - {label}..xlsx")
             write_xlsx(path, cols, rows)
             print(f"INV basis: {len(rows)} rows -> {path}")
@@ -552,8 +739,10 @@ def main() -> None:
             cols, rows = fetch(conn, CREDITS_SQL.format(start=cred_start.isoformat()))
             path = os.path.join(args.out_dir, f"Credits - {cred_label}.xlsx")
             write_credits_xlsx(path, cols, rows)
-            print(f"Credits: {len(rows)} rows -> {path} "
-                  "(NB .xlsx — staff export is .xls; readers to be adapted)")
+            print(
+                f"Credits: {len(rows)} rows -> {path} "
+                "(NB .xlsx — staff export is .xls; readers to be adapted)"
+            )
     finally:
         conn.close()
 

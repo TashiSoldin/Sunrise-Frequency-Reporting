@@ -101,8 +101,17 @@ def billing_frontier(rows, ix, norm) -> date:
     return max(any_inv) + timedelta(days=1)
 
 
-def build(wb_file: str, out_dir: str, exclude_from: date | None = None) -> str:
-    headers, rows = load_export(wb_file)
+def build(
+    wb_file: str,
+    out_dir: str,
+    exclude_from: date | None = None,
+    data: tuple[list[str], list[list]] | None = None,
+) -> str:
+    """data, when given, is injected (headers, rows) in export shape — as
+    load_export returns them, or extract_revenue.export_shaped builds them
+    from a live query — and wb_file is only used as the source label in the
+    Overview note, not read."""
+    headers, rows = data if data is not None else load_export(wb_file)
     ix = {
         n: col(headers, n)
         for n in [

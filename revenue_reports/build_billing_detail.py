@@ -70,8 +70,8 @@ BUDGET_REPS = ["CN", "TF", "NP", "LS", "PM"]
 CREDIT_TYPES = ("Credit Note", "Journal Credit")
 
 
-def load_day(inv_file: str, day: date):
-    headers, rows = load_export(inv_file)
+def load_day(inv_file: str, day: date, data=None):
+    headers, rows = data if data is not None else load_export(inv_file)
     ix = {
         n: col(headers, n)
         for n in [
@@ -126,8 +126,15 @@ def build(
     credits_file: str,
     out_dir: str,
     flash_file: str | None = None,
+    inv_data: tuple[list[str], list[list]] | None = None,
+    credits_data: tuple[list[str], list[list]] | None = None,
 ) -> str:
-    ix, day_rows, _ = load_day(inv_file, day)
+    """inv_data / credits_data, when given, are injected (headers, rows) in
+    export shape — as load_export / load_credit_sheet return them, or
+    extract_revenue.export_shaped / credits_shaped build them from a live
+    query — and the corresponding file is not read. flash_file stays a file:
+    the Flash Comparison tab deliberately reads the day's FROZEN flash."""
+    ix, day_rows, _ = load_day(inv_file, day, inv_data)
     if not day_rows:
         raise SystemExit(
             f"No invoice lines for {day} — not yet invoiced? Use the flash instead."
@@ -460,7 +467,7 @@ def build(
     _consolidations(wb, st, th, day_rows, ix, short_date)
 
     # ---------------- Tab 5: Credit Notes ----------------
-    _credit_notes(wb, st, day, credits_file, dm, short_date)
+    _credit_notes(wb, st, day, credits_file, dm, short_date, credits_data)
 
     wb.close()
     return out_path
@@ -841,8 +848,8 @@ def _consolidations(wb, st, th, day_rows, ix, short_date):
         rr += 2
 
 
-def _credit_notes(wb, st, day, credits_file, dm, short_date):
-    hdr, rows = load_credit_sheet(credits_file)
+def _credit_notes(wb, st, day, credits_file, dm, short_date, data=None):
+    hdr, rows = data if data is not None else load_credit_sheet(credits_file)
     ic = {
         n: hdr.index(n)
         for n in [

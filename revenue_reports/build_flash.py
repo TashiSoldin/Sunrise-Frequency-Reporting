@@ -63,8 +63,16 @@ HOLIDAY_GUARD = 0.5  # exclude same-weekday days below this fraction of median
 ALL_TAB = "All Customers"
 
 
-def build(day: date, wb_file: str, out_dir: str) -> str:
-    headers, rows = load_export(wb_file)
+def build(
+    day: date,
+    wb_file: str | None,
+    out_dir: str,
+    data: tuple[list[str], list[list]] | None = None,
+) -> str:
+    """data, when given, is injected (headers, rows) in export shape — as
+    load_export returns them, or extract_revenue.export_shaped builds them
+    from a live query — and wb_file is not read (it may be None)."""
+    headers, rows = data if data is not None else load_export(wb_file)
     iWD = col(headers, "Waybill Date")
     iWB = col(headers, "Waybill")
     iSUB = col(headers, "Subtotal")

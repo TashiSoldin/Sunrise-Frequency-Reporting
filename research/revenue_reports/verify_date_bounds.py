@@ -109,20 +109,24 @@ class Tee:
             self.fh.close()
 
 
-def floor_only_sql(basis: str, start: date) -> str:
-    """The previous query: the bounded one with its ceiling line removed."""
-    sql = extraction_sql(basis, start)
-    ceiling = f"          AND wba.{ {'wb': 'WAYDATE', 'inv': 'INVDATE'}[basis] } < DATE '{fy_end(start).isoformat()}'\n"
-    if ceiling not in sql:
+def floor_only_sql(basis: str, start: date) -> tuple[str, list]:
+    """The previous query: the bounded one with its ceiling line removed.
+
+    extraction_sql now binds its dates as parameters — (sql, params) with
+    params == [floor, ceiling] — so removing the ceiling clause must drop the
+    second parameter with it."""
+    sql, params = extraction_sql(basis, start)
+    ceiling = f"\n          AND wba.{ {'wb': 'WAYDATE', 'inv': 'INVDATE'}[basis] } < ?"
+    if ceiling not in sql or params != [start, fy_end(start)]:
         raise SystemExit(
             "Could not find the ceiling clause to remove — extraction_sql has "
             "changed shape. Update this script before trusting its output."
         )
-    return sql.replace(ceiling, "")
+    return sql.replace(ceiling, ""), [start]
 
 
-def counts(conn, sql: str, date_col: str):
-    cols, rows = fetch(conn, sql)
+def counts(conn, sql_and_params: tuple[str, list], date_col: str):
+    cols, rows = fetch(conn, *sql_and_params)
     i_d, i_sub = cols.index(date_col), cols.index("SUBTOTAL")
     total = sum(float(r[i_sub] or 0) for r in rows)
     return cols, rows, total, i_d, i_sub
@@ -130,10 +134,13 @@ def counts(conn, sql: str, date_col: str):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--out-dir", default=None,
-                    help="Folder for the .txt log and dropped-rows .csv. Use the "
-                         "synced _diagnostics folder so the results can be read "
-                         "off the share afterwards. Omit to print only.")
+    ap.add_argument(
+        "--out-dir",
+        default=None,
+        help="Folder for the .txt log and dropped-rows .csv. Use the "
+        "synced _diagnostics folder so the results can be read "
+        "off the share afterwards. Omit to print only.",
+    )
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir) if args.out_dir else None
@@ -149,19 +156,27 @@ def main() -> None:
     say("")
     conn = connect()
     try:
-        for basis, date_col, label in (("wb", "WAYDATE", "WAYBILL-DATE FILE"),
-                                       ("inv", "INVDATE", "INVOICE-DATE FILE")):
+        for basis, date_col, label in (
+            ("wb", "WAYDATE", "WAYBILL-DATE FILE"),
+            ("inv", "INVDATE", "INVOICE-DATE FILE"),
+        ):
             say("=" * 72)
             say(label)
             say("=" * 72)
 
-            cols_a, rows_a, tot_a, i_d, i_sub = counts(conn, floor_only_sql(basis, start), date_col)
-            cols_b, rows_b, tot_b, _, _ = counts(conn, extraction_sql(basis, start), date_col)
+            cols_a, rows_a, tot_a, i_d, i_sub = counts(
+                conn, floor_only_sql(basis, start), date_col
+            )
+            cols_b, rows_b, tot_b, _, _ = counts(
+                conn, extraction_sql(basis, start), date_col
+            )
 
             say(f"  {FLOOR_ONLY:28} {len(rows_a):>8,} rows   R{tot_a:>16,.2f}")
             say(f"  {BOUNDED:28} {len(rows_b):>8,} rows   R{tot_b:>16,.2f}")
-            say(f"  {'dropped by the ceiling':28} {len(rows_a) - len(rows_b):>8,} rows   "
-                f"R{tot_a - tot_b:>16,.2f}")
+            say(
+                f"  {'dropped by the ceiling':28} {len(rows_a) - len(rows_b):>8,} rows   "
+                f"R{tot_a - tot_b:>16,.2f}"
+            )
 
             i_wb = cols_a.index("WAYBILL")
             keys_b = {(r[cols_b.index("WAYBILL")], r[i_d]) for r in rows_b}
@@ -187,35 +202,58 @@ def main() -> None:
             named = [r for r in dropped if not str(r[i_acc]).upper().startswith("CBD")]
             v = lambda g: sum(float(r[i_sub] or 0) for r in g)
             say("")
-            say(f"  cash-before-delivery : {len(cbd):>5,} rows  R{v(cbd):>14,.2f}  (never invoiced by design)")
-            say(f"  named accounts       : {len(named):>5,} rows  R{v(named):>14,.2f}  (the only slice worth chasing)")
+            say(
+                f"  cash-before-delivery : {len(cbd):>5,} rows  R{v(cbd):>14,.2f}  (never invoiced by design)"
+            )
+            say(
+                f"  named accounts       : {len(named):>5,} rows  R{v(named):>14,.2f}  (the only slice worth chasing)"
+            )
 
             i_cap = cols_a.index("CAPTUREDATE")
-            near = sum(1 for r in dropped
-                       if isinstance(c := r[i_cap], date) and isinstance(d := r[i_d], date)
-                       and abs((d.replace(year=c.year) - c).days) <= 3)
-            say(f"  within 3 days of their capture date once the year is corrected: "
-                f"{near}/{len(dropped)} — a mis-keyed year rather than random corruption")
+            near = sum(
+                1
+                for r in dropped
+                if isinstance(c := r[i_cap], date)
+                and isinstance(d := r[i_d], date)
+                and abs((d.replace(year=c.year) - c).days) <= 3
+            )
+            say(
+                f"  within 3 days of their capture date once the year is corrected: "
+                f"{near}/{len(dropped)} — a mis-keyed year rather than random corruption"
+            )
 
             say("")
             say("  --- EVERY DROPPED ROW: check none of these is live freight ---")
             for r in sorted(dropped, key=lambda r: str(r[i_d])):
-                say(f"    {r[i_d]!s:>12} | {str(r[i_wb])[:16]:<16} | "
+                say(
+                    f"    {r[i_d]!s:>12} | {str(r[i_wb])[:16]:<16} | "
                     f"{str(r[cols_a.index('STATUS')])[:22]:<22} | "
                     f"{str(r[i_acc])[:8]:<8} | {str(r[i_cust])[:30]:<30} | "
-                    f"R{float(r[i_sub] or 0):>11,.2f} | captured {str(r[i_cap])[:10]}")
-                csv_rows.append({
-                    "basis": basis, "waybill": r[i_wb], "waybill_or_invoice_date": r[i_d],
-                    "status": r[cols_a.index("STATUS")], "account": r[i_acc],
-                    "customer": r[i_cust], "subtotal": float(r[i_sub] or 0),
-                    "capture_date": r[i_cap], "invoice_date": r[cols_a.index("INVDATE")],
-                })
+                    f"R{float(r[i_sub] or 0):>11,.2f} | captured {str(r[i_cap])[:10]}"
+                )
+                csv_rows.append(
+                    {
+                        "basis": basis,
+                        "waybill": r[i_wb],
+                        "waybill_or_invoice_date": r[i_d],
+                        "status": r[cols_a.index("STATUS")],
+                        "account": r[i_acc],
+                        "customer": r[i_cust],
+                        "subtotal": float(r[i_sub] or 0),
+                        "capture_date": r[i_cap],
+                        "invoice_date": r[cols_a.index("INVDATE")],
+                    }
+                )
 
             if basis == "wb":
+
                 def frontier(cols, rows):
-                    ds = [d for r in rows
-                          if str(r[cols.index("STATUS")]) == "Invoiced"
-                          and isinstance(d := r[cols.index("WAYDATE")], date)]
+                    ds = [
+                        d
+                        for r in rows
+                        if str(r[cols.index("STATUS")]) == "Invoiced"
+                        and isinstance(d := r[cols.index("WAYDATE")], date)
+                    ]
                     return max(ds) if ds else None
 
                 say("")
@@ -227,17 +265,22 @@ def main() -> None:
                 say("  --- INVERSE CHECK: rows the FLOOR may be wrongly excluding ---")
                 say("  A waybill whose real date is this FY but was keyed into a past")
                 say("  year is dropped by the floor, and neither query catches it.")
-                _, res = fetch(conn, f"""
+                _, res = fetch(
+                    conn,
+                    f"""
                     SELECT COUNT(*), COALESCE(SUM(wba.SUBTOTAL), 0)
                     FROM VIEW_WBANALYSE wba
                     WHERE wba.WAYDATE < DATE '{start.isoformat()}'
                       AND wba.CAPTUREDATE >= DATE '{start.isoformat()}'
                       AND wba.WAYBILL NOT LIKE '%~%'
                       AND wba.STATUS <> 'Cancelled'
-                """)
+                """,
+                )
                 n, val = res[0][0], float(res[0][1] or 0)
-                say(f"    dated before {start} but captured during this FY: "
-                    f"{n:,} rows, R{val:,.2f}")
+                say(
+                    f"    dated before {start} but captured during this FY: "
+                    f"{n:,} rows, R{val:,.2f}"
+                )
                 say("    A handful is normal — genuine late capture of old freight.")
                 say("    Hundreds would mean the floor is losing real business, and")
                 say("    the same keying problem runs in both directions.")
@@ -250,8 +293,12 @@ def main() -> None:
     say("unchanged, the ceiling is doing what it should. Then run:")
     say("")
     say("  uv run revenue_reports/run_daily.py --only pm --no-email \\")
-    say('      --data-dir  "<synced>\\Dashboards and Data Analysis\\2. Revenue Data" \\')
-    say('      --report-dir "<synced>\\Dashboards and Data Analysis\\2. Revenue Data\\_diagnostics"')
+    say(
+        '      --data-dir  "<synced>\\Dashboards and Data Analysis\\2. Revenue Data" \\'
+    )
+    say(
+        '      --report-dir "<synced>\\Dashboards and Data Analysis\\2. Revenue Data\\_diagnostics"'
+    )
     say("")
     say("and check the unbilled headline reads tens of waybills and tens of")
     say("thousands of rand, not four figures and millions. --no-email means")

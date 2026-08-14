@@ -220,10 +220,18 @@ class Pool:
         return out
 
 
-def load_pools(inv_file, py_inv_file, wb_file, budget: Budget):
+def load_pools(
+    inv_file,
+    py_inv_file,
+    wb_file,
+    budget: Budget,
+    inv_data=None,
+    py_inv_data=None,
+    wb_data=None,
+):
     fy27_raw = set()
     # discover raw FY27 accounts first (for fold rule)
-    h, rows = load_export(inv_file)
+    h, rows = inv_data if inv_data is not None else load_export(inv_file)
     iA, iWB = col(h, "Account"), col(h, "Waybill")
     for r in rows:
         if "~" not in str(r[iWB]):
@@ -268,7 +276,7 @@ def load_pools(inv_file, py_inv_file, wb_file, budget: Budget):
         )
 
     py = Pool()
-    h2, rows2 = load_export(py_inv_file)
+    h2, rows2 = py_inv_data if py_inv_data is not None else load_export(py_inv_file)
     ix2 = {
         n: col(h2, n)
         for n in [
@@ -294,7 +302,7 @@ def load_pools(inv_file, py_inv_file, wb_file, budget: Budget):
         )
 
     wbp = Pool()
-    h3, rows3 = load_export(wb_file)
+    h3, rows3 = wb_data if wb_data is not None else load_export(wb_file)
     ix3 = {
         n: col(h3, n)
         for n in [
@@ -326,8 +334,8 @@ def load_pools(inv_file, py_inv_file, wb_file, budget: Budget):
 
 
 class Credits:
-    def __init__(self, path, fold):
-        hdr, rows = load_credit_sheet(path)
+    def __init__(self, path, fold, data=None):
+        hdr, rows = data if data is not None else load_credit_sheet(path)
         ic = {
             n: hdr.index(n)
             for n in [
@@ -2353,10 +2361,21 @@ def build(
     out_dir,
     inv_asof=None,
     wb_asof=None,
+    inv_data=None,
+    py_inv_data=None,
+    wb_data=None,
+    credits_data=None,
 ):
+    """The *_data params, when given, are injected (headers, rows) in export
+    shape — as load_export / load_credit_sheet return them, or
+    extract_revenue.export_shaped / credits_shaped build them from a live
+    query — and the corresponding file is not read. budget_file stays a file:
+    it is Larry's budget workbook, not a DB export."""
     budget = Budget(budget_file)
-    inv, py, wbp, fold = load_pools(inv_file, py_inv_file, wb_file, budget)
-    credits = Credits(credits_file, fold)
+    inv, py, wbp, fold = load_pools(
+        inv_file, py_inv_file, wb_file, budget, inv_data, py_inv_data, wb_data
+    )
+    credits = Credits(credits_file, fold, credits_data)
     M = Model(inv, py, wbp, credits, budget)
 
     # The latest invoiced / waybilled day decides the financial year, which

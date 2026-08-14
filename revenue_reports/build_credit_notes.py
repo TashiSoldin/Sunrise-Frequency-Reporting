@@ -42,10 +42,13 @@ CREDIT_TYPES = ("Credit Note", "Journal Credit")
 FY_START = date(2026, 3, 1)  # FY27
 
 
-def load_credits(path):
-    from data import load_credit_sheet
+def load_credits(path, data=None):
+    if data is not None:
+        hdr, rows = data
+    else:
+        from data import load_credit_sheet
 
-    hdr, rows = load_credit_sheet(path)
+        hdr, rows = load_credit_sheet(path)
     ic = {
         n: hdr.index(n)
         for n in [
@@ -83,8 +86,16 @@ def load_credits(path):
     return out
 
 
-def build(credits_file: str, out_dir: str, month: date | None = None) -> str:
-    notes = load_credits(credits_file)
+def build(
+    credits_file: str,
+    out_dir: str,
+    month: date | None = None,
+    data: tuple[list[str], list[list]] | None = None,
+) -> str:
+    """data, when given, is injected (headers, rows) in credits-export shape —
+    as load_credit_sheet returns them, or extract_revenue.credits_shaped
+    builds them from a live query — and credits_file is not read."""
+    notes = load_credits(credits_file, data)
     if month is None:
         month = max(n["date"] for n in notes if n["date"] >= FY_START).replace(day=1)
     m_end = date(

@@ -236,9 +236,10 @@ class TestExtractionIsBoundedAtBothEnds:
     def test_both_bounds_are_in_the_query(self):
         from extract_revenue import extraction_sql
 
-        sql = extraction_sql("wb", date(2026, 3, 1))
-        assert "wba.WAYDATE >= DATE '2026-03-01'" in sql
-        assert "wba.WAYDATE < DATE '2027-03-01'" in sql
+        sql, params = extraction_sql("wb", date(2026, 3, 1))
+        assert "wba.WAYDATE >= ?" in sql
+        assert "wba.WAYDATE < ?" in sql
+        assert params == [date(2026, 3, 1), date(2027, 3, 1)]
 
     def test_the_ceiling_closes_the_financial_year_that_start_opens(self):
         from extract_revenue import fy_end
@@ -249,9 +250,10 @@ class TestExtractionIsBoundedAtBothEnds:
     def test_invoice_basis_is_bounded_the_same_way(self):
         from extract_revenue import extraction_sql
 
-        sql = extraction_sql("inv", date(2026, 3, 1))
-        assert "wba.INVDATE >= DATE '2026-03-01'" in sql
-        assert "wba.INVDATE < DATE '2027-03-01'" in sql
+        sql, params = extraction_sql("inv", date(2026, 3, 1))
+        assert "wba.INVDATE >= ?" in sql
+        assert "wba.INVDATE < ?" in sql
+        assert params == [date(2026, 3, 1), date(2027, 3, 1)]
 
 
 class TestBillingFrontierIsNotAPlainMax:
