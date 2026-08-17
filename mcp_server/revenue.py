@@ -43,7 +43,11 @@ sys.path.insert(0, str(REPO / "revenue_reports"))
 
 import build_credit_notes
 import build_unbilled
-from day_guards import frontier_from_day_counts, last_trading_day
+from day_guards import (
+    frontier_from_day_counts,
+    is_completed_trading_day,
+    last_trading_day,
+)
 from extract_revenue import (
     CREDITS_SQL,
     credits_shaped,
@@ -808,6 +812,19 @@ def daily_report(report: str, day: str | None = None, run=run_select) -> dict:
                 "revenue_summary for a live view of today, clearly flagged "
                 "as partial."
             )
+        if not is_completed_trading_day(_traded_pairs(counts), d, today):
+            # A dead day (weekend, holiday, a mis-keyed handful of rows)
+            # still builds a plausible-looking flash — the original dead-
+            # Sunday failure, reachable on demand until this guard.
+            ltd = last_trading_day(_traded_pairs(counts), today)
+            n = counts.get(d, (0, 0.0, 0))[0]
+            return _refusal(
+                f"{_iso(d)} does not look like a trading day — it carries "
+                f"{n} waybills, below half a typical recent day — so a "
+                "flash for it would read as a real day's trading. The "
+                f"newest completed trading day is {_iso(ltd)}.",
+                last_trading_day=_iso(ltd),
+            )
         headers_rows = fy_extract("wb", run)
         import build_flash
 
@@ -844,6 +861,16 @@ def daily_report(report: str, day: str | None = None, run=run_select) -> dict:
             warnings.append(
                 f"rolled back to {_iso(d)}, the newest day whose invoicing "
                 "has finished — later days are still being invoiced"
+            )
+        if inv_counts.get(d, (0, 0.0, 0))[0] == 0:
+            # Zero invoice lines carry this date (weekends and holidays have
+            # no invoice run) — the builder would die on it, and a near-empty
+            # detail would read as a real day's billing anyway.
+            return _refusal(
+                f"no invoices carry {_iso(d)} as their invoice date — there "
+                "is nothing to detail for that day. The newest fully-"
+                f"invoiced day is {_iso(frontier - timedelta(days=1))}.",
+                last_fully_invoiced_day=_iso(frontier - timedelta(days=1)),
             )
         inv_data = fy_extract("inv", run)
         credits_data = credits_pool(run)

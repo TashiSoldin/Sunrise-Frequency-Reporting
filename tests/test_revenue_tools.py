@@ -492,6 +492,47 @@ class TestFyWindowGuards:
         assert "2024-03-01" in r["reason"]
 
 
+class TestDeadDayGuards:
+    """An EXPLICITLY requested dead day (weekend, holiday, a mis-keyed
+    handful of rows) must refuse, not build: a Sunday flash reads as a real
+    day's trading, and a zero-invoice billing detail killed the builder with
+    SystemExit (both found live by the Day 4 adversarial review)."""
+
+    def test_flash_for_a_dead_day_is_refused(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(revenue, "ONDEMAND_DIR", tmp_path)
+        counts = [(D(n), 700, 70000.0, 700) for n in range(2, 12)] + [
+            (D(1), 9, 500.0, 0)  # the dead day: nine mis-dated waybills
+        ]
+        db = FakeDB(
+            rows=[wb_row(WAYDATE=D(1), STATUS="Ready for Approval")],
+            wb_counts=counts,
+            inv_counts=INV_COUNTS,
+        )
+        r = revenue.daily_report("flash", day=D(1).isoformat(), run=db)
+        assert r["ok"] is False and r["refused"] is True
+        assert "trading day" in r["reason"]
+        assert r["last_trading_day"] == D(2).isoformat()
+
+    def test_billing_detail_for_a_no_invoice_day_is_refused(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr(revenue, "ONDEMAND_DIR", tmp_path)
+        monkeypatch.setattr(revenue, "SCHEDULED_REPORT_DIR", tmp_path)
+        # D(6) sits inside the invoiced window but no invoices carry its date
+        inv_counts = [(D(n), 700, 70000.0, 700) for n in range(3, 12) if n != 6]
+        db = FakeDB(wb_counts=WB_COUNTS, inv_counts=inv_counts)
+        r = revenue.daily_report("billing_detail", day=D(6).isoformat(), run=db)
+        assert r["ok"] is False and r["refused"] is True
+        assert "no invoices" in r["reason"]
+
+    def test_is_completed_trading_day_shares_the_floor(self):
+        from day_guards import is_completed_trading_day
+
+        pairs = [(D(n), 70000.0) for n in range(2, 12)] + [(D(1), 500.0)]
+        assert is_completed_trading_day(pairs, D(2), TODAY) is True
+        assert is_completed_trading_day(pairs, D(1), TODAY) is False
+
+
 class TestSharedSqlPassesTheGuard:
     def test_day_counts_sql(self):
         for basis in ("wb", "inv"):

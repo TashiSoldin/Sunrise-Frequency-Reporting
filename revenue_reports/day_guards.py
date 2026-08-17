@@ -25,6 +25,20 @@ TRADING_GUARD = 0.5
 TRADING_WINDOW = 28  # days of history the median is taken over
 
 
+def _totals_and_floor(pairs, today: date) -> tuple[dict, float | None]:
+    """Per-day totals before today, and the traded-value floor (half the
+    median of the trailing window) — one home for the arithmetic
+    last_trading_day and is_completed_trading_day both apply. floor is None
+    when there is no history to compare against."""
+    totals: dict[date, float] = {}
+    for d, v in pairs:
+        if isinstance(d, date) and d < today:
+            totals[d] = totals.get(d, 0.0) + (v or 0)
+    window = [totals[d] for d in totals if d > today - timedelta(days=TRADING_WINDOW)]
+    floor = TRADING_GUARD * statistics.median(window) if window else None
+    return totals, floor
+
+
 def last_trading_day(pairs, today: date) -> date:
     """Newest day before today that actually traded.
 
@@ -38,19 +52,30 @@ def last_trading_day(pairs, today: date) -> date:
     Falls back to the plain newest day if there is no history to compare
     against, so a first run or a sparse file still produces something.
     """
-    totals: dict[date, float] = {}
-    for d, v in pairs:
-        if isinstance(d, date) and d < today:
-            totals[d] = totals.get(d, 0.0) + (v or 0)
+    totals, floor = _totals_and_floor(pairs, today)
     if not totals:
         return today
     days = sorted(totals)
-    window = [totals[d] for d in days if d > today - timedelta(days=TRADING_WINDOW)]
-    if not window:
+    if floor is None:
         return days[-1]
-    floor = TRADING_GUARD * statistics.median(window)
     traded = [d for d in days if totals[d] >= floor]
     return traded[-1] if traded else days[-1]
+
+
+def is_completed_trading_day(pairs, d: date, today: date) -> bool:
+    """Did day d actually trade — does its value clear the same floor
+    last_trading_day walks back to?
+
+    For judging an EXPLICITLY requested day: a report built for a dead day
+    (weekend, holiday, a mis-keyed handful of rows) reads as a real day's
+    trading and does not raise, so the caller should refuse rather than
+    build. Mirrors last_trading_day's fallback: with no history to compare
+    against, any day present in the data counts as traded.
+    """
+    totals, floor = _totals_and_floor(pairs, today)
+    if floor is None:
+        return d in totals
+    return totals.get(d, 0.0) >= floor
 
 
 # A waybill date counts as invoiced once this share of its waybills have been.
