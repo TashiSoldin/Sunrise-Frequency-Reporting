@@ -494,6 +494,51 @@ class TestDailyReport:
         assert r["last_fully_invoiced_day"] == D(3).isoformat()
 
 
+class TestRelatedAccounts:
+    """One client, several account codes: resolution must SURFACE the family
+    (never silently merge it, never silently omit it — grouping stays on
+    Account). Live case: 'Ace Nut Traders' resolved to A120 alone while
+    A120CT billed R322k FY27 (Day 4 adversarial review)."""
+
+    CUSTS = [
+        ("A120", "ACE NUT TRADERS"),
+        ("A120CT", "ACE NUTS - CPT"),
+        ("A12", "ALFA ELECTRICAL CC"),
+        ("B35", "BSC STATIONERS - KG"),
+        ("B35C", "BSC STATIONERS CPT - KG"),
+        ("B35DED", "BSC STATIONERS - DEDICATED"),
+    ]
+
+    def test_exact_name_resolution_surfaces_the_family(self):
+        db = FakeDB(customers=self.CUSTS)
+        m = revenue.match_customer("Ace Nut Traders", run=db)
+        assert m["resolved"] and m["account"] == "A120"
+        rel = [r["account"] for r in m["related_accounts"]]
+        assert rel == ["A120CT"]  # A12 is a digit-extension neighbour, not family
+
+    def test_exact_code_resolution_surfaces_the_family(self):
+        db = FakeDB(customers=self.CUSTS)
+        m = revenue.match_customer("B35DED", run=db)
+        assert m["resolved"] and m["account"] == "B35DED"
+        assert {r["account"] for r in m["related_accounts"]} == {"B35", "B35C"}
+
+    def test_lone_account_has_no_family(self):
+        db = FakeDB(customers=self.CUSTS + [("TOM001", "TOMMY PDY LIMITED")])
+        m = revenue.match_customer("TOM001", run=db)
+        assert m["resolved"] and m["related_accounts"] == []
+
+    def test_sales_report_warns_about_family_accounts(self):
+        db = FakeDB(
+            customers=self.CUSTS,
+            rows=[wb_row(ACCNUM="A120", CUSTNAME="ACE NUT TRADERS", INVDATE=D(5))],
+            wb_counts=WB_COUNTS,
+            inv_counts=INV_COUNTS,
+        )
+        r = revenue.sales_report("A120", run=db)
+        assert r["ok"] is True
+        assert any("A120CT" in w for w in r["warnings"])
+
+
 class TestFyWindowGuards:
     """The live extract is FY-bounded and the credits pool three-FY-bounded —
     a day or month OUTSIDE those windows comes back empty, and an empty

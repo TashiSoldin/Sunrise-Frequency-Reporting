@@ -338,6 +338,33 @@ def _scored(q: str, custs: list[tuple[str, str]]) -> list[tuple[float, str, str]
     return scored
 
 
+def _family_extends(longer: str, shorter: str) -> bool:
+    """True when `longer` reads as a sub-account of `shorter`: B35 ->
+    B35B / B35LOC / 'A20 B'. A digit extension is NOT family — A10 -> A100
+    is just the next sequential code, a different company entirely."""
+    if len(shorter) < 3 or longer == shorter or not longer.startswith(shorter):
+        return False
+    rem = longer[len(shorter) :].strip()
+    return bool(rem) and not rem[0].isdigit()
+
+
+def _related_accounts(code: str, custs: list[tuple[str, str]]) -> list[dict]:
+    """Sibling account codes of `code`: its extensions, its roots, and the
+    roots' other extensions. One client often bills across a family of codes
+    under DIFFERENT names (live: A120 'ACE NUT TRADERS' / A120CT 'ACE NUTS -
+    CPT'; the B35 family; every *DED dedicated account), so a single-account
+    figure silently under-reports the client unless the family is surfaced."""
+    codes = {a for a, _ in custs if a}
+    roots = {r for r in codes if _family_extends(code, r)} | {code}
+    fam: set[str] = set()
+    for r in roots:
+        fam |= {a for a in codes if _family_extends(a, r)}
+    fam |= roots
+    fam.discard(code)
+    by = dict(custs)
+    return [{"account": a, "customer_name": by.get(a, "")} for a in sorted(fam)]
+
+
 def match_customer(customer: str, run=run_select) -> dict:
     """Exact account code first, then fuzzy name returning CANDIDATES — never
     a silent best guess. Resolution is to an Account, because grouping is on
@@ -355,6 +382,7 @@ def match_customer(customer: str, run=run_select) -> dict:
         if rows:
             account = str(rows[0][0]).strip()
             name = str(rows[0][1] or "").strip()
+            custs = _customers(run)
             # An all-letters code also reads as a WORD: 'CBD' and 'RAPID' are
             # live account codes AND name fragments of many other customers
             # (CBD21 'CBD - BMSC Engineering', R32 'RAPID HEAT', ...).
@@ -363,7 +391,7 @@ def match_customer(customer: str, run=run_select) -> dict:
             if code.isalpha():
                 others = [
                     (s, a, n)
-                    for s, a, n in _scored(q, _customers(run))
+                    for s, a, n in _scored(q, custs)
                     if a != account and s >= 0.9
                 ]
                 if others:
@@ -394,9 +422,11 @@ def match_customer(customer: str, run=run_select) -> dict:
                 "account": account,
                 "customer_name": name,
                 "via": "exact account code",
+                "related_accounts": _related_accounts(account, custs),
             }
 
-    scored = _scored(q, _customers(run))
+    custs = _customers(run)
+    scored = _scored(q, custs)
 
     # Resolve on an exact (normalised) name only when nothing else comes
     # close — a near-tie resolved silently would be exactly the best guess
@@ -409,6 +439,7 @@ def match_customer(customer: str, run=run_select) -> dict:
             "account": exact[0][0],
             "customer_name": exact[0][1],
             "via": "exact name match",
+            "related_accounts": _related_accounts(exact[0][0], custs),
         }
 
     candidates = [
@@ -524,6 +555,14 @@ def sales_report(
         raise InputError(f"date_from {d_from} is after date_to {d_to}")
 
     warnings: list[str] = []
+    related = match.get("related_accounts") or []
+    if related:
+        rel_txt = ", ".join(f"{r['account']} ({r['customer_name']})" for r in related)
+        warnings.append(
+            f"figures cover account {account} only — this client has related "
+            f"account codes billed separately: {rel_txt}. Ask for those "
+            "accounts too if the client as a whole is meant."
+        )
     if d_to > today:
         warnings.append(
             f"date_to {_iso(d_to)} is in the future — clamped to today "
