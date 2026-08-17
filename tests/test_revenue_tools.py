@@ -628,6 +628,37 @@ class TestDeadDayGuards:
         assert is_completed_trading_day(pairs, D(1), TODAY) is False
 
 
+class TestRowCaps:
+    """Hit cap = refuse, never truncate. Mutation-testing the Day 4 code
+    found NO test executed this rule (gutting _capped passed the whole
+    suite) — the suite-that-tested-nothing lesson, so the rule gets pinned
+    here against each fetcher."""
+
+    def test_extract_cap_hit_refuses(self, monkeypatch):
+        monkeypatch.setattr(revenue, "EXTRACT_CAP", 50)
+        db = FakeDB(rows=[wb_row(WAYBILL=f"W{i}") for i in range(60)])
+        with pytest.raises(RuntimeError, match="truncated"):
+            revenue.fy_extract("wb", run=db)
+
+    def test_day_counts_cap_hit_refuses(self, monkeypatch):
+        monkeypatch.setattr(revenue, "DAY_COUNTS_CAP", 5)
+        db = FakeDB(wb_counts=[(D(n), 700, 70000.0, 700) for n in range(1, 10)])
+        with pytest.raises(RuntimeError, match="truncated"):
+            revenue.day_counts("wb", run=db)
+
+    def test_credits_cap_hit_refuses(self, monkeypatch):
+        monkeypatch.setattr(revenue, "CREDITS_CAP", 3)
+        db = FakeDB(credit_rows=[credit_row(RECEIPT=-i) for i in range(1, 6)])
+        with pytest.raises(RuntimeError, match="truncated"):
+            revenue.credits_pool(run=db)
+
+    def test_customer_cap_hit_refuses(self, monkeypatch):
+        monkeypatch.setattr(revenue, "CUSTOMER_CAP", 3)
+        db = FakeDB(customers=[(f"A{i:03d}", f"CUSTOMER {i}") for i in range(5)])
+        with pytest.raises(RuntimeError, match="truncated"):
+            revenue.match_customer("Some Name Or Other", run=db)
+
+
 class TestSharedSqlPassesTheGuard:
     def test_day_counts_sql(self):
         for basis in ("wb", "inv"):
