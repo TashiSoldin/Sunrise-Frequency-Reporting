@@ -458,6 +458,40 @@ class TestDailyReport:
         assert r["last_fully_invoiced_day"] == D(3).isoformat()
 
 
+class TestFyWindowGuards:
+    """The live extract is FY-bounded and the credits pool three-FY-bounded —
+    a day or month OUTSIDE those windows comes back empty, and an empty
+    extract answered confidently is a plausible zero that does not raise
+    (found by the Day 4 adversarial review). These must refuse."""
+
+    PRE_FY = "2026-02-10"  # before 1 Mar 2026, with TODAY pinned to 2026-08-17
+
+    def test_revenue_summary_pre_fy_day_is_refused(self):
+        db = FakeDB(wb_counts=WB_COUNTS, inv_counts=INV_COUNTS)
+        r = revenue.revenue_summary(self.PRE_FY, run=db)
+        assert r["ok"] is False and r["refused"] is True
+        assert "financial year" in r["reason"]
+
+    def test_flash_pre_fy_day_is_refused(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(revenue, "ONDEMAND_DIR", tmp_path)
+        db = FakeDB(wb_counts=WB_COUNTS, inv_counts=INV_COUNTS)
+        r = revenue.daily_report("flash", day=self.PRE_FY, run=db)
+        assert r["ok"] is False and "financial year" in r["reason"]
+
+    def test_billing_detail_pre_fy_day_is_refused(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(revenue, "ONDEMAND_DIR", tmp_path)
+        monkeypatch.setattr(revenue, "SCHEDULED_REPORT_DIR", tmp_path)
+        db = FakeDB(wb_counts=WB_COUNTS, inv_counts=INV_COUNTS)
+        r = revenue.daily_report("billing_detail", day=self.PRE_FY, run=db)
+        assert r["ok"] is False and "financial year" in r["reason"]
+
+    def test_credit_notes_before_the_pool_is_refused_not_zero(self):
+        db = FakeDB(wb_counts=WB_COUNTS, inv_counts=INV_COUNTS)
+        r = revenue.credit_notes(month="2023-05", run=db)
+        assert r["ok"] is False and r["refused"] is True
+        assert "2024-03-01" in r["reason"]
+
+
 class TestSharedSqlPassesTheGuard:
     def test_day_counts_sql(self):
         for basis in ("wb", "inv"):

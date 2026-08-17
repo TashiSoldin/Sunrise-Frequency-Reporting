@@ -169,6 +169,25 @@ def _today() -> date:
     return date.today()
 
 
+def _credits_start() -> date:
+    """First day of the credits pool — two FYs before the current one (the
+    pool holds three financial years, like the Credits export)."""
+    return date(fy_start(_today()).year - 2, 3, 1)
+
+
+def _pre_window_refusal(what: str, d: date, window_start: date) -> dict:
+    """A day/month before the data window comes back EMPTY, and an empty
+    extract answered confidently is a plausible zero that does not raise —
+    so anything before the window is refused, never answered (Day 4
+    adversarial review)."""
+    return _refusal(
+        f"{_iso(d)} is before {_iso(window_start)}, where the live "
+        f"{what} begins — an answer would read as zero when the data "
+        "simply is not pulled. Earlier periods live in the archived FY "
+        "files, not this interface."
+    )
+
+
 # --- fetchers (all take run= so tests inject a fake) -------------------------
 
 
@@ -241,7 +260,7 @@ def _traded_pairs(counts: dict[date, tuple[int, float, int]]):
 def credits_pool(run=run_select) -> tuple[list[str], list[list]]:
     """All credits, 3 FYs, in credits-export shape — the verified RECEIPT
     query with its date bound as a parameter instead of an f-string."""
-    start = date(fy_start(_today()).year - 2, 3, 1)
+    start = _credits_start()
     sql = CREDITS_SQL.replace("DATE '{start}'", "?")
     cols, rows = run(sql, (start,), CREDITS_CAP)
     return credits_shaped(cols, _capped(rows, CREDITS_CAP, "credits extract"))
@@ -558,6 +577,8 @@ def revenue_summary(day: str | None = None, run=run_select) -> dict:
                 f"{_iso(d)} is in the future (today is {_iso(today)}) — "
                 "future dates are refused, not answered."
             )
+        if d < fy_start(today):
+            return _pre_window_refusal("financial year extract", d, fy_start(today))
         wb_day = inv_day = d
         if d == today:
             warnings.append(
@@ -691,6 +712,10 @@ def credit_notes(
             return _refusal(
                 f"{month} is in the future — future months are refused, not answered."
             )
+        if m0 < _credits_start():
+            return _pre_window_refusal(
+                "credits pool (three financial years)", m0, _credits_start()
+            )
     else:
         inv_day = last_trading_day(_traded_pairs(day_counts("inv", run)), today)
         m0 = inv_day.replace(day=1)
@@ -774,6 +799,8 @@ def daily_report(report: str, day: str | None = None, run=run_select) -> dict:
         )
         if d > today:
             return _refusal(f"{_iso(d)} is in the future — refused.")
+        if d < fy_start(today):
+            return _pre_window_refusal("financial year extract", d, fy_start(today))
         if d == today:
             return _refusal(
                 "today is still being captured — the flash is a completed-day "
@@ -799,6 +826,8 @@ def daily_report(report: str, day: str | None = None, run=run_select) -> dict:
         )
         if d > today:
             return _refusal(f"{_iso(d)} is in the future — refused.")
+        if d < fy_start(today):
+            return _pre_window_refusal("financial year extract", d, fy_start(today))
         if d >= frontier:
             if day is not None:
                 return _refusal(
