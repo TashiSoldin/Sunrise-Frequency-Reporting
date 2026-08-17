@@ -231,6 +231,42 @@ class TestMatchCustomer:
         assert db.calls == []
 
 
+class TestCodeNameCollisions:
+    """An all-letters account code that also reads as other customers' names
+    must NOT resolve silently — live examples: 'CBD' (Cash Before Delivery,
+    R894k FY27) vs the CBD-prefixed customers, 'RAPID' vs RAPID HEAT etc.
+    (found by the Day 4 adversarial review)."""
+
+    CUSTS = [
+        ("CBD", "CASH BEFORE DELIVERY"),
+        ("CBD21", "CBD - BMSC ENGINEERING"),
+        ("CBD22", "CBD - SEA POINT SPAR"),
+        ("TOM001", "TOMMY PDY LIMITED"),
+        ("ZZTOP", "COMPLETELY UNRELATED TRADING"),
+    ]
+
+    def test_colliding_alpha_code_returns_candidates_owner_first(self):
+        db = FakeDB(customers=self.CUSTS)
+        m = revenue.match_customer("CBD", run=db)
+        assert m["resolved"] is False
+        accounts = [c["account"] for c in m["candidates"]]
+        assert accounts[0] == "CBD"
+        assert {"CBD21", "CBD22"} <= set(accounts)
+        assert "account code" in m["message"]
+
+    def test_alpha_code_without_name_collision_still_resolves(self):
+        db = FakeDB(customers=self.CUSTS)
+        m = revenue.match_customer("ZZTOP", run=db)
+        assert m["resolved"] and m["account"] == "ZZTOP"
+        assert m["via"] == "exact account code"
+
+    def test_code_with_digits_resolves_exactly_as_before(self):
+        db = FakeDB(customers=self.CUSTS)
+        m = revenue.match_customer("tom001", run=db)
+        assert m["resolved"] and m["account"] == "TOM001"
+        assert m["via"] == "exact account code"
+
+
 def _sales_db(**kw):
     rows = [
         wb_row(WAYBILL="A1", INVDATE=D(40), SUBTOTAL=Decimal("100.00")),

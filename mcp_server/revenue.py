@@ -309,6 +309,35 @@ def _name_key(s: str) -> str:
     return " ".join(core or tokens)
 
 
+def _customers(run) -> list[tuple[str, str]]:
+    """The full (account, name) list, cleaned — CUSTOMER is ~2k rows."""
+    _, rows = run("SELECT ACCNUM, CUSTNAME FROM CUSTOMER", (), CUSTOMER_CAP)
+    _capped(rows, CUSTOMER_CAP, "customer list")
+    return [(str(a or "").strip(), str(n or "").strip()) for a, n in rows]
+
+
+def _scored(q: str, custs: list[tuple[str, str]]) -> list[tuple[float, str, str]]:
+    """(score, account, name) for every customer the query plausibly names,
+    best first. Exact normalised name = 1.0; query tokens a subset of the
+    name's = at least 0.92."""
+    qk = _name_key(q)
+    scored: list[tuple[float, str, str]] = []
+    for acc, name in custs:
+        if not acc or not name:
+            continue
+        nk = _name_key(name)
+        s = SequenceMatcher(None, qk, nk).ratio()
+        qt, nt = set(qk.split()), set(nk.split())
+        if qt and qt <= nt:
+            s = max(s, 0.92)
+        if qk and qk == nk:
+            s = 1.0
+        if s >= 0.55:
+            scored.append((s, acc, name))
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    return scored
+
+
 def match_customer(customer: str, run=run_select) -> dict:
     """Exact account code first, then fuzzy name returning CANDIDATES — never
     a silent best guess. Resolution is to an Account, because grouping is on
@@ -324,33 +353,50 @@ def match_customer(customer: str, run=run_select) -> dict:
             "SELECT ACCNUM, CUSTNAME FROM CUSTOMER WHERE ACCNUM = ?", (code,), 5
         )
         if rows:
+            account = str(rows[0][0]).strip()
+            name = str(rows[0][1] or "").strip()
+            # An all-letters code also reads as a WORD: 'CBD' and 'RAPID' are
+            # live account codes AND name fragments of many other customers
+            # (CBD21 'CBD - BMSC Engineering', R32 'RAPID HEAT', ...).
+            # Resolving silently would be the best guess this matcher exists
+            # to refuse — return candidates, the code's owner first.
+            if code.isalpha():
+                others = [
+                    (s, a, n)
+                    for s, a, n in _scored(q, _customers(run))
+                    if a != account and s >= 0.9
+                ]
+                if others:
+                    candidates = [
+                        {
+                            "account": account,
+                            "customer_name": name,
+                            "score": 1.0,
+                            "via": "exact account code",
+                        }
+                    ] + [
+                        {"account": a, "customer_name": n, "score": round(s, 3)}
+                        for s, a, n in others[:7]
+                    ]
+                    return {
+                        "resolved": False,
+                        "query": q,
+                        "candidates": candidates,
+                        "message": (
+                            f"{q!r} is account code {account} ({name}) but "
+                            "also matches other customers' names — ask which "
+                            "is meant rather than guessing. Grouping is on "
+                            "Account."
+                        ),
+                    }
             return {
                 "resolved": True,
-                "account": str(rows[0][0]).strip(),
-                "customer_name": str(rows[0][1] or "").strip(),
+                "account": account,
+                "customer_name": name,
                 "via": "exact account code",
             }
 
-    _, rows = run("SELECT ACCNUM, CUSTNAME FROM CUSTOMER", (), CUSTOMER_CAP)
-    _capped(rows, CUSTOMER_CAP, "customer list")
-
-    qk = _name_key(q)
-    scored: list[tuple[float, str, str]] = []
-    for acc, name in rows:
-        acc = str(acc or "").strip()
-        name = str(name or "").strip()
-        if not acc or not name:
-            continue
-        nk = _name_key(name)
-        s = SequenceMatcher(None, qk, nk).ratio()
-        qt, nt = set(qk.split()), set(nk.split())
-        if qt and qt <= nt:
-            s = max(s, 0.92)
-        if qk and qk == nk:
-            s = 1.0
-        if s >= 0.55:
-            scored.append((s, acc, name))
-    scored.sort(key=lambda t: (-t[0], t[1]))
+    scored = _scored(q, _customers(run))
 
     # Resolve on an exact (normalised) name only when nothing else comes
     # close — a near-tie resolved silently would be exactly the best guess
@@ -377,6 +423,11 @@ def match_customer(customer: str, run=run_select) -> dict:
             else f"{q!r} is close to one customer but not an exact match — "
             "confirm before reporting on it."
         )
+        if len(scored) > len(candidates):
+            message += (
+                f" (showing the closest {len(candidates)} of {len(scored)} "
+                "possible matches)"
+            )
     else:
         message = (
             f"No customer matches {q!r} — check the spelling or provide the "
