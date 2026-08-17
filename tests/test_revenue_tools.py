@@ -231,6 +231,20 @@ class TestMatchCustomer:
         assert db.calls == []
 
 
+class TestDiacritics:
+    """CUSTOMER carries diacritics ('BODO MÖLLER CHEMIE...') — a plain-ASCII
+    query must still match; before folding, Ö keyed as a space and split the
+    token so 'Moller' could never token-match."""
+
+    def test_name_key_folds_diacritics(self):
+        assert revenue._name_key("BODO MÖLLER") == "BODO MOLLER"
+
+    def test_plain_ascii_query_resolves_an_accented_name(self):
+        db = FakeDB(customers=[("B72", "BODO MÖLLER CHEMIE SOUTH AFRICA (PTY) LTD")])
+        m = revenue.match_customer("Bodo Moller Chemie South Africa", run=db)
+        assert m["resolved"] and m["account"] == "B72"
+
+
 class TestCodeNameCollisions:
     """An all-letters account code that also reads as other customers' names
     must NOT resolve silently — live examples: 'CBD' (Cash Before Delivery,

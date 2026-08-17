@@ -31,6 +31,7 @@ Guards (non-negotiable — the briefing page's date-column failure mode):
 import os
 import re
 import sys
+import unicodedata
 from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -304,6 +305,11 @@ _NOISE_TOKENS = {
 
 
 def _name_key(s: str) -> str:
+    # Fold diacritics first ('MÖLLER' -> 'MOLLER'): stripping the accented
+    # letter to a SPACE instead used to split the token in two, so the
+    # correctly-spelled plain-ASCII query never token-matched the name.
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
     tokens = re.sub(r"[^A-Z0-9 ]", " ", s.upper()).split()
     core = [t for t in tokens if t not in _NOISE_TOKENS]
     return " ".join(core or tokens)
