@@ -17,6 +17,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 import xlsxwriter
+from day_guards import NoInvoicedDays, frontier_from_day_counts
 from style import (
     ALT,
     NAVY,
@@ -44,13 +45,6 @@ STATUS_CODES = {
 }
 
 
-# A waybill date counts as invoiced once this share of its waybills have been.
-# Same spirit as HOLIDAY_GUARD in build_flash and TRADING_GUARD in run_daily:
-# one row is not evidence that a day is done.
-INVOICED_GUARD = 0.5
-MIN_WAYBILLS = 20  # ignore weekend and holiday days carrying a handful
-
-
 def billing_frontier(rows, ix, norm) -> date:
     """First day that is NOT yet invoiced — everything from here on is normal
     billing lag rather than unbilled freight.
@@ -72,46 +66,37 @@ def billing_frontier(rows, ix, norm) -> date:
     R731k. Nothing about the day had changed.
 
     So walk back to the newest day whose invoicing has actually happened, by
-    share rather than presence, skipping days too small to judge.
+    share rather than presence, skipping days too small to judge. The
+    share-and-fallback arithmetic lives in day_guards.frontier_from_day_counts
+    (hoisted Day 4, the guard's fourth consumer); this wrapper counts the rows
+    and keeps the CLI's SystemExit behaviour.
     """
-    today = date.today()
     per_day = defaultdict(lambda: [0, 0])  # day -> [invoiced, total]
     for r in rows:
         d = norm(r[ix["Waybill Date"]])
-        if not isinstance(d, date) or d > today:  # cannot invoice before shipping
+        if not isinstance(d, date):
             continue
         cell = per_day[d]
         cell[1] += 1
         if str(r[ix["Status"]]) == "Invoiced":
             cell[0] += 1
 
-    done = [
-        d
-        for d, (inv, tot) in per_day.items()
-        if tot >= MIN_WAYBILLS and inv / tot >= INVOICED_GUARD
-    ]
-    if done:
-        return max(done) + timedelta(days=1)
-
-    # Nothing clears the bar — a very new deployment, or a sparse file. Fall
-    # back to the old rule so the report still builds, rather than failing.
-    any_inv = [d for d, (inv, _) in per_day.items() if inv]
-    if not any_inv:
-        raise SystemExit("No invoiced waybills found — cannot derive billing frontier.")
-    return max(any_inv) + timedelta(days=1)
+    try:
+        return frontier_from_day_counts(per_day)
+    except NoInvoicedDays as e:
+        raise SystemExit(str(e)) from e
 
 
-def build(
-    wb_file: str | None,
-    out_dir: str,
+def select_unbilled(
+    headers: list[str],
+    rows: list[list],
     exclude_from: date | None = None,
-    data: tuple[list[str], list[list]] | None = None,
-) -> str:
-    """data, when given, is injected (headers, rows) in export shape — as
-    load_export returns them, or extract_revenue.export_shaped builds them
-    from a live query — and wb_file is only used as the source label in the
-    Overview note, not read (None labels the source as a live query)."""
-    headers, rows = data if data is not None else load_export(wb_file)
+) -> tuple[list[dict], date]:
+    """The unbilled selection — one home, shared by this workbook and the
+    query interface (mcp_server/revenue.py), so both answer from the same
+    logic. Returns (unbilled, exclude_from): dicts sorted by (date, waybill),
+    and the billing frontier actually applied.
+    """
     ix = {
         n: col(headers, n)
         for n in [
@@ -151,6 +136,21 @@ def build(
                 }
             )
     unbilled.sort(key=lambda u: (u["date"], u["waybill"]))
+    return unbilled, exclude_from
+
+
+def build(
+    wb_file: str | None,
+    out_dir: str,
+    exclude_from: date | None = None,
+    data: tuple[list[str], list[list]] | None = None,
+) -> str:
+    """data, when given, is injected (headers, rows) in export shape — as
+    load_export returns them, or extract_revenue.export_shaped builds them
+    from a live query — and wb_file is only used as the source label in the
+    Overview note, not read (None labels the source as a live query)."""
+    headers, rows = data if data is not None else load_export(wb_file)
+    unbilled, exclude_from = select_unbilled(headers, rows, exclude_from)
 
     gen = (
         date.today()

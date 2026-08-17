@@ -47,12 +47,10 @@ from __future__ import annotations
 
 import argparse
 import logging
-import statistics
 import subprocess
 import sys
 import time
-from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
@@ -62,6 +60,7 @@ REPO_ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO_ROOT / "report_generation"))
 
+from day_guards import last_trading_day
 from mailer import flash_subject, pm_subject, send_reports
 from utils.log_execution_time_decorator import log_execution_time
 
@@ -132,39 +131,9 @@ def run(step: str, args: list[str]) -> str:
     return lines[-1]
 
 
-# A day counts as traded once it clears this fraction of the median day in the
-# trailing window. Matches HOLIDAY_GUARD in build_flash.py, which uses the same
-# test to keep public holidays out of the typical-weekday benchmark.
-TRADING_GUARD = 0.5
-TRADING_WINDOW = 28  # days of history the median is taken over
-
-
-def last_trading_day(pairs, today: date) -> date:
-    """Newest day before today that actually traded.
-
-    "Latest date present in the file" is not the same thing. Ten waybills carry
-    a Sunday date and two invoices carry a Friday date on which invoicing had
-    not yet run — taking the max picked those and produced a flash reporting R0
-    and a billing detail of two lines. So walk back to the newest day whose
-    value clears half the median of the trailing window, which skips weekends,
-    public holidays and days whose invoice run has not happened yet.
-
-    Falls back to the plain newest day if there is no history to compare
-    against, so a first run or a sparse file still produces something.
-    """
-    totals = defaultdict(float)
-    for d, v in pairs:
-        if isinstance(d, date) and d < today:
-            totals[d] += v or 0
-    if not totals:
-        return today
-    days = sorted(totals)
-    window = [totals[d] for d in days if d > today - timedelta(days=TRADING_WINDOW)]
-    if not window:
-        return days[-1]
-    floor = TRADING_GUARD * statistics.median(window)
-    traded = [d for d in days if totals[d] >= floor]
-    return traded[-1] if traded else days[-1]
+# last_trading_day and its guard constants moved to day_guards.py (Day 4 of
+# the query interface — the fourth consumer of the "ignore what is too small
+# to mean anything" rule; see the module docstring there).
 
 
 def latest_dates(wb_file: Path, inv_file: Path) -> tuple[date, date]:

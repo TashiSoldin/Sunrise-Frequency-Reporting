@@ -512,6 +512,37 @@ def fy_end(start: date) -> date:
     return date(start.year + 1, 3, 1)
 
 
+def _fy_filter(date_col: str) -> str:
+    """The exclusions every revenue query applies (reconciliation contract in
+    the module docstring): FY window on the basis date — bound at BOTH ends,
+    see extraction_sql's docstring for the mis-keyed-year story — no tilde
+    re-delivery copies, no Cancelled. Shared by extraction_sql and
+    day_counts_sql so the rules have one home."""
+    return f"""WHERE wba.{date_col} >= ?
+          AND wba.{date_col} < ?
+          AND wba.WAYBILL NOT LIKE '%~%'
+          AND wba.STATUS <> 'Cancelled'"""
+
+
+def day_counts_sql(basis: str, start: date) -> tuple[str, list]:
+    """Per-day (waybill count, Subtotal sum, invoiced count) over the same FY
+    window and exclusions as extraction_sql — one aggregate row per basis-date
+    day, so the date guards (day_guards.last_trading_day, the billing
+    frontier) can run without pulling the full extract to answer a question.
+    Same rules, one home: the WHERE clause is _fy_filter, never re-derived."""
+    date_col = {"wb": "WAYDATE", "inv": "INVDATE"}[basis]
+    sql = f"""
+        SELECT wba.{date_col} AS DAY_D,
+               COUNT(*) AS N_WAYBILLS,
+               SUM(wba.SUBTOTAL) AS SUBTOTAL_SUM,
+               SUM(CASE WHEN wba.STATUS = 'Invoiced' THEN 1 ELSE 0 END) AS N_INVOICED
+        FROM VIEW_WBANALYSE wba
+        {_fy_filter(date_col)}
+        GROUP BY wba.{date_col};
+    """
+    return sql, [start, fy_end(start)]
+
+
 def extraction_sql(
     basis: str,
     start: date,
@@ -568,10 +599,7 @@ def extraction_sql(
         LEFT JOIN RECEIPT rc ON rc.RECEIPT = wba.RECEIPT
         LEFT JOIN VIEW_USERCODE ru ON ru.USERCODE = rc.USERCODE
         LEFT JOIN WAYBILL wb2 ON wb2.WAYBILL = wba.WAYBILL
-        WHERE wba.{date_col} >= ?
-          AND wba.{date_col} < ?
-          AND wba.WAYBILL NOT LIKE '%~%'
-          AND wba.STATUS <> 'Cancelled'"""
+        {_fy_filter(date_col)}"""
     params: list = [start, fy_end(start)]
     if account is not None:
         sql += "\n          AND wba.ACCNUM = ?"

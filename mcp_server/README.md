@@ -42,8 +42,36 @@ Entra ID — see `docs/entra-app-registration.md`) is wired in at that point
   `STARTING WITH '<no>~'` for tilde variants, ~25 ms live). Not-found is
   explicit, tilde copies are flagged, multiple matches are all returned.
 
-Revenue tools and the guarded open query path arrive per the execution plan
-(Coda → Database Query Interface → Execution Plan).
+### Revenue tools (Day 4)
+
+All in `revenue.py`, on top of Day 3's verified seam: ONE set of query logic
+(`extraction_sql` → `export_shaped`) serves both the inline answer and the
+workbook, which is built by injecting the same rows into the existing
+builders. Business rules are imported from the modules that own them, never
+re-derived. Workbooks always build from the **unfiltered FY extract**
+(filtered extracts answer inline only) and land in
+`…\Dashboards and Data Analysis\On Demand` — the archive; Larry receives the
+workbook in the conversation. Guards throughout: future dates refused,
+still-being-captured/invoiced days warned or refused, date bases from
+`day_guards.last_trading_day`, row caps that refuse rather than truncate.
+
+- `sales_report(customer, date_from?, date_to?)` — billed revenue for one
+  customer, invoice-date basis, FY-to-date default; monthly breakdown,
+  credit notes, net. Customer matching: exact account, then fuzzy name
+  returning **candidates** — never a silent best guess.
+- `revenue_summary(day?)` — one day on both bases (shipped vs billed, with
+  the two-dates explanation), branch split, top customers, net of credits.
+- `unbilled_report(workbook?)` — frontier, count, value, by-status, top
+  customers; optionally the branded workbook from the same rows.
+- `credit_notes(month?, workbook?)` — Credit Note + Journal Credit only;
+  month defaults to the last invoiced trading day's month.
+- `daily_report(report, day?)` — the branded day-keyed workbooks: `flash`,
+  `billing_detail`, `dashboard`. A not-yet-invoiced day gets a flash, never
+  a billing detail.
+
+Acceptance harnesses: `research/day4_wiring_check.py` (tools through a real
+MCP client session) and `research/day4_acceptance.py` (answers vs the
+existing pull, to the cent).
 
 ## OAuth behaviour (Day 6)
 
