@@ -19,6 +19,7 @@ from collections import defaultdict
 from datetime import date
 
 import xlsxwriter
+from day_guards import plausible_window
 from style import (
     ALT,
     NAVY,
@@ -97,7 +98,19 @@ def build(
     builds them from a live query — and credits_file is not read."""
     notes = load_credits(credits_file, data)
     if month is None:
-        month = max(n["date"] for n in notes if n["date"] >= FY_START).replace(day=1)
+        # Newest PLAUSIBLE date decides the default month — bounded above by
+        # today (day_guards.plausible_window): Parcel Perfect carries
+        # mis-keyed future years as a matter of course, and an unbounded
+        # max() over a date column is this project's recorded failure mode.
+        # run_daily always passes --month; this default is for hand runs.
+        _, hi = plausible_window(date.today())
+        candidates = [n["date"] for n in notes if FY_START <= n["date"] <= hi]
+        if not candidates:
+            raise ValueError(
+                "No credit notes dated between FY start and today — cannot "
+                "derive a default month; pass --month YYYY-MM explicitly."
+            )
+        month = max(candidates).replace(day=1)
     m_end = date(
         month.year, month.month, calendar.monthrange(month.year, month.month)[1]
     )

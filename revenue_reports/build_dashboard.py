@@ -97,6 +97,19 @@ def cal_year(fy: int, m: int) -> int:
     return fy if m >= 3 else fy + 1
 
 
+def latest_data_day(day_pools: dict, asof: date | None) -> date:
+    """Newest day across a pool's acct -> day mapping, capped at asof — or at
+    today when no cap is passed (hand runs; run_daily always passes one).
+
+    This day decides the financial year and current month, and Parcel Perfect
+    carries mis-keyed future years as a matter of course — an unbounded max()
+    over a date column is this project's recorded failure mode, so a future
+    mis-key must never decide the FY (day_guards.plausible_window's bound).
+    """
+    cap = asof or date.today()
+    return max(d for days in day_pools.values() for d in days if d <= cap)
+
+
 def month_trading_days(fy: int, m: int) -> int:
     """Trading days in an FY month: weekdays minus SA public holidays.
 
@@ -2381,15 +2394,8 @@ def build(
     # The latest invoiced / waybilled day decides the financial year, which
     # months are complete and which part-month the MTD tab covers. Nothing is
     # pinned to a particular month any more.
-    mtd_max = max(
-        d
-        for days in inv.day.values()
-        for d in days
-        if inv_asof is None or d <= inv_asof
-    )
-    wb_max = max(
-        d for days in wbp.day.values() for d in days if wb_asof is None or d <= wb_asof
-    )
+    mtd_max = latest_data_day(inv.day, inv_asof)
+    wb_max = latest_data_day(wbp.day, wb_asof)
     FY = fy_start_year(mtd_max)
     fyl, ly = fy_label(FY), fy_label(FY - 1)
     cur = mtd_max.month
