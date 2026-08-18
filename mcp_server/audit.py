@@ -72,7 +72,11 @@ def _outcome(result) -> tuple[str, int | None]:
     if not isinstance(result, dict):
         return "ok", None
     if result.get("refused"):
-        return "refused: " + str(result.get("reason", ""))[:300], None
+        # audit_reason overrides reason when the user-facing reason may carry a
+        # DB value (a passed-through Firebird error echoes the offending cell).
+        # The log must hold no result body; the user still gets the detail.
+        reason = result.get("audit_reason") or result.get("reason", "")
+        return "refused: " + str(reason)[:300], None
     if result.get("needs"):
         return f"needs:{result['needs']}", None
     if result.get("found") is False:
@@ -106,6 +110,11 @@ def audited(fn):
             )
             raise
         outcome, rows = _outcome(result)
+        # audit_reason is a log-only field (a data-safe restatement of a reason
+        # whose user text may echo a DB value). It has served its purpose in
+        # _outcome; drop it so it never rides along in the client payload.
+        if isinstance(result, dict):
+            result.pop("audit_reason", None)
         logger.info(
             "tool=%s args=%s outcome=%s rows=%s duration_ms=%d",
             fn.__name__,

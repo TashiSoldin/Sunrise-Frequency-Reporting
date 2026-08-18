@@ -109,8 +109,56 @@ class TestAllowlistRefusals:
         with pytest.raises(GuardError, match="no table"):
             check_open_query("SELECT 1 + 1")
 
+    def test_selectable_procedure_in_from_is_refused(self):
+        # Firebird selectable stored procedures are queried like a table:
+        # SELECT ... FROM SOME_PROC(args). The FROM target is a procedure,
+        # not a base relation, and a proc body can carry side effects the SQL
+        # text never shows. The positive allowlist refuses it because no proc
+        # name is on the list — pin that so it stays refused.
+        with pytest.raises(GuardError, match="not on the open-path allowlist"):
+            check_open_query("SELECT * FROM SOME_PROC(1, 2)")
+        with pytest.raises(GuardError, match="not on the open-path allowlist"):
+            check_open_query("SELECT * FROM SOME_PROC")
+
+    def test_paren_after_a_table_name_cannot_hide_a_denied_table(self):
+        # A '(' immediately after a table-position name used to be skipped whole
+        # as "selectable procedure args" — which swallowed a subquery's inner
+        # FROM. SELECT * FROM CUSTOMER(SELECT 1 FROM EVENT) then passed the
+        # gate reading only CUSTOMER, with EVENT never checked: the fence must
+        # refuse before Firebird, not lean on Firebird to reject the syntax.
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query("SELECT * FROM CUSTOMER(SELECT 1 FROM EVENT)")
+        with pytest.raises(GuardError, match="WAYBILL"):
+            check_open_query("SELECT X FROM AGENT(SELECT 1 FROM WAYBILL) t")
+
+    def test_paren_hidden_denied_table_nested_two_deep(self):
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT * FROM CUSTOMER(SELECT 1 FROM AGENT(SELECT 1 FROM EVENT))"
+            )
+
 
 # --- execution: caps and shaping ------------------------------------------------
+
+
+class TestAvailabilityBoundaryIsNotClosed:
+    """The row/time caps and the allowlist do NOT bound server-side DB load:
+    a self-cross-join or an unbounded aggregate over an allowlisted table is
+    accepted by the gate and only the WAIT is capped (15s socket timeout),
+    while Firebird keeps grinding. Pinned so the limitation is explicit and
+    nobody mistakes the gate for a load bound — it is flagged to Larry, and
+    unfixable on Firebird 3.0.13 (no SET STATEMENT TIMEOUT) without a fragile
+    heuristic. These assert the gate PASSES them; they never touch a DB."""
+
+    def test_self_cross_join_over_an_allowlisted_table_passes_the_gate(self):
+        assert check_open_query(
+            "SELECT COUNT(*) FROM AGENTDRIVER a, AGENTDRIVER b"
+        ) == ["AGENTDRIVER"]
+
+    def test_unbounded_aggregate_over_the_waybill_view_passes_the_gate(self):
+        assert check_open_query("SELECT MAX(WAYDATE) FROM VIEW_WBANALYSE") == [
+            "VIEW_WBANALYSE"
+        ]
 
 
 class TestRunOpenQuery:
@@ -253,6 +301,15 @@ class TestSchemaContext:
     def test_denied_table_lookup_explains_itself(self):
         ctx = schema_context("EVENT")
         assert "separate quote" in ctx["error"]
+
+    def test_row_counts_are_marked_as_a_drifting_snapshot(self):
+        # AGENT was 1,220 at the 6 Aug survey, 1,225 live on 18 Aug — a count
+        # read off this resource must never be presented as the live figure.
+        ctx = schema_context()
+        assert any(
+            "snapshot" in line.lower() and "count" in line.lower()
+            for line in ctx["read_this_first"]
+        )
 
     def test_view_row_counts_are_none_not_zero(self):
         # The survey could not count views; None must never read as empty.

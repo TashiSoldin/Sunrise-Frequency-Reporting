@@ -53,8 +53,17 @@ ROW_CAP = 500
 # Socket-level cap on how long we WAIT. Honest limitation: Firebird may keep
 # executing an aborted aggregate server-side after the socket closes — the cap
 # bounds the answer, not the production load (the quote's deleted-sentence
-# lesson). Load stays bounded by the allowlist keeping the 100M+-row tables
-# unreachable in the first place.
+# lesson). Firebird 3.0.13 has no SET STATEMENT TIMEOUT, so a true DB-side cap
+# is impossible on this engine.
+#
+# The allowlist keeps the 100M+-row EVENT-family tables unreachable, but it
+# does NOT bound load on its own: a self-cross-join of an allowlisted table
+# (AGENTDRIVER is 723k rows, MANIFEST 308k) or an unbounded aggregate over
+# VIEW_WBANALYSE (3.1M) runs the DB hot for far longer than 15s server-side
+# while the client has already given up — and the row cap sees only the one
+# COUNT row it returns. This residual availability risk is flagged to Larry
+# (18 Aug Day 5 review); it is inherent to an open SQL path on FB3, not a bug
+# the fence can close without a fragile cartesian-detector.
 TIMEOUT_S = 15
 
 # --- the allowlist --------------------------------------------------------------
@@ -249,14 +258,14 @@ def _referenced_tables(cleaned: str) -> list[str]:
                 names.append(u)
                 expect_name = False
                 i += 1
-                if i < n and toks[i] == "(":  # selectable procedure args
-                    depth = 0
-                    while i < n:
-                        depth += toks[i] == "("
-                        depth -= toks[i] == ")"
-                        i += 1
-                        if depth == 0:
-                            break
+                # A '(' right after a table-position name is NOT skipped: on
+                # Firebird that is a selectable-procedure call (no allowlisted
+                # name is a procedure, so the name itself is refused), and
+                # skipping the parens whole would swallow any subquery inside
+                # them — `CUSTOMER(SELECT 1 FROM EVENT)` would hide EVENT. We
+                # break instead and let the outer scan walk into the parens,
+                # so an inner FROM/JOIN is still checked. Firebird will reject
+                # the `name(...)` syntax, but the fence must not depend on that.
                 if i < n and _IDENT.fullmatch(toks[i]) and toks[i].upper() not in _STOP:
                     i += 1  # alias
             elif tok == ",":
@@ -386,7 +395,17 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
                 "(add WHERE bounds, or aggregate in SQL rather than fetching "
                 "rows)"
             )
-        return _refused(f"Firebird refused the query: {e}")
+        return _refused(
+            f"Firebird refused the query: {e}",
+            # A Firebird type/conversion error echoes the offending row value
+            # (e.g. `conversion error from string "<a customer name>"`). Keep
+            # that in the user-facing reason — the user is authorised — but
+            # never write it to the audit log, which must carry no data bodies.
+            audit_reason=(
+                f"Firebird rejected the query ({type(e).__name__}); detail "
+                "withheld from the audit log (a DB error can echo row values)"
+            ),
+        )
     elapsed_ms = round((time.perf_counter() - started) * 1000)
 
     if len(rows) > ROW_CAP:
@@ -425,8 +444,13 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
     }
 
 
-def _refused(reason: str) -> dict:
-    return {"ok": False, "refused": True, "reason": reason}
+def _refused(reason: str, audit_reason: str | None = None) -> dict:
+    d = {"ok": False, "refused": True, "reason": reason}
+    if audit_reason is not None:
+        # A log-safe restatement for reasons whose user-facing text may echo a
+        # DB value (see the Firebird-error path). audit._outcome prefers it.
+        d["audit_reason"] = audit_reason
+    return d
 
 
 # --- schema context ---------------------------------------------------------------
@@ -483,6 +507,12 @@ def schema_context(table: str | None = None) -> dict:
                 "Firebird SQL: SELECT FIRST n ... (not LIMIT); string literals "
                 "in single quotes; CHAR columns are space-padded — compare with "
                 "TRIM() or exact padded values."
+            ),
+            (
+                f"Row counts here are the {data['survey_date']} survey snapshot "
+                "and drift with live data (AGENT was 1,220 at survey, 1,225 "
+                "live on 18 Aug) — never quote them as a live figure; run "
+                "SELECT COUNT(*) for a current count."
             ),
             _DATE_CAVEAT,
             HONEST_BOUNDARY,
