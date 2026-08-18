@@ -16,7 +16,7 @@ trust.
 """
 
 import statistics
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 # A day counts as traded once it clears this fraction of the median day in the
 # trailing window. Matches HOLIDAY_GUARD in build_flash.py, which uses the same
@@ -76,6 +76,62 @@ def is_completed_trading_day(pairs, d: date, today: date) -> bool:
     if floor is None:
         return d in totals
     return totals.get(d, 0.0) >= floor
+
+
+# --- plausible dates — the window half of the hoist ---------------------------
+#
+# The guards above judge which days *traded*; these judge which date values
+# can be *believed at all*. Parcel Perfect carries mis-keyed dates as a matter
+# of course: 1899-12-30 (Excel serial 0) is its null-date placeholder — live
+# today in Due Date / Last Delivery Date, columns the report builders never
+# read (14 Aug review) — and a mis-typed year (9473 once) lands whole rows in
+# the far future. An aggregate over either produces a plausible wrong number
+# that does not raise, which is this project's recorded date-column failure
+# mode, three client-facing times over.
+
+PP_NULL_DATE = date(1899, 12, 30)
+
+# Anything before this is junk, placeholder or not — "anything that consumes
+# these columns must treat pre-1990 dates as junk" (test_export_transform).
+PLAUSIBLE_FLOOR = date(1990, 1, 1)
+
+
+def plausible_window(today: date) -> tuple[date, date]:
+    """Bounds inside which a raw PP date value can be believed: [floor, today].
+
+    For ARBITRARY PP date columns, where the data-driven guards above cannot
+    run (they need per-day volumes; an ad-hoc column has none). A value
+    outside this window is not evidence about the freight — it is a
+    placeholder or a mis-key, and any min/max/sum bounded by it is suspect.
+    Freight legitimately books ahead, so a future date is not always junk —
+    which is why callers flag rather than drop, and say which side it fell.
+    """
+    return PLAUSIBLE_FLOOR, today
+
+
+def classify_dates(values, today: date) -> dict[str, int]:
+    """Count one column's date values against plausible_window.
+
+    Returns {"plausible", "placeholder", "before_floor", "future"} counts.
+    datetimes are judged on their date; non-date values are ignored (a mixed
+    or non-date column is not this guard's business).
+    """
+    lo, hi = plausible_window(today)
+    out = {"plausible": 0, "placeholder": 0, "before_floor": 0, "future": 0}
+    for v in values:
+        if isinstance(v, datetime):
+            v = v.date()
+        if not isinstance(v, date):
+            continue
+        if v == PP_NULL_DATE:
+            out["placeholder"] += 1
+        elif v < lo:
+            out["before_floor"] += 1
+        elif v > hi:
+            out["future"] += 1
+        else:
+            out["plausible"] += 1
+    return out
 
 
 # A waybill date counts as invoiced once this share of its waybills have been.

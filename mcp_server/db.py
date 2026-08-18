@@ -12,19 +12,33 @@ handover, never shipped as the final state.
 """
 
 import os
+import select as _select_module
 from contextlib import closing
 
 import firebirdsql
+import firebirdsql.fbcore
 from dotenv import load_dotenv
 
 from mcp_server.sql_guard import assert_select_only
+
+# Upstream bug in firebirdsql 1.x: fbcore's timeout path calls
+# select.select(...) without ever importing select, so ANY connection with a
+# timeout dies with NameError at the first read. Verified against the
+# installed package (fbcore.py line ~579, no `import select` at the top).
+# Injecting the module is the whole fix; harmless if a fixed version lands.
+if not hasattr(firebirdsql.fbcore, "select"):
+    firebirdsql.fbcore.select = _select_module
 
 # One query never returns more than this many rows. The health tool needs 1;
 # a real cap policy per tool arrives with the tools (Days 2-5).
 MAX_ROWS = 1000
 
 
-def connect() -> firebirdsql.Connection:
+def connect(timeout: float | None = None) -> firebirdsql.Connection:
+    """timeout is the socket timeout in seconds — a read that blocks longer
+    raises. It caps how long we WAIT, not what Firebird executes: an
+    abandoned aggregate may keep running server-side after the socket
+    closes, which is why the open path's real load bound is its allowlist."""
     load_dotenv()
     return firebirdsql.connect(
         host=os.getenv("DB_HOST"),
@@ -35,16 +49,20 @@ def connect() -> firebirdsql.Connection:
         charset="latin1",
         use_unicode=True,
         isolation_level=firebirdsql.ISOLATION_LEVEL_READ_COMMITED_RO,
+        timeout=timeout,
     )
 
 
 def run_select(
-    sql: str, params: tuple = (), max_rows: int = MAX_ROWS
+    sql: str,
+    params: tuple = (),
+    max_rows: int = MAX_ROWS,
+    timeout: float | None = None,
 ) -> tuple[list[str], list[tuple]]:
     """Run one guarded SELECT and return (column_names, rows), capped."""
     assert_select_only(sql)
     try:
-        conn = connect()
+        conn = connect(timeout)
     except Exception as e:
         # Said in the tool error the client relays: a raw WinError/socket
         # message must never be mistaken for an answer about the data.

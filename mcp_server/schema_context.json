@@ -1,0 +1,3539 @@
+{
+ "survey_date": "2026-08-06",
+ "source": [
+  "schema_columns_2026-08-06.csv",
+  "schema_relations_2026-08-06.csv"
+ ],
+ "tables": {
+  "ACTLEG": {
+   "kind": "table",
+   "row_count": 1288,
+   "columns": [
+    {
+     "name": "ACTROUTE",
+     "type": "INTEGER",
+     "nullable": false
+    },
+    {
+     "name": "ACTLEG",
+     "type": "SMALLINT",
+     "nullable": false
+    },
+    {
+     "name": "ORIGHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "DESTHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "AGENT",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "LEADDAYS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "OPTIONAL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "TRANSIT",
+     "type": "SMALLINT",
+     "nullable": true
+    }
+   ]
+  },
+  "ACTROUTE": {
+   "kind": "table",
+   "row_count": 1004,
+   "columns": [
+    {
+     "name": "ACTROUTE",
+     "type": "INTEGER",
+     "nullable": false
+    },
+    {
+     "name": "SERVICE",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "DESTHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "DAYS",
+     "type": "CHAR(7)",
+     "nullable": true
+    },
+    {
+     "name": "TRANSITDAYS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PRIORITY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "TRANSITDAYSOUTLY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DUETIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "DUETIMEOUTLY",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "MAXPIECEMASS",
+     "type": "FLOAT",
+     "nullable": true
+    }
+   ]
+  },
+  "AGENT": {
+   "kind": "table",
+   "row_count": 1220,
+   "columns": [
+    {
+     "name": "AGENT",
+     "type": "SMALLINT",
+     "nullable": false
+    },
+    {
+     "name": "MTYPE",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "NAME",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "ACCNO",
+     "type": "VARCHAR(8)",
+     "nullable": true
+    },
+    {
+     "name": "CONTACT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ACCCONTACT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHONE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "AFTERHOURS",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "FAX",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "CELL",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "EMAIL",
+     "type": "VARCHAR(120)",
+     "nullable": true
+    },
+    {
+     "name": "WEBSITE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "QUOTEDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "OWNRESOURCE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "USEVOL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DOCFORDOC",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "OTHER",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "OTHERPERC",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "ADDRESS1",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ADDRESS2",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ADDRESS3",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ADDRESS4",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "POSTCODE",
+     "type": "VARCHAR(10)",
+     "nullable": true
+    },
+    {
+     "name": "CURRENCY",
+     "type": "CHAR(4)",
+     "nullable": true
+    },
+    {
+     "name": "DISABLE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "BILLTYPE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "COLOUR",
+     "type": "VARCHAR(10)",
+     "nullable": true
+    },
+    {
+     "name": "MASTERAGENT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "MASTERCUST",
+     "type": "VARCHAR(6)",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE1",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE2",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE3",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE4",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE5",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE6",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE7",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE8",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE9",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "BRANCH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PRIORITY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "EXPORTINHOUSE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "MODEGROUP",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "PORTALMODE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "USEDRIVER",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "COSTCNTR",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "AGENTTYPE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "ICDNSPATH",
+     "type": "VARCHAR(100)",
+     "nullable": true
+    },
+    {
+     "name": "ICUSER",
+     "type": "CHAR(50)",
+     "nullable": true
+    },
+    {
+     "name": "ICPASS",
+     "type": "CHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "ORGID",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "VEHICLEID",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "GPSMODE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "VEHICLETRACK",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CAPACITY",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "VOLCAPACITY",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "PREFIX",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "SUFFIX",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTWAYBILL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTLABEL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "AWBLENGTH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CONSOLIDATE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CLOSEDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "KPIALIAS",
+     "type": "VARCHAR(10)",
+     "nullable": true
+    },
+    {
+     "name": "AUTOASSMAXKG",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "SECURITY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "VEHICLE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "REGNO",
+     "type": "VARCHAR(10)",
+     "nullable": true
+    },
+    {
+     "name": "SMSONCLOSE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "REDELMODE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "ALLSURCHPERC",
+     "type": "SMALLINT",
+     "nullable": true
+    }
+   ]
+  },
+  "AGENTDRIVER": {
+   "kind": "table",
+   "row_count": 723357,
+   "columns": [
+    {
+     "name": "AGENTDRIVER",
+     "type": "INTEGER",
+     "nullable": false
+    },
+    {
+     "name": "AGENT",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "DRIVER",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "FROMDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "FROMTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "USERCODE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "LOADLVL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "ROUTE",
+     "type": "INTEGER",
+     "nullable": true
+    }
+   ]
+  },
+  "AREA": {
+   "kind": "table",
+   "row_count": 715,
+   "columns": [
+    {
+     "name": "HUB",
+     "type": "CHAR(3)",
+     "nullable": false
+    },
+    {
+     "name": "AREA",
+     "type": "CHAR(3)",
+     "nullable": false
+    },
+    {
+     "name": "NAME",
+     "type": "VARCHAR(35)",
+     "nullable": true
+    },
+    {
+     "name": "AUTOASSIGN",
+     "type": "SMALLINT",
+     "nullable": true
+    }
+   ]
+  },
+  "BRANCH": {
+   "kind": "table",
+   "row_count": 16,
+   "columns": [
+    {
+     "name": "BRANCH",
+     "type": "SMALLINT",
+     "nullable": false
+    },
+    {
+     "name": "NAME",
+     "type": "VARCHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "EMAIL",
+     "type": "VARCHAR(52)",
+     "nullable": true
+    },
+    {
+     "name": "CODE",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "MASTER",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "NEXTIMPORT",
+     "type": "INTEGER",
+     "nullable": false
+    },
+    {
+     "name": "BRANCHACTIVE",
+     "type": "INTEGER",
+     "nullable": false
+    },
+    {
+     "name": "IP",
+     "type": "CHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "HUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "DBPATH",
+     "type": "CHAR(80)",
+     "nullable": true
+    },
+    {
+     "name": "SUBDBNO",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "REPLBRANCH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PODHTML",
+     "type": "BLOB (binary)",
+     "nullable": true
+    },
+    {
+     "name": "PLACE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "COLHTML",
+     "type": "BLOB (binary)",
+     "nullable": true
+    },
+    {
+     "name": "INCTHRESHOLD",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "STARTTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "CLOSETIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "INVOICEMODE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "RDBBRANCH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "RDBSERVER",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "RTMPATH",
+     "type": "VARCHAR(100)",
+     "nullable": true
+    },
+    {
+     "name": "MOBLABEL",
+     "type": "BLOB (binary)",
+     "nullable": true
+    },
+    {
+     "name": "MOBRECEIPT",
+     "type": "BLOB (binary)",
+     "nullable": true
+    },
+    {
+     "name": "DISABLE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "FAILBRANCH",
+     "type": "INTEGER",
+     "nullable": true
+    }
+   ]
+  },
+  "CONTACT": {
+   "kind": "table",
+   "row_count": 4591,
+   "columns": [
+    {
+     "name": "ACCNUM",
+     "type": "CHAR(6)",
+     "nullable": false
+    },
+    {
+     "name": "NAME",
+     "type": "CHAR(25)",
+     "nullable": false
+    },
+    {
+     "name": "CONPOSITION",
+     "type": "CHAR(15)",
+     "nullable": true
+    },
+    {
+     "name": "CELL",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHONE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "EMAIL",
+     "type": "CHAR(50)",
+     "nullable": true
+    },
+    {
+     "name": "WEBPASSWORD",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "WEBEXPORT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "GLOBAL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PODEMAIL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "COSTCENTRE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CONTACT",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "USERCODE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "INTERCOMPANY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "HASHED",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SECRETKEY",
+     "type": "VARCHAR(32)",
+     "nullable": true
+    },
+    {
+     "name": "MFA",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "RECOVERYEMAIL",
+     "type": "CHAR(50)",
+     "nullable": true
+    }
+   ]
+  },
+  "CUSTOMER": {
+   "kind": "table",
+   "row_count": 1959,
+   "columns": [
+    {
+     "name": "ACCNUM",
+     "type": "VARCHAR(6)",
+     "nullable": false
+    },
+    {
+     "name": "CUSTNAME",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "POSTADD1",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "POSTADD2",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "POSTADD3",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "POSTADD4",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "POSTPCODE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHYSADD1",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHYSADD2",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHYSADD3",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHYSADD4",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHYSPCODE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PLACE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "CONTACT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ACCCONTACT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHONE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "AFTHOURSNO",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "CELL",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "FAX",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "EMAIL",
+     "type": "VARCHAR(120)",
+     "nullable": true
+    },
+    {
+     "name": "EMAILSMS",
+     "type": "VARCHAR(40)",
+     "nullable": true
+    },
+    {
+     "name": "WEBSITE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "SPECINSTRUCTION",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "REFREQUIRED",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SHOWNOTE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "NOTE",
+     "type": "VARCHAR(100)",
+     "nullable": true
+    },
+    {
+     "name": "DEFITEMS",
+     "type": "VARCHAR(100)",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGEDEFCUST",
+     "type": "VARCHAR(6)",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE1",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE2",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE3",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE4",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE5",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE6",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE7",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE8",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHDEF6",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHDEF7",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHDEF8",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DOCFEE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "INTHANDLING",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "DOMHANDLING",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "INSDEFAULT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "INSTYPE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "REP",
+     "type": "CHAR(4)",
+     "nullable": true
+    },
+    {
+     "name": "SALEDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "BILLINGDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "SPEND",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CREDITLIMIT",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CREDITHOLD",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "INVGROUP",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTGROUP",
+     "type": "VARCHAR(8)",
+     "nullable": true
+    },
+    {
+     "name": "MINFUEL",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "MAXFUEL",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CURRENCY",
+     "type": "CHAR(4)",
+     "nullable": true
+    },
+    {
+     "name": "CONVINT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CONVLOC",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "RATEDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "INVWAYBILL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "BRANCH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "STARTTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "ENDTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "THRESHOLD",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PODEMAIL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PODFAX",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PODSINGLEFAX",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PODSINGLESMS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PODSINGLEEMAIL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PODGROUP",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE9",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHDEF9",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "VATNUM",
+     "type": "CHAR(15)",
+     "nullable": true
+    },
+    {
+     "name": "DISABLETOSERV1",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DISABLETOSERV2",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "EXPORTERNUM",
+     "type": "CHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "IMPORTERNUM",
+     "type": "CHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "DISABLETOSERV9",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "INHOUSE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SUFFIX",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "TERMS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CURSURCH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHPERC6",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SECTOR",
+     "type": "CHAR(4)",
+     "nullable": true
+    },
+    {
+     "name": "CONVOUTLY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "MAXVALUE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "STATUS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE6I",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE7I",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE8I",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE9I",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE6C",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE7C",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE8C",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE9C",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "MOBEXPORT",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "COMPANY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTINVOICE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTSTATEMENT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTLABEL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTWAYBILL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "NOTIFYRECIPIENT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTCREDIT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "NOTIFYSENDER",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHDEF1",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHDEF2",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHDEF3",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHDEF4",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHDEF5",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "COSTCNTR",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "DUALCOST",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CUSTTYPE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "ICDNSPATH",
+     "type": "VARCHAR(100)",
+     "nullable": true
+    },
+    {
+     "name": "ICUSER",
+     "type": "CHAR(50)",
+     "nullable": true
+    },
+    {
+     "name": "ICPASS",
+     "type": "CHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTWAYBILLWEB",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTLABELWEB",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LONGITUDE",
+     "type": "NUMERIC(8,5)",
+     "nullable": true
+    },
+    {
+     "name": "LATITUDE",
+     "type": "NUMERIC(8,5)",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTQUOTE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DISABLEINVIMAGE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PRINTBULKWAYBILLS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PPOWBCOPIES",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PREFIX",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "CCINVSPLIT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTA4INVOICE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DOCREQ",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMER",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "EVENTEMAIL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "EVENTLEVEL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "EVENTORIGEMAIL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "EVENTDESTEMAIL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LAYOUTMANIFEST",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CONPERPIECE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DEFDECVAL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SALESRECEIPT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "ADDMINIMUM",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SMSDELNOTIFY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SMSDELMSG",
+     "type": "BLOB (binary)",
+     "nullable": true
+    },
+    {
+     "name": "NOWBCOPY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "INVA4PRINT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "EMAILINVIMAGE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CREDCONT",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "CRN",
+     "type": "VARCHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "EVENTORIGSMS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "EVENTDESTSMS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DISABLE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CATEGORY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "COD",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "BANK",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "BANKACCNO",
+     "type": "VARCHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "REGNAME",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "SPARE24",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "MINREPCOMMAMT",
+     "type": "NUMERIC(18,2)",
+     "nullable": true
+    },
+    {
+     "name": "SECURITY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DELOTP",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DISABLETOSERV5",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "INVREQ",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DEFADDACC",
+     "type": "VARCHAR(8)",
+     "nullable": true
+    },
+    {
+     "name": "DEFACC",
+     "type": "VARCHAR(8)",
+     "nullable": true
+    },
+    {
+     "name": "REDELMODE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PPOPAYMENTS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DELDAYS",
+     "type": "CHAR(7)",
+     "nullable": true
+    },
+    {
+     "name": "INVMAILMODE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "TOTROUNDMODE",
+     "type": "SMALLINT",
+     "nullable": true
+    }
+   ]
+  },
+  "HOLIDAY": {
+   "kind": "table",
+   "row_count": 50,
+   "columns": [
+    {
+     "name": "HOLIDAY",
+     "type": "DATE",
+     "nullable": false
+    },
+    {
+     "name": "NAME",
+     "type": "CHAR(20)",
+     "nullable": true
+    }
+   ]
+  },
+  "HUB": {
+   "kind": "table",
+   "row_count": 226,
+   "columns": [
+    {
+     "name": "HUB",
+     "type": "CHAR(3)",
+     "nullable": false
+    },
+    {
+     "name": "NAME",
+     "type": "VARCHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "HUBTYPE",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "PASTACC",
+     "type": "VARCHAR(6)",
+     "nullable": true
+    },
+    {
+     "name": "COSTCNTRFLAG",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "COSTCNTR",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PRINT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSBREAK",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "VATTYPE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "OPERATIONAL",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "BRANCH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSBREAKTRANSIT",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "LONGITUDE",
+     "type": "NUMERIC(8,5)",
+     "nullable": true
+    },
+    {
+     "name": "LATITUDE",
+     "type": "NUMERIC(8,5)",
+     "nullable": true
+    },
+    {
+     "name": "TIMEZONE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DISABLE",
+     "type": "SMALLINT",
+     "nullable": true
+    }
+   ]
+  },
+  "INVOICE": {
+   "kind": "table",
+   "row_count": 516143,
+   "columns": [
+    {
+     "name": "INVOICE",
+     "type": "INTEGER",
+     "nullable": false
+    },
+    {
+     "name": "STARTDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "ENDDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "INVDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "ACCNUM",
+     "type": "VARCHAR(6)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTNAME",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "PIECES",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "CHARGEMASS",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "ACTKG",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "INSURANCE",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "CARTAGE",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "OUTLY",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "DOCS",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "HANDLING",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE6",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "TOTSURCHARGE",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "CURSURCHARGE",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "SUBTOTAL",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "VAT",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "TOTAL",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "COUNTWB",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "PIF",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "EXPORT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "BRANCH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "INHOUSE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CLOSED",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PRINTDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "VATNUM",
+     "type": "CHAR(15)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSVAT",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSDUTIES",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "EXPHEAD",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "COSTCENTRE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "COSTCNTR",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "ADDRESS",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "PDFCOPY",
+     "type": "BLOB (binary)",
+     "nullable": true
+    },
+    {
+     "name": "PDFORIG",
+     "type": "BLOB (binary)",
+     "nullable": true
+    },
+    {
+     "name": "INVRUN",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "INVNAME",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "INVADDRESS1",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "INVADDRESS2",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "INVADDRESS3",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "INVADDRESS4",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "INVPLACE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "INVPCODE",
+     "type": "VARCHAR(10)",
+     "nullable": true
+    },
+    {
+     "name": "INVCONTACT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "INVPHONE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "INVPHONE2",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "INVCELL",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "REFERENCE",
+     "type": "VARCHAR(28)",
+     "nullable": true
+    },
+    {
+     "name": "INVHASH",
+     "type": "VARCHAR(64)",
+     "nullable": true
+    }
+   ]
+  },
+  "MANIFEST": {
+   "kind": "table",
+   "row_count": 307955,
+   "columns": [
+    {
+     "name": "BRANCH",
+     "type": "SMALLINT",
+     "nullable": false
+    },
+    {
+     "name": "MTYPE",
+     "type": "CHAR(1)",
+     "nullable": false
+    },
+    {
+     "name": "MANIFEST",
+     "type": "INTEGER",
+     "nullable": false
+    },
+    {
+     "name": "AGENTDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "ORIGHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "DESTHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "AREA",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "COSTSERV",
+     "type": "CHAR(4)",
+     "nullable": true
+    },
+    {
+     "name": "AGENT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "MAWBNO",
+     "type": "VARCHAR(16)",
+     "nullable": true
+    },
+    {
+     "name": "REFERENCE",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "FLIGHT",
+     "type": "VARCHAR(16)",
+     "nullable": true
+    },
+    {
+     "name": "NOTE",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "STARTDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "NOWB",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PIECES",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "CHARGEMASS",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "ACTKG",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "VOLCM",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "OTHERCHARGES",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SUBTOTAL",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "VAT",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "TOTAL",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "LOADPRICEFLAG",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LOADCHARGE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "DECLAREDMASSFLAG",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DECLACTKG",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "DECLVOLCM",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "DECLCHARGEMASS",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "DECLVOLRATE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "COMMENT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSGROUP",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "EXPORT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "LOWVALUE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "HIGHVALUE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "DOCUMENTS",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "BAGS",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "PAYGROUP",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "VATPAID",
+     "type": "FLOAT",
+     "nullable": false
+    },
+    {
+     "name": "TOTPAID",
+     "type": "FLOAT",
+     "nullable": false
+    },
+    {
+     "name": "VATTYPE",
+     "type": "SMALLINT",
+     "nullable": false
+    },
+    {
+     "name": "PIF",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "INVAMOUNT",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "FAILTYPE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "ALLDELIVERED",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "VOLRATE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "VOLMASS",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CONSIGNAGENT",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "CUSTCHARGEMASS",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CLOSED",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "STATUS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DEPARTTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "DUEDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "DUETIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "MOBEXPORT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DRIVER",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "INTERCOMPANY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SPLIT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "AGRATE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "ROUTE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "BILLOFENTRY",
+     "type": "VARCHAR(15)",
+     "nullable": true
+    },
+    {
+     "name": "CLEARANCEDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "OVERRIDE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "STARTKM",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "ENDKM",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "CUSTMANIFEST",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "AGENTMANIFEST",
+     "type": "INTEGER",
+     "nullable": true
+    }
+   ]
+  },
+  "PLACE": {
+   "kind": "table",
+   "row_count": 8748,
+   "columns": [
+    {
+     "name": "PLACE",
+     "type": "INTEGER",
+     "nullable": false
+    },
+    {
+     "name": "TOWN",
+     "type": "VARCHAR(50)",
+     "nullable": true
+    },
+    {
+     "name": "PCODE",
+     "type": "VARCHAR(10)",
+     "nullable": true
+    },
+    {
+     "name": "HUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "RING",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DISTANCE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "ZONE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "COSTZONE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CATEGORY",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "OPSHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "AREA",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "DELIVERY",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "SORTORDER",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "MOBEXPORT",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "TIMEGROUP",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "SERVICEGROUP",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "MASTPLACE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "COUNTRY",
+     "type": "CHAR(2)",
+     "nullable": true
+    },
+    {
+     "name": "ROUTECODE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "DELDAYS",
+     "type": "CHAR(7)",
+     "nullable": true
+    }
+   ]
+  },
+  "RECEIPT": {
+   "kind": "table",
+   "row_count": 77522,
+   "columns": [
+    {
+     "name": "RECEIPT",
+     "type": "INTEGER",
+     "nullable": false
+    },
+    {
+     "name": "ACCNUM",
+     "type": "VARCHAR(6)",
+     "nullable": true
+    },
+    {
+     "name": "RECDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "AMOUNT",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "DISCOUNT",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "REFERENCE",
+     "type": "VARCHAR(28)",
+     "nullable": true
+    },
+    {
+     "name": "RECTYPE",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "ALLOCATED",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "COMMENT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "AIF",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "USERCODE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "EXPORT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "VAT",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "VATTYPE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "BRANCH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "EXPHEAD",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "BANK",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "NOTETYPE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSVAT",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSDUTIES",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "APPROVED",
+     "type": "SMALLINT",
+     "nullable": true
+    }
+   ]
+  },
+  "SERVICE": {
+   "kind": "table",
+   "row_count": 138,
+   "columns": [
+    {
+     "name": "SERVICE",
+     "type": "CHAR(3)",
+     "nullable": false
+    },
+    {
+     "name": "NAME",
+     "type": "VARCHAR(33)",
+     "nullable": true
+    },
+    {
+     "name": "SERVTYPE",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "AGENT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "VOLRATE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "TOSERV",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "NOCARTAGE",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "PRINT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "REPORT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "ROUND",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "OMITALLHUBTOHUB",
+     "type": "SMALLINT",
+     "nullable": false
+    },
+    {
+     "name": "TRANSITDAYS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "TOSERVOUTLY",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "MOBEXPORT",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "DUALCOST",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "TYPEMAPMODE",
+     "type": "SMALLINT",
+     "nullable": true
+    }
+   ]
+  },
+  "SERVICEGROUP": {
+   "kind": "table",
+   "row_count": 31,
+   "columns": [
+    {
+     "name": "SERVICEGROUP",
+     "type": "INTEGER",
+     "nullable": false
+    },
+    {
+     "name": "SERVICE",
+     "type": "CHAR(3)",
+     "nullable": false
+    },
+    {
+     "name": "TRANSITDAYS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DEPARTDAYS",
+     "type": "CHAR(7)",
+     "nullable": true
+    }
+   ]
+  },
+  "VIEW_CUSTOMERS": {
+   "kind": "view",
+   "row_count": null,
+   "columns": [
+    {
+     "name": "ACCNUM",
+     "type": "VARCHAR(6)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTNAME",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "POSTADD1",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "POSTADD2",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "POSTADD3",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "POSTADD4",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "POSTPCODE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHYSADD1",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHYSADD2",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHYSADD3",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHYSADD4",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHYSPCODE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PLACENAME",
+     "type": "VARCHAR(50)",
+     "nullable": true
+    },
+    {
+     "name": "CONTACT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ACCOUNTSCONTACT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PHONE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "AFTERHOURSPHONE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "CELL",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "FAX",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "EMAIL",
+     "type": "VARCHAR(120)",
+     "nullable": true
+    },
+    {
+     "name": "WEBSITE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "REPNAME",
+     "type": "VARCHAR(25)",
+     "nullable": true
+    },
+    {
+     "name": "PROMISEDSPEND",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CREDITLIMIT",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CREDITHOLD",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTGROUP",
+     "type": "VARCHAR(8)",
+     "nullable": true
+    },
+    {
+     "name": "VATNUMBER",
+     "type": "CHAR(15)",
+     "nullable": true
+    },
+    {
+     "name": "INHOUSE",
+     "type": "VARCHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "COSTCNTRNAME",
+     "type": "VARCHAR(25)",
+     "nullable": true
+    },
+    {
+     "name": "COMPANY",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    }
+   ]
+  },
+  "VIEW_SURCHARGES": {
+   "kind": "view",
+   "row_count": null,
+   "columns": [
+    {
+     "name": "SURCHARGE",
+     "type": "CHAR(10)",
+     "nullable": true
+    },
+    {
+     "name": "DESCRIPTION",
+     "type": "VARCHAR(25)",
+     "nullable": true
+    }
+   ]
+  },
+  "VIEW_USERCODE": {
+   "kind": "view",
+   "row_count": null,
+   "columns": [
+    {
+     "name": "USERCODE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "NAME",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "LOCALHUB",
+     "type": "VARCHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "BRANCH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DEPARTMENT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "USERAGENT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "CELL",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "EMAIL",
+     "type": "VARCHAR(50)",
+     "nullable": true
+    },
+    {
+     "name": "STAFFID",
+     "type": "CHAR(8)",
+     "nullable": true
+    },
+    {
+     "name": "DISABLE",
+     "type": "SMALLINT",
+     "nullable": true
+    }
+   ]
+  },
+  "VIEW_WBANALYSE": {
+   "kind": "view",
+   "row_count": null,
+   "columns": [
+    {
+     "name": "WAYBILL",
+     "type": "VARCHAR(24)",
+     "nullable": true
+    },
+    {
+     "name": "WAYBILLORIG",
+     "type": "VARCHAR(24)",
+     "nullable": true
+    },
+    {
+     "name": "WAYDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "QUOTEDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "CAPTUREDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "ACCNUM",
+     "type": "VARCHAR(6)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTNAME",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "CCNAME",
+     "type": "CHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "REP",
+     "type": "CHAR(4)",
+     "nullable": true
+    },
+    {
+     "name": "REPNAME",
+     "type": "VARCHAR(25)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTCURRENCY",
+     "type": "CHAR(4)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTGROUP",
+     "type": "VARCHAR(8)",
+     "nullable": true
+    },
+    {
+     "name": "REFERENCE",
+     "type": "VARCHAR(28)",
+     "nullable": true
+    },
+    {
+     "name": "SERVICE",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "BRANCHNAME",
+     "type": "VARCHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "COSTCNTRNAME",
+     "type": "VARCHAR(25)",
+     "nullable": true
+    },
+    {
+     "name": "COMPANY",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "INHOUSENAME",
+     "type": "VARCHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "SPECINSTRUCTION",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "INPUTMETHOD",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "NOTEPRESENT",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGPERS",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGPERADD1",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGPERADD2",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGPERADD3",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGPERADD4",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGTOWN",
+     "type": "VARCHAR(50)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGPERPCODE",
+     "type": "VARCHAR(10)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGRING",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "ORIGPERCONTACT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGPERPHONE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGOPSHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGAREANAME",
+     "type": "VARCHAR(35)",
+     "nullable": true
+    },
+    {
+     "name": "DESTPERS",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "DESTPERADD1",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "DESTPERADD2",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "DESTPERADD3",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "DESTPERADD4",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "DESTTOWN",
+     "type": "VARCHAR(50)",
+     "nullable": true
+    },
+    {
+     "name": "DESTPERPCODE",
+     "type": "VARCHAR(10)",
+     "nullable": true
+    },
+    {
+     "name": "DESTRING",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DESTPERCONTACT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "DESTPERPHONE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "DESTHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "DESTOPSHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "DESTAREANAME",
+     "type": "VARCHAR(35)",
+     "nullable": true
+    },
+    {
+     "name": "SPECQUOTEFLAG",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "ACTKG",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CHARGEUNIT",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CHARGEMASS",
+     "type": "NUMERIC(18,2)",
+     "nullable": true
+    },
+    {
+     "name": "PIECES",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "VOLRATE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "VOLCM",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE1",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE2",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE3",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE4",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE5",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE6",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE7",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE8",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE9",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "INSURANCEFLAG",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "INSURANCEDESCRIPTION",
+     "type": "VARCHAR(40)",
+     "nullable": true
+    },
+    {
+     "name": "INSURANCE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "NONDOCS",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "NONDOXFLAG",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DOCS",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "HANDLING",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SPECIALSURCH",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "CARTAGE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "OUTLY",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SUBTOTAL",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "CURRENCYSUBTOTAL",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "VAT",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "TOTAL",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "DECLAREDVALUE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSVALUE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "INVOICE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "INVDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "VATTYPE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "VATDESCRIPTION",
+     "type": "VARCHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSDUTIES",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSVAT",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "CURRATE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CURRENCY",
+     "type": "CHAR(4)",
+     "nullable": true
+    },
+    {
+     "name": "MINSHIPFLAG",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DUALCOST",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DUEDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "DUETIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "EARLYDELTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "PODDISCREPANCY",
+     "type": "VARCHAR(50)",
+     "nullable": true
+    },
+    {
+     "name": "PODDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "PODTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "PODRECIPIENT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PODBATCH",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "PODGROUP",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "PODDETAILS",
+     "type": "VARCHAR(120)",
+     "nullable": true
+    },
+    {
+     "name": "DELIVERYAGENT",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "PODCAPTUREDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "PODCAPTURETIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "FAILTYPE_DESC",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ROUTING_FAILTYPE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "FAILTYPE_CLASS",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "AGENTWAYBILL",
+     "type": "VARCHAR(28)",
+     "nullable": true
+    },
+    {
+     "name": "BOOKDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "BOOKSTARTTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "BOOKENDTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "LASTDELDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "LASTDELDRIVER",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "LAST_FAILTYPE",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PODPRESENT",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "EVENTNAME",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "LASTEVENTHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "LASTEVENTDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "LASTEVENTTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "COLLECT",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "COLLECTIONDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "COLSTATUS",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "COLLECTIONAGENT",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "FIRST_TT_AGENT",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSGROUP",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "MANIFESTFAIL",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "PIF",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "RECEIPT",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "RECEIPTUSER",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "WAYREF_FIRST",
+     "type": "VARCHAR(28)",
+     "nullable": true
+    },
+    {
+     "name": "WAYREF_COUNT",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "IMAGEBATCH1",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "PODIMGPRESENT",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "PAGEEVENTBATCH",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "COLLECTIONSTATUS",
+     "type": "CHAR(18)",
+     "nullable": true
+    },
+    {
+     "name": "STATUS",
+     "type": "CHAR(31)",
+     "nullable": true
+    }
+   ]
+  }
+ }
+}

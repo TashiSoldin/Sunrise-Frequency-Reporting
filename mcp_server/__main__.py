@@ -7,10 +7,12 @@ testing with an MCP client on the same machine.
 
 import argparse
 
+from mcp_server.audit import configure_logging
 from mcp_server.server import mcp
 
 
 def main() -> None:
+    configure_logging()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--transport",
