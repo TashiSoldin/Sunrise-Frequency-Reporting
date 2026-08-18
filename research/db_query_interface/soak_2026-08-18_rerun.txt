@@ -1,0 +1,14 @@
+Soak test — second measurement, 18 Aug 2026 (~14:15 SAST), run by Akha on the BI server.
+First measurement (same day, Day 5 session): 25 sessions clean; 8 workers x 90s = 5,980 queries, 0 errors, p95 53-74ms indexed / 446ms month-aggregate.
+This run corroborates it: ~66 q/s both runs, 0 errors both runs, percentiles within a few ms.
+
+== connection-limit probe (sequential, up to 25) ==
+  25 concurrent sessions opened cleanly (stopped at the probe's own cap, 25)
+  indexed-lookup leg uses waybill '32810586'
+== soak: 8 workers x 60s, mixed queries ==
+  3994 queries in 60s, 0 errors
+  db_time          n= 1000  p50=    36ms  p95=    56ms  max=    86ms
+  hub_count        n= 1000  p50=    37ms  p95=    55ms  max=    84ms
+  manifest_month   n= 1000  p50=   357ms  p95=   439ms  max=   526ms
+  waybill_lookup   n=  994  p50=    52ms  p95=    76ms  max=   102ms
+SOAK TEST PASSED

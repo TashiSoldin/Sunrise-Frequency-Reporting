@@ -1,0 +1,27 @@
+routing_probe.py — trip 37733 (July RSL control trip), run by Akha on the BI server 18 Aug 2026 (~14:4x SAST).
+Ran twice, identical output. RSL answer sheet: 124 waybills; the old Last-Manifest export route recovered 102 (82%).
+
+RESULT: ROUTING recovers 124/124 distinct waybills (one row each, all LEG=2). MANIFEST.NOWB agrees (124).
+Revenue via VIEW_WBANALYSE join on WAYBILL: 124 waybills, SUBTOTAL R76,610.27, TOTAL R88,101.81 (ratio 1.15 = VAT-consistent).
+MANIFEST's own SUBTOTAL is 0.0 and TOTAL is 17,135.0 — not customer revenue (possibly the trip/agent charge; do not assert without checking).
+Mass columns: ROUTING SUM(VOLMASS)=12,675.268 equals MANIFEST.CHARGEMASS=12,675.269, while ROUTING SUM(CHARGEMASS)=17,262.57 ≈ the
+VIEW_WBANALYSE CHARGEMASS sum (17,125.54) — the two tables do not use the mass column names the same way; pin semantics on more trips
+before relying on either. ROUTING itself also carries SUBTOTAL/VAT/TOTAL per row (unused this probe).
+
+ROUTING columns (from RDB$RELATION_FIELDS): WAYBILL, LEG, MBRANCH, MTYPE, MANIFEST, AGENT, AWB, REFERENCE, AGENTDATE, COSTSERV,
+SERVTYPE, AREA, ORIGHUB, DESTHUB, OTHERCHARGE, SUBTOTAL, VAT, TOTAL, CURRATE, STATUS, CUSTOMSGROUP, BRANCH, EXPORT, COMPLETE,
+SORTORDER, PAYGROUP, CHARGEMASS, VATPAID, TOTPAID, VATTYPE, FAILTYPE, PIF, INVAMOUNT, VOLRATE, VOLMASS, CLOSED, INHOUSE, BOOKDATE,
+STARTTIME, ENDTIME, FLIGHT, CUSTOMSDUTIES, CUSTOMSVAT, SECURITY, DELOTP, ESTATECODE, MOBEXPORT, SURCHARGEFLAG1-9, SURCHARGE1-9,
+TOTSURCHARGE, HANDLING
+
+== MANIFEST 37733 (MTYPE='M') — the trip's own totals ==
+  BRANCH=0 | MANIFEST=37733 | MTYPE=M | AGENT=30105 | AGENTDATE=2026-07-01 | STARTDATE=None | ORIGHUB=JNB | DESTHUB=DUR | NOWB=124 | PIECES=345 | CHARGEMASS=12675.2685546875 | ACTKG=12255.5 | VOLCM=63376343 | SUBTOTAL=0.0 | TOTAL=17135.0
+== ROUTING aggregate for MANIFEST 37733 (MTYPE='M') ==
+  ROWS_=124 | WAYBILLS=124 | CHARGEMASS=17262.569160342216 | VOLMASS=12675.268491377195
+== ROUTING leg breakdown (first 20) ==
+  LEG=2 | ROWS_=124 | WAYBILLS=124
+== Revenue via VIEW_WBANALYSE joined on WAYBILL ==
+  WAYBILLS=124 | SUBTOTAL=76610.26999999997 | TOTAL=88101.80999999998 | CHARGEMASS=17125.54
+
+Next: compare SUBTOTAL/TOTAL against the RSL July table's revenue for trip 37733 (and ask what RSL "Revenue" counts — open task);
+re-run the probe on 2-3 more RSL trips (--manifest N) before locking the QT-000005 extraction design on ROUTING.
