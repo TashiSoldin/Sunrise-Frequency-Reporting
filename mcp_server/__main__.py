@@ -23,6 +23,18 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=8787)
     args = ap.parse_args()
 
+    # No auth exists until Day 6 wires in OAuth — a non-loopback bind would
+    # expose the freight database to the network, so it is refused outright
+    # (12 Aug adversarial review). Day 6 removes this alongside the token
+    # verification, not before.
+    if args.transport != "stdio" and args.host not in ("127.0.0.1", "localhost", "::1"):
+        raise SystemExit(
+            f"refusing to bind {args.host}: the server carries no auth until "
+            "the OAuth wiring lands (Day 6) — a non-loopback bind would "
+            "expose the Parcel Perfect database to the network. Publish via "
+            "the authenticated endpoint, not by widening the bind."
+        )
+
     if args.transport == "stdio":
         mcp.run(transport="stdio")
     else:
