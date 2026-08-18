@@ -13,6 +13,7 @@ handover, never shipped as the final state.
 
 import os
 import select as _select_module
+import socket
 from contextlib import closing
 
 import firebirdsql
@@ -34,12 +35,28 @@ if not hasattr(firebirdsql.fbcore, "select"):
 MAX_ROWS = 1000
 
 
+# How long the TCP probe below waits before declaring the host unreachable.
+CONNECT_TIMEOUT_S = 10
+
+
 def connect(timeout: float | None = None) -> firebirdsql.Connection:
     """timeout is the socket timeout in seconds — a read that blocks longer
     raises. It caps how long we WAIT, not what Firebird executes: an
     abandoned aggregate may keep running server-side after the socket
-    closes, which is why the open path's real load bound is its allowlist."""
+    closes, which is why the open path's real load bound is its allowlist.
+
+    Left None for the heavy report paths on purpose: their fetches stream
+    for minutes and must not be cut. The unreachable-host case (13 Aug Day 2
+    review: a host that drops packets rather than refusing hangs the driver
+    indefinitely, where a refusing one fails in ~2s) is covered for EVERY
+    caller by the bounded TCP probe below, which converts the hang into a
+    clean ConnectionError within CONNECT_TIMEOUT_S."""
     load_dotenv()
+    probe = socket.create_connection(
+        (os.getenv("DB_HOST"), int(os.getenv("DB_PORT", "3050"))),
+        timeout=CONNECT_TIMEOUT_S,
+    )
+    probe.close()
     return firebirdsql.connect(
         host=os.getenv("DB_HOST"),
         database=os.getenv("DB_NAME"),
