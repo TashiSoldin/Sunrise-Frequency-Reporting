@@ -70,8 +70,17 @@ def run_select(
             f"the Parcel Perfect database is unreachable ({e}) — the query "
             "did not run, so this says nothing about the data asked for"
         ) from e
-    with closing(conn), closing(conn.cursor()) as cur:
-        cur.execute(sql, params)
-        columns = [d[0] for d in cur.description]
-        rows = cur.fetchmany(max_rows)
-    return columns, rows
+    try:
+        with closing(conn.cursor()) as cur:
+            cur.execute(sql, params)
+            columns = [d[0] for d in cur.description]
+            rows = cur.fetchmany(max_rows)
+        return columns, rows
+    finally:
+        # A timed-out query leaves the socket dead; close() then raises its
+        # own "Can not recv() packets" over the wire detach and would MASK
+        # the real error. The cleanup failure carries no information.
+        try:
+            conn.close()
+        except Exception:
+            pass

@@ -146,6 +146,15 @@ class TestRunOpenQuery:
         out = run_open_query("slow", self.SQL, run=slow)
         assert out["refused"] and "time cap" in out["reason"]
 
+    def test_the_drivers_recv_error_is_reported_as_the_time_cap(self):
+        # firebirdsql reports a tripped socket timeout as OperationalError
+        # "Can not recv() packets", not TimeoutError — seen live 18 Aug.
+        def dead(sql, params=(), max_rows=None, timeout=None):
+            raise ValueError("Can not recv() packets")
+
+        out = run_open_query("slow", self.SQL, run=dead)
+        assert out["refused"] and "time cap" in out["reason"]
+
     def test_firebird_error_is_a_refusal_not_a_crash(self):
         def broken(sql, params=(), max_rows=None, timeout=None):
             raise ValueError("Dynamic SQL Error: column unknown NOPE")

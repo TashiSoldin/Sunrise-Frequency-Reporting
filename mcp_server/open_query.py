@@ -371,14 +371,20 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
     except ConnectionError:
         raise
     except Exception as e:
-        if (
-            isinstance(e, (socket.timeout, TimeoutError))
-            or "timed out" in str(e).lower()
+        # The driver reports a tripped socket timeout as OperationalError
+        # "Can not recv() packets" (fbcore._recv_channel), not TimeoutError —
+        # observed live 18 Aug when a MAX() over the 3.1M-row view blew a 30s
+        # cap. A genuine mid-query disconnect reads the same; either way the
+        # query was abandoned, not answered.
+        msg = str(e).lower()
+        if isinstance(e, (socket.timeout, TimeoutError)) or (
+            "timed out" in msg or "can not recv" in msg
         ):
             return _refused(
-                f"the query exceeded the {TIMEOUT_S}s time cap and was "
-                "abandoned — narrow it (add WHERE bounds, or aggregate in "
-                "SQL rather than fetching rows)"
+                f"the query exceeded the {TIMEOUT_S}s time cap (or the "
+                "connection dropped mid-query) and was abandoned — narrow it "
+                "(add WHERE bounds, or aggregate in SQL rather than fetching "
+                "rows)"
             )
         return _refused(f"Firebird refused the query: {e}")
     elapsed_ms = round((time.perf_counter() - started) * 1000)
