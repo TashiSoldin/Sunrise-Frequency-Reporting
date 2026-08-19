@@ -464,3 +464,384 @@ class TestBindRefusal:
 
     def test_non_loopback_bind_allowed_once_auth_configured(self):
         auth_mod.check_bind_allowed("0.0.0.0", auth_configured=True)
+
+
+# ================================================================ Day 6a-R
+# Adversarial review (19 Aug 2026), before Day 6 points a real issuer at this
+# layer. Each test below is an attack the boundary must refuse; a green test
+# is the proof it does, kept as a regression. No exploitable defect was found
+# — these pin the assumptions so a regression or an SDK/PyJWT upgrade surfaces
+# loudly. See the Day 6a-R Decisions entry.
+
+from importlib.metadata import version as _pkg_version
+
+from cryptography.hazmat.primitives.asymmetric import ec
+from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend
+from starlette.datastructures import Headers
+
+
+def _rsa_jwk(public_key, kid, *, alg="RS256", include_alg=True):
+    entry = jwt.algorithms.RSAAlgorithm.to_jwk(public_key, as_dict=True)
+    entry.update({"kid": kid, "use": "sig"})
+    if include_alg:
+        entry["alg"] = alg
+    else:
+        entry.pop("alg", None)
+    return entry
+
+
+def _ec_jwk(public_key, kid, *, alg="ES256", include_alg=True):
+    entry = jwt.algorithms.ECAlgorithm.to_jwk(public_key, as_dict=True)
+    entry.update({"kid": kid, "use": "sig"})
+    if include_alg:
+        entry["alg"] = alg
+    else:
+        entry.pop("alg", None)
+    return entry
+
+
+class TestSdkBoundaryPins:
+    """auth.py delegates the 401/challenge and the expiry re-check to the SDK.
+    Pin exactly what version and behaviour it depends on, so an upgrade forces
+    this adversarial pass to be re-run (the briefing: the SDK is NOT trusted to
+    enforce what auth.py hopes)."""
+
+    def test_installed_mcp_is_2_0_x(self):
+        # Depended on: RequireAuthMiddleware 401s every RequireAuth route when
+        # no AuthenticatedUser is in scope, and its skew-less secondary expiry
+        # check is a backstop we deliberately disable (expires_at unset). A
+        # minor/major bump can move either — re-review before shipping it.
+        assert _pkg_version("mcp").split(".")[:2] == ["2", "0"]
+
+    def test_expires_at_unset_but_exp_still_enforced_and_available(
+        self, issuer, verifier
+    ):
+        # auth.py leaves AccessToken.expires_at unset so the SDK's skew-less
+        # re-check cannot re-refuse a token inside tolerance. Prove exp is
+        # still enforced by verify_token itself (not by the SDK), and that exp
+        # survives in claims for anything downstream.
+        access = verify(verifier, issuer.mint())
+        assert access.expires_at is None
+        assert "exp" in access.claims
+        assert verify(verifier, issuer.mint(exp=int(time.time()) - 2 * SKEW_S)) is None
+
+
+class TestAlgConfusion:
+    """A token whose header alg does not match the key type behind its kid.
+    PyJWT rejects the mismatch (InvalidAlgorithmError) whether or not the JWK
+    declares an `alg`; the attacker never holds the real private key, so the
+    signature can never pass regardless. Refused every way."""
+
+    def _verifier_for(self, config, jwks):
+        return JWKSTokenVerifier(config, jwks_loader=lambda: jwks)
+
+    def test_es_header_over_rsa_key_refused(self, config):
+        rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        jwks = {"keys": [_rsa_jwk(rsa_key.public_key(), "k1")]}
+        attacker_ec = ec.generate_private_key(ec.SECP256R1())
+        tok = jwt.encode(
+            {"iss": ISSUER, "aud": AUDIENCE, "exp": int(time.time()) + 600},
+            attacker_ec,
+            algorithm="ES256",
+            headers={"kid": "k1"},
+        )
+        assert verify(self._verifier_for(config, jwks), tok) is None
+
+    def test_es_header_over_rsa_key_refused_even_without_jwk_alg(self, config):
+        rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        jwks = {"keys": [_rsa_jwk(rsa_key.public_key(), "k1", include_alg=False)]}
+        attacker_ec = ec.generate_private_key(ec.SECP256R1())
+        tok = jwt.encode(
+            {"iss": ISSUER, "aud": AUDIENCE, "exp": int(time.time()) + 600},
+            attacker_ec,
+            algorithm="ES256",
+            headers={"kid": "k1"},
+        )
+        assert verify(self._verifier_for(config, jwks), tok) is None
+
+    def test_rs_header_over_ec_key_refused_even_without_jwk_alg(self, config):
+        ec_key = ec.generate_private_key(ec.SECP256R1())
+        jwks = {"keys": [_ec_jwk(ec_key.public_key(), "k1", include_alg=False)]}
+        attacker_rsa = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        tok = jwt.encode(
+            {"iss": ISSUER, "aud": AUDIENCE, "exp": int(time.time()) + 600},
+            attacker_rsa,
+            algorithm="RS256",
+            headers={"kid": "k1"},
+        )
+        assert verify(self._verifier_for(config, jwks), tok) is None
+
+    def test_none_alg_refused(self, verifier):
+        now = int(time.time())
+        tok = jwt.encode(
+            {"iss": ISSUER, "aud": AUDIENCE, "exp": now + 600},
+            None,
+            algorithm="none",
+            headers={"kid": "mock-key-1"},
+        )
+        assert verify(verifier, tok) is None
+
+    def test_lowercase_alg_refused(self, verifier):
+        import base64
+
+        def seg(d):
+            raw = base64.urlsafe_b64encode(json.dumps(d).encode())
+            return raw.rstrip(b"=").decode()
+
+        now = int(time.time())
+        header = seg({"alg": "rs256", "kid": "mock-key-1", "typ": "JWT"})
+        payload = seg({"iss": ISSUER, "aud": AUDIENCE, "exp": now + 600})
+        assert verify(verifier, f"{header}.{payload}.AAAA") is None
+
+
+class TestAudienceAndIssuer:
+    def test_aud_array_containing_audience_accepted(self, issuer, verifier):
+        # RFC 7519: aud MAY be an array; validation passes if the configured
+        # audience is a member. Documented, not a bypass.
+        access = verify(verifier, issuer.mint(aud=[AUDIENCE, "https://other/x"]))
+        assert access is not None
+
+    def test_aud_array_missing_audience_refused(self, issuer, verifier):
+        tok = issuer.mint(aud=["https://a/x", "https://b/x"])
+        assert verify(verifier, tok) is None
+
+    def test_issuer_trailing_slash_refused(self, issuer, verifier):
+        assert verify(verifier, issuer.mint(iss=ISSUER + "/")) is None
+
+    def test_issuer_case_difference_refused(self, issuer, verifier):
+        assert verify(verifier, issuer.mint(iss=ISSUER.upper())) is None
+
+
+class TestRfc8707ResourceSplit:
+    """AUTH_AUDIENCE bare (Entra v1 api://...) + AUTH_RESOURCE_URL the URL: the
+    token's aud must be validated against the bare audience, never the resource
+    URL, and a token minted for a different resource server must be refused."""
+
+    @pytest.fixture()
+    def split_config(self):
+        return AuthConfig(
+            issuer=ISSUER,
+            jwks_url=JWKS_URL,
+            audience="api://sunrise-client",
+            resource_url=AUDIENCE,
+            required_scopes=[],
+            clock_skew_s=SKEW_S,
+        )
+
+    def _v(self, issuer, split_config):
+        return JWKSTokenVerifier(split_config, jwks_loader=lambda: issuer.jwks())
+
+    def test_token_aud_matches_bare_audience_accepted(self, issuer, split_config):
+        tok = issuer.mint(aud="api://sunrise-client")
+        assert verify(self._v(issuer, split_config), tok) is not None
+
+    def test_token_aud_equal_to_resource_url_refused(self, issuer, split_config):
+        # The resource URL is NOT the audience — a token carrying it must fail.
+        tok = issuer.mint(aud=AUDIENCE)
+        assert verify(self._v(issuer, split_config), tok) is None
+
+    def test_token_for_other_resource_server_refused(self, issuer, split_config):
+        tok = issuer.mint(aud="api://a-different-server")
+        assert verify(self._v(issuer, split_config), tok) is None
+
+
+class TestScopeShapes:
+    def test_scope_int_does_not_crash(self, issuer, verifier):
+        # Odd but harmless: an int scp is stringified, never crashes the path.
+        access = verify(verifier, issuer.mint(scp=5))
+        assert access is not None
+        assert access.scopes == ["5"]
+
+    def test_scope_absent_is_empty(self, issuer, verifier):
+        access = verify(verifier, issuer.mint(scp=None, scope=None))
+        assert access is not None
+        assert access.scopes == []
+
+    def test_required_scope_enforced_when_set(self, issuer, monkeypatch):
+        # With AUTH_REQUIRED_SCOPES set the SDK gate refuses a token lacking it
+        # (403) and admits one carrying it — a usable code-side backstop for
+        # the "Larry and Akha only" restriction, though empty by default.
+        cfg = AuthConfig(
+            issuer=ISSUER,
+            jwks_url=JWKS_URL,
+            audience=AUDIENCE,
+            resource_url=AUDIENCE,
+            required_scopes=["MCP.Access"],
+            clock_skew_s=SKEW_S,
+        )
+        with _client(_authed_server(issuer, cfg, monkeypatch)) as client:
+            with_scope = _post(
+                client, INIT_REQUEST, token=issuer.mint(scp="MCP.Access")
+            )
+            without = _post(client, INIT_REQUEST, token=issuer.mint(scp="other"))
+        assert with_scope.status_code == 200
+        assert without.status_code == 403
+
+
+class TestAuthorizationHeaderParsing:
+    """The Authorization header itself, before token validation: no scheme, a
+    non-Bearer scheme, an empty/whitespace token, and two headers. Each must
+    refuse cleanly — never crash, never fall through to an open call."""
+
+    def _authenticate(self, verifier, *header_values):
+        raw = [(b"authorization", v.encode()) for v in header_values]
+
+        class _Conn:
+            headers = Headers(raw=raw)
+
+        backend = BearerAuthBackend(verifier)
+        return asyncio.run(backend.authenticate(_Conn()))
+
+    def test_no_scheme_refused(self, issuer, verifier):
+        assert self._authenticate(verifier, issuer.mint()) is None
+
+    def test_non_bearer_scheme_refused(self, issuer, verifier):
+        assert self._authenticate(verifier, "Basic " + issuer.mint()) is None
+
+    def test_empty_bearer_token_refused(self, verifier):
+        assert self._authenticate(verifier, "Bearer ") is None
+
+    def test_whitespace_bearer_token_refused(self, verifier):
+        assert self._authenticate(verifier, "Bearer      ") is None
+
+    def test_two_headers_use_first_no_fallthrough(self, issuer, verifier):
+        # A garbage first header must not be rescued by a valid second one.
+        assert (
+            self._authenticate(verifier, "Bearer garbage", "Bearer " + issuer.mint())
+            is None
+        )
+        # Two garbage headers still refuse.
+        assert self._authenticate(verifier, "Bearer g1", "Bearer g2") is None
+
+
+class TestPerRouteAuth:
+    """verify_token returning None must 401 on every route, not only initialize."""
+
+    TOOLS_CALL = {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {"name": "health", "arguments": {}},
+    }
+    RES_READ = {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "resources/read",
+        "params": {"uri": "schema://parcel-perfect"},
+    }
+
+    def test_unauthenticated_tools_call_401(self, issuer, config, monkeypatch):
+        with _client(_authed_server(issuer, config, monkeypatch)) as client:
+            resp = _post(client, self.TOOLS_CALL)
+        assert resp.status_code == 401
+
+    def test_unauthenticated_resources_read_401(self, issuer, config, monkeypatch):
+        with _client(_authed_server(issuer, config, monkeypatch)) as client:
+            resp = _post(client, self.RES_READ)
+        assert resp.status_code == 401
+
+
+class TestJwksFailures:
+    """Every JWKS loader failure must fail CLOSED, and a stream of junk kids
+    must not hammer the issuer (the once-per-unseen-kid claim)."""
+
+    def test_unreachable_fails_closed(self, issuer, config):
+        def boom():
+            raise ConnectionError("connect failed")
+
+        v = JWKSTokenVerifier(config, jwks_loader=boom)
+        assert verify(v, issuer.mint()) is None
+
+    def test_non_json_body_fails_closed(self, issuer, config):
+        def html():
+            raise json.JSONDecodeError("Expecting value", "<html>", 0)
+
+        v = JWKSTokenVerifier(config, jwks_loader=html)
+        assert verify(v, issuer.mint()) is None
+
+    def test_malformed_document_fails_closed(self, issuer, config):
+        v = JWKSTokenVerifier(config, jwks_loader=lambda: {"not": "a jwks"})
+        assert verify(v, issuer.mint()) is None
+
+    def test_fresh_unknown_kids_do_not_refetch_within_ttl(self, issuer, config):
+        # A distinct unknown kid on every request: the verifier may re-scan its
+        # cached keys, but the loader (TTL-cached in prod) must be hit at most
+        # once — otherwise each junk kid becomes an issuer round-trip.
+        fetches = {"n": 0}
+
+        def counting():
+            fetches["n"] += 1
+            return issuer.jwks()
+
+        v = JWKSTokenVerifier(config, jwks_loader=_CachingCounter(counting))
+        for i in range(50):
+            verify(v, issuer.mint(kid=f"unknown-{i}"))
+        assert fetches["n"] == 1
+        # a real known kid still resolves after the storm
+        assert verify(v, issuer.mint()) is not None
+
+
+class _CachingCounter:
+    """A jwks_loader that caches like _HttpsJWKSLoader (one fetch per TTL) so a
+    burst of unknown kids counts as a single issuer round-trip."""
+
+    def __init__(self, fetch):
+        self._fetch = fetch
+        self._cached = None
+
+    def __call__(self):
+        if self._cached is None:
+            self._cached = self._fetch()
+        return self._cached
+
+
+class TestBindEdgeInputs:
+    """check_bind_allowed is an exact-string allowlist of three loopback names.
+    Anything else — loopback look-alikes included — must refuse without auth
+    (fail closed); anything is allowed once auth is configured."""
+
+    def test_loopback_names_allowed_without_auth(self):
+        for host in ("127.0.0.1", "localhost", "::1"):
+            auth_mod.check_bind_allowed(host, auth_configured=False)
+
+    @pytest.mark.parametrize(
+        "host", ["127.0.0.2", "[::1]", "LOCALHOST", "", "0.0.0.0", "::"]
+    )
+    def test_non_allowlisted_hosts_refused_without_auth(self, host):
+        with pytest.raises(SystemExit, match="refus"):
+            auth_mod.check_bind_allowed(host, auth_configured=False)
+
+    @pytest.mark.parametrize("host", ["0.0.0.0", "10.0.0.5", ""])
+    def test_any_host_allowed_once_auth_configured(self, host):
+        auth_mod.check_bind_allowed(host, auth_configured=True)
+
+
+class TestMainBindWiring:
+    """__main__ must call check_bind_allowed before it binds — a non-loopback
+    bind with auth unset must exit, never reach server.run."""
+
+    def test_main_refuses_non_loopback_without_auth(self, monkeypatch):
+        import mcp_server.__main__ as main_mod
+
+        monkeypatch.setattr(main_mod.os, "environ", {})  # auth off
+        monkeypatch.setattr(
+            main_mod, "load_dotenv", lambda *a, **k: None
+        )  # don't read a real .env
+        ran = {"called": False}
+        monkeypatch.setattr(main_mod, "create_server", lambda *a, **k: _FailIfRun(ran))
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["mcp_server", "--host", "0.0.0.0", "--transport", "streamable-http"],
+        )
+        with pytest.raises(SystemExit, match="refus"):
+            main_mod.main()
+        assert ran["called"] is False  # never reached the bind
+
+
+class _FailIfRun:
+    def __init__(self, flag):
+        self._flag = flag
+
+    def run(self, *a, **k):
+        self._flag["called"] = True
