@@ -25,9 +25,9 @@ when provisioned. **Must be replaced before handover.**
     uv run python -m mcp_server                 # streamable HTTP, 127.0.0.1:8787/mcp
     uv run python -m mcp_server --transport stdio
 
-Localhost-only until Innate publish the HTTPS endpoint; auth (OAuth /
-Entra ID — see `docs/entra-app-registration.md`) is wired in at that point
-(Day 6 of the execution plan).
+Localhost-only until Innate publish the HTTPS endpoint. The auth layer is
+**built** (Day 6a, 19 Aug 2026 — see "Auth" below); Day 6 is setting the
+issuer values in `.env` once Innate confirm the method, not code.
 
 ## Tools
 
@@ -128,27 +128,44 @@ Soak-tested 18 Aug: 25 concurrent sessions opened cleanly; 8 workers x 90s =
 5,980 queries, 0 errors, p95 53–74ms (indexed/small) and 446ms (month
 aggregate over MANIFEST).
 
-## OAuth behaviour (Day 6)
+## Auth (Day 6a — built; Day 6 = values)
 
-What the server implements when the endpoint goes public. Moved from
-`docs/entra-app-registration.md`, which is now the send-to-Innate
-requirements only. `<hostname>` = the published hostname Innate choose.
+`auth.py` — bearer-token validation on the HTTP path, **issuer-agnostic**:
+Innate have not confirmed the auth method (Entra proposed 10 Aug, pending),
+so the issuer is configuration in the gitignored `.env`, never code. Spec
+requirements re-verified against the live MCP spec (rev **2026-07-28**) and
+Anthropic's connector docs on 19 Aug 2026 — the resource-server half is
+unchanged from the 12 Aug reading.
 
-- Unauthenticated requests are answered with
-  `401 WWW-Authenticate: Bearer resource_metadata="https://<hostname>/.well-known/oauth-protected-resource/mcp"`.
-- That RFC 9728 document carries `resource` = the exact MCP URL and
-  `authorization_servers` = the Entra issuer
-  (`https://login.microsoftonline.com/<tenant-id>/v2.0`).
-- Every request: validate token signature, issuer and audience. With
-  Entra's default v1-format tokens the audience is the Application ID URI
-  (`https://<hostname>/mcp`), accepted in canonical URL form. If Innate use
-  the v2-token fallback (`requestedAccessTokenVersion = 2`), the audience
-  becomes the application (client) ID — configure validation to whichever
-  they report back.
-- Claude-side, no server action: PKCE `S256` on every authorization
-  request; `offline_access` appended for refresh tokens; Claude's
-  token-endpoint timeout is 10 s.
-- Design note: the MCP spec's default OAuth flow uses Dynamic Client
-  Registration; Entra does not support DCR, so Claude uses a pre-registered
-  client ID/secret instead (supported on custom connectors per Anthropic's
-  docs, 12 Aug 2026).
+Config (all-or-nothing; a **partial** set refuses to start — a typo must
+never silently run the server open):
+
+- `AUTH_ISSUER` — the token issuer, exactly as it appears in `iss`
+  (Entra: `https://login.microsoftonline.com/<tenant-id>/v2.0`).
+- `AUTH_JWKS_URL` — the issuer's signing keys
+  (Entra: `https://login.microsoftonline.com/<tenant-id>/discovery/v2.0/keys`).
+- `AUTH_AUDIENCE` — the `aud` the tokens carry. With Entra's default
+  v1 tokens that is the Application ID URI (`https://<hostname>/mcp`); with
+  the `requestedAccessTokenVersion = 2` fallback, the application (client)
+  ID — whichever Innate report back.
+- `AUTH_RESOURCE_URL` — the canonical public MCP URL for the RFC 9728
+  metadata; only needed when `AUTH_AUDIENCE` is not itself that URL.
+- Optional: `AUTH_REQUIRED_SCOPES` (space-separated), `AUTH_CLOCK_SKEW_S`
+  (default 60).
+
+Unset (the current state): behaviour unchanged, and `__main__` refuses any
+non-loopback bind. Set: the SDK enforces bearer tokens on `/mcp` (401 +
+`WWW-Authenticate` carrying `resource_metadata=`), serves
+`/.well-known/oauth-protected-resource/mcp`, and `auth.py` validates
+signature (against the JWKS, asymmetric algorithms only), issuer, audience,
+expiry/not-before with bounded clock skew. Every refusal writes an audit
+line with the reason class — never token material. Tests mint against a
+mock issuer in `tests/test_auth.py` (local JWKS, never a running service).
+
+Claude-side, no server action: PKCE `S256` on every authorization request;
+`offline_access` appended for refresh tokens; Claude's token-endpoint
+timeout is 10 s. Design note: the MCP spec's default OAuth flow uses Dynamic
+Client Registration; Entra does not support DCR, so Claude uses a
+pre-registered client ID/secret instead (supported on custom connectors per
+Anthropic's docs, 12 Aug 2026). Innate-facing requirements stay in
+`docs/entra-app-registration.md`.

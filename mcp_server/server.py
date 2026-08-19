@@ -5,9 +5,14 @@ resource (Day 5).
 
 Every tool is @audited: question/args, outcome, row count and duration land
 in logs/mcp_server/ — never response bodies (they would copy customer
-pricing into log files). OAuth / Entra ID token verification is wired in on
-Day 6, once Innate publish the endpoint — until then this binds to localhost
-and carries no auth.
+pricing into log files).
+
+Auth (Day 6a): create_server() takes an optional (token_verifier,
+AuthSettings) pair from mcp_server.auth.provision() — the SDK then enforces
+bearer tokens on the HTTP path and serves the RFC 9728 protected-resource
+metadata. Built without them (the module-level `mcp`, and the default until
+AUTH_ISSUER lands in .env on Day 6) the server carries no auth and __main__
+keeps it loopback-only.
 """
 
 import json
@@ -21,22 +26,18 @@ from mcp_server.audit import audited
 from mcp_server.db import run_select
 from mcp_server.waybill import lookup_waybill
 
-mcp = MCPServer(
-    name="Sunrise Parcel Perfect",
-    instructions=(
-        "Query interface to Sunrise Logistics' Parcel Perfect database. "
-        "Read-only: every statement is checked to be a single SELECT before "
-        "it reaches the database. Prefer the named tools (waybill_status, "
-        "sales_report, revenue_summary, unbilled_report, credit_notes, "
-        "daily_report) — they carry the verified export rules. open_query "
-        "answers anything they do not cover, from the raw data, within a "
-        "table allowlist and row/time caps; read the schema resource or "
-        "describe_schema first so the SQL uses real column names."
-    ),
+_INSTRUCTIONS = (
+    "Query interface to Sunrise Logistics' Parcel Perfect database. "
+    "Read-only: every statement is checked to be a single SELECT before "
+    "it reaches the database. Prefer the named tools (waybill_status, "
+    "sales_report, revenue_summary, unbilled_report, credit_notes, "
+    "daily_report) — they carry the verified export rules. open_query "
+    "answers anything they do not cover, from the raw data, within a "
+    "table allowlist and row/time caps; read the schema resource or "
+    "describe_schema first so the SQL uses real column names."
 )
 
 
-@mcp.tool()
 @audited
 def health() -> dict:
     """Confirm the server can reach the database and answer a trivial query."""
@@ -54,7 +55,6 @@ def health() -> dict:
     }
 
 
-@mcp.tool()
 @audited
 def sales_report(
     customer: str, date_from: str | None = None, date_to: str | None = None
@@ -76,7 +76,6 @@ def sales_report(
     return revenue.sales_report(customer, date_from, date_to)
 
 
-@mcp.tool()
 @audited
 def revenue_summary(day: str | None = None) -> dict:
     """One day's revenue on both bases: shipped (waybill date) and billed
@@ -87,7 +86,6 @@ def revenue_summary(day: str | None = None) -> dict:
     return revenue.revenue_summary(day)
 
 
-@mcp.tool()
 @audited
 def unbilled_report(workbook: bool = False) -> dict:
     """Waybills older than the billing frontier that have not been invoiced —
@@ -98,7 +96,6 @@ def unbilled_report(workbook: bool = False) -> dict:
     return revenue.unbilled_report(workbook)
 
 
-@mcp.tool()
 @audited
 def credit_notes(month: str | None = None, workbook: bool = False) -> dict:
     """Credit notes for one month (YYYY-MM; default = the month of the last
@@ -108,7 +105,6 @@ def credit_notes(month: str | None = None, workbook: bool = False) -> dict:
     return revenue.credit_notes(month, workbook)
 
 
-@mcp.tool()
 @audited
 def daily_report(report: str, day: str | None = None) -> dict:
     """Build one of the branded daily workbooks in the existing formats:
@@ -123,7 +119,6 @@ def daily_report(report: str, day: str | None = None) -> dict:
     return revenue.daily_report(report, day)
 
 
-@mcp.tool()
 @audited
 def waybill_status(waybill_no: str) -> dict:
     """Latest delivery status for one waybill number: current status, last
@@ -140,7 +135,6 @@ def waybill_status(waybill_no: str) -> dict:
     return lookup_waybill(waybill_no)
 
 
-@mcp.tool()
 @audited
 def open_query(question: str, sql: str) -> dict:
     """Ask the database a question none of the named tools cover, with one
@@ -160,7 +154,6 @@ def open_query(question: str, sql: str) -> dict:
     return oq.run_open_query(question, sql)
 
 
-@mcp.tool()
 @audited
 def describe_schema(table: str | None = None) -> dict:
     """The open path's schema context: which tables open_query may touch and
@@ -172,16 +165,50 @@ def describe_schema(table: str | None = None) -> dict:
     return oq.schema_context(table)
 
 
-@mcp.resource(
-    "schema://parcel-perfect",
-    name="Parcel Perfect schema for open_query",
-    description=(
-        "Queryable tables (the open-path allowlist) with real column names, "
-        "types and row counts from the 6 Aug 2026 schema survey, plus the "
-        "caveats valid Firebird SQL against Parcel Perfect needs — read this "
-        "before writing open_query SQL."
-    ),
-    mime_type="application/json",
-)
 def schema_resource() -> str:
     return json.dumps(oq.schema_context(), indent=1)
+
+
+_TOOLS = (
+    health,
+    sales_report,
+    revenue_summary,
+    unbilled_report,
+    credit_notes,
+    daily_report,
+    waybill_status,
+    open_query,
+    describe_schema,
+)
+
+
+def create_server(token_verifier=None, auth_settings=None) -> MCPServer:
+    """Build the server with every tool and resource registered. Pass the
+    pair from mcp_server.auth.provision() to put bearer-token validation on
+    the HTTP path (Day 6a); pass neither for the unauthenticated
+    loopback/stdio server — the default until Day 6 sets AUTH_ISSUER."""
+    server = MCPServer(
+        name="Sunrise Parcel Perfect",
+        instructions=_INSTRUCTIONS,
+        token_verifier=token_verifier,
+        auth=auth_settings,
+    )
+    for tool in _TOOLS:
+        server.tool()(tool)
+    server.resource(
+        "schema://parcel-perfect",
+        name="Parcel Perfect schema for open_query",
+        description=(
+            "Queryable tables (the open-path allowlist) with real column names, "
+            "types and row counts from the 6 Aug 2026 schema survey, plus the "
+            "caveats valid Firebird SQL against Parcel Perfect needs — read this "
+            "before writing open_query SQL."
+        ),
+        mime_type="application/json",
+    )(schema_resource)
+    return server
+
+
+# The unauthenticated server, for stdio/local use and existing imports
+# (__main__ builds its own when .env configures an issuer).
+mcp = create_server()
