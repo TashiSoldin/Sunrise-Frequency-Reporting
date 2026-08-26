@@ -110,10 +110,13 @@ protocol; every call in the audit log).
 
 ## Logging (Day 5)
 
-`audit.py` — every tool call: tool, args (the question and the SQL — they
-are the audit trail), outcome (ok / refused+reason / needs / error), row
-count, duration. **Never response bodies** — they would copy customer
-pricing into log files. `logs\mcp_server\mcp_server.log`, rolled at
+`audit.py` — every tool call: tool, user (26 Aug, Reuven's Asana #8: the
+verified subject from the request's validated token, stamped on the tool
+line itself so each query is attributed on the line that records it; `-`
+while auth is off — there is no identity to attribute), args (the question
+and the SQL — they are the audit trail), outcome (ok / refused+reason /
+needs / error), row count, duration. **Never response bodies** — they would
+copy customer pricing into log files. `logs\mcp_server\mcp_server.log`, rolled at
 midnight, kept 30 days (the run_daily conventions); handlers sit on the
 `mcp_server` logger directly because the MCP SDK owns root logging.
 `logs\mcp_server\service.log` is the bootstrap surface (process starts,

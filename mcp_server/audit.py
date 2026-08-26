@@ -1,8 +1,10 @@
 """Audit logging — every tool call, never response bodies (Day 5).
 
-What is logged per call: tool, arguments (the question and the query — they
-ARE the audit trail), outcome, row count, duration. What is NEVER logged:
-result rows. A report answer runs to thousands of rows and storing them would
+What is logged per call: tool, the authenticated caller (stamped on the tool
+line itself, so a query is attributed on the line that records it; "-" while
+auth is off — loopback/stdio has no identity to attribute), arguments (the
+question and the query — they ARE the audit trail), outcome, row count,
+duration. What is NEVER logged: result rows. A report answer runs to thousands of rows and storing them would
 write every customer's pricing into log files — a second copy of commercially
 sensitive data outside the database, undercutting the read-only story. The
 query is logged, so any answer can be reproduced by re-running it.
@@ -20,6 +22,12 @@ import sys
 import time
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+
+# The request-scoped auth context the SDK's bearer middleware populates.
+# Module-level on purpose: if an SDK upgrade moves it, the suite goes red
+# here rather than attribution silently degrading to "-" (this project's
+# recorded failure mode is defects that do not raise).
+from mcp.server.auth.middleware.auth_context import get_access_token
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LOGS_DIR = REPO_ROOT / "logs" / "mcp_server"
@@ -56,6 +64,24 @@ def configure_logging() -> None:
     base.addHandler(file_handler)
     base.addHandler(stream_handler)
     base.propagate = False  # or the SDK's root handler prints every line twice
+
+
+def _caller() -> str:
+    """The verified identity behind the current request, or "-".
+
+    Comes from the SDK's request-scoped auth context, which only ever holds a
+    token that passed verify_token — so the subject is a VERIFIED claim, safe
+    to log under auth.py's rule (verified identities only, never token
+    material). Auth off, stdio, or outside a request -> "-". Never raises:
+    attribution must not be able to break a tool call.
+    """
+    try:
+        token = get_access_token()
+    except Exception:
+        return "-"
+    if token is None:
+        return "-"
+    return str(token.subject or token.client_id or "-")
 
 
 def _args_repr(kwargs: dict) -> str:
@@ -97,12 +123,14 @@ def audited(fn):
     def wrapper(*args, **kwargs):
         started = time.perf_counter()
         call_args = _args_repr(kwargs if kwargs else dict(enumerate(args)))
+        caller = _caller()
         try:
             result = fn(*args, **kwargs)
         except Exception as e:
             logger.error(
-                "tool=%s args=%s outcome=error(%s: %s) duration_ms=%d",
+                "tool=%s user=%s args=%s outcome=error(%s: %s) duration_ms=%d",
                 fn.__name__,
+                caller,
                 call_args,
                 type(e).__name__,
                 str(e)[:300],
@@ -116,8 +144,9 @@ def audited(fn):
         if isinstance(result, dict):
             result.pop("audit_reason", None)
         logger.info(
-            "tool=%s args=%s outcome=%s rows=%s duration_ms=%d",
+            "tool=%s user=%s args=%s outcome=%s rows=%s duration_ms=%d",
             fn.__name__,
+            caller,
             call_args,
             outcome,
             rows if rows is not None else "-",

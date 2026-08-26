@@ -87,3 +87,102 @@ class TestArgsCap:
         s = _args_repr(big)
         assert len(s) <= _ARGS_CAP + len("...[capped]")
         assert s.endswith("...[capped]")
+
+
+class TestIdentityStamp:
+    """26 Aug (Reuven's Asana #8): the tool line itself carries who asked.
+
+    Identity comes from the SDK's request-scoped auth context — the same
+    verified AccessToken auth.py returns — so a query is attributed on the
+    line that records it, not by correlating a separate auth line. Outside a
+    request (auth off, stdio, tests) the field is "-": attribution never
+    invents an identity and never breaks a call.
+    """
+
+    @staticmethod
+    def _token(subject, client_id="client-app"):
+        from mcp.server.auth.provider import AccessToken
+
+        return AccessToken(
+            token="opaque",
+            client_id=client_id,
+            scopes=[],
+            subject=subject,
+            claims={"sub": subject},
+        )
+
+    @staticmethod
+    def _in_context(token):
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+
+        return auth_context_var.set(AuthenticatedUser(token))
+
+    def test_authenticated_subject_lands_on_the_tool_line(self, caplog):
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+
+        from mcp_server.audit import audited
+
+        @audited
+        def tool(**kwargs):
+            return {"ok": True, "row_count": 1}
+
+        reset = self._in_context(self._token("larry@sunriselogistics.net"))
+        try:
+            with caplog.at_level("INFO", logger="mcp_server.audit"):
+                tool(question="q")
+        finally:
+            auth_context_var.reset(reset)
+        line = caplog.records[-1].getMessage()
+        assert "user=larry@sunriselogistics.net" in line
+        assert "tool=tool" in line
+
+    def test_no_auth_context_stamps_a_dash_not_an_invented_identity(self, caplog):
+        from mcp_server.audit import audited
+
+        @audited
+        def tool(**kwargs):
+            return {"ok": True, "row_count": 0}
+
+        with caplog.at_level("INFO", logger="mcp_server.audit"):
+            tool(question="q")
+        assert "user=-" in caplog.records[-1].getMessage()
+
+    def test_the_error_path_carries_the_caller_too(self, caplog):
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+
+        from mcp_server.audit import audited
+
+        @audited
+        def tool(**kwargs):
+            raise RuntimeError("boom")
+
+        reset = self._in_context(self._token("akha@sunriselogistics.net"))
+        try:
+            with caplog.at_level("ERROR", logger="mcp_server.audit"):
+                try:
+                    tool(question="q")
+                except RuntimeError:
+                    pass
+        finally:
+            auth_context_var.reset(reset)
+        line = caplog.records[-1].getMessage()
+        assert "user=akha@sunriselogistics.net" in line
+        assert "outcome=error" in line
+
+    def test_a_subjectless_token_falls_back_to_client_id(self, caplog):
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+
+        from mcp_server.audit import audited
+
+        @audited
+        def tool(**kwargs):
+            return {"ok": True, "row_count": 0}
+
+        reset = self._in_context(self._token(None, client_id="client-app"))
+        try:
+            with caplog.at_level("INFO", logger="mcp_server.audit"):
+                tool(question="q")
+        finally:
+            auth_context_var.reset(reset)
+        assert "user=client-app" in caplog.records[-1].getMessage()
