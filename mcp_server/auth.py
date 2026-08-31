@@ -42,13 +42,18 @@ _ENV_REQUIRED = ("AUTH_ISSUER", "AUTH_JWKS_URL", "AUTH_AUDIENCE")
 
 # Asymmetric algorithms only. HS* would let anyone mint a "valid" token using
 # bytes derived from the public JWKS (key-confusion); "none" is never a
-# signature. Entra uses RS256; the rest cover any issuer Innate might pick.
-_ALLOWED_ALGS = frozenset(
+# signature. This is the superset AUTH_ALLOWED_ALGS may pick from — the
+# default is RS256 alone (Entra, confirmed 31 Aug 2026, signs RS256 only;
+# the breadth here predates that confirmation).
+_ASYMMETRIC_ALGS = frozenset(
     {"RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512"}
 )
 
 _JWKS_FETCH_TIMEOUT_S = 10
 _JWKS_CACHE_TTL_S = 300
+# JWKS documents are a few KB (Entra's largest run ~20KB). Anything near the
+# cap is not a key set — refuse it rather than buffer an issuer-sized body.
+_JWKS_MAX_BYTES = 256 * 1024
 
 
 def _is_loopback(url: str) -> bool:
@@ -69,6 +74,9 @@ class AuthConfig:
     resource_url: str  # canonical MCP URL (RFC 8707 / RFC 9728 `resource`)
     required_scopes: list[str] = field(default_factory=list)
     clock_skew_s: int = 60
+    # AUTH_ALLOWED_ALGS, defaulting to RS256 alone (Akha's decision, 31 Aug
+    # 2026). Only members of _ASYMMETRIC_ALGS are ever accepted.
+    allowed_algs: tuple[str, ...] = ("RS256",)
 
 
 def load_auth_config(env) -> AuthConfig | None:
@@ -81,7 +89,9 @@ def load_auth_config(env) -> AuthConfig | None:
     resource metadata; it defaults to AUTH_AUDIENCE when that is already an
     http(s) URL (the Claude/RFC 8707 shape) and must be given explicitly
     when the audience is a bare identifier (e.g. Entra v1's api://... URIs).
-    Optional: AUTH_REQUIRED_SCOPES (space-separated), AUTH_CLOCK_SKEW_S.
+    Optional: AUTH_REQUIRED_SCOPES (space-separated), AUTH_CLOCK_SKEW_S,
+    AUTH_ALLOWED_ALGS (space-separated, default RS256; asymmetric only —
+    anything else is a hard error, same as a partial config).
     """
     values = {name: (env.get(name) or "").strip() for name in _ENV_REQUIRED}
     if not any(values.values()):
@@ -117,6 +127,16 @@ def load_auth_config(env) -> AuthConfig | None:
                 "testing."
             )
 
+    allowed_algs = tuple((env.get("AUTH_ALLOWED_ALGS") or "").split()) or ("RS256",)
+    rejected = [alg for alg in allowed_algs if alg not in _ASYMMETRIC_ALGS]
+    if rejected:
+        raise ValueError(
+            f"AUTH_ALLOWED_ALGS contains {', '.join(map(repr, rejected))} — "
+            "only asymmetric JWT algorithms are ever accepted "
+            f"({', '.join(sorted(_ASYMMETRIC_ALGS))}). A symmetric algorithm "
+            "would let anyone mint tokens from the public JWKS."
+        )
+
     return AuthConfig(
         issuer=values["AUTH_ISSUER"],
         jwks_url=values["AUTH_JWKS_URL"],
@@ -124,6 +144,7 @@ def load_auth_config(env) -> AuthConfig | None:
         resource_url=resource_url,
         required_scopes=(env.get("AUTH_REQUIRED_SCOPES") or "").split(),
         clock_skew_s=int(env.get("AUTH_CLOCK_SKEW_S") or "60"),
+        allowed_algs=allowed_algs,
     )
 
 
@@ -147,7 +168,13 @@ class _HttpsJWKSLoader:
                 timeout=_JWKS_FETCH_TIMEOUT_S,
                 context=ssl.create_default_context(),
             ) as resp:
-                self._cached = json.load(resp)
+                body = resp.read(_JWKS_MAX_BYTES + 1)
+                if len(body) > _JWKS_MAX_BYTES:
+                    raise ValueError(
+                        f"JWKS document exceeds {_JWKS_MAX_BYTES} bytes — "
+                        "refusing to buffer it (a key set is a few KB)"
+                    )
+                self._cached = json.loads(body)
             self._fetched_at = now
         return self._cached
 
@@ -180,13 +207,17 @@ class JWKSTokenVerifier:
 
     async def verify_token(self, token: str) -> AccessToken | None:
         cfg = self._config
+        # Intersect with the asymmetric superset even though load_auth_config
+        # already refused anything outside it — a hand-built config must not
+        # be able to reopen the key-confusion door.
+        allowed = _ASYMMETRIC_ALGS.intersection(cfg.allowed_algs)
         try:
             header = jwt.get_unverified_header(token)
         except jwt.InvalidTokenError:
             return _refused("malformed token")
 
         alg = header.get("alg")
-        if alg not in _ALLOWED_ALGS:
+        if alg not in allowed:
             return _refused(f"algorithm {alg!r} not allowed")
 
         try:
@@ -200,7 +231,7 @@ class JWKSTokenVerifier:
             claims = jwt.decode(
                 token,
                 key=key,
-                algorithms=sorted(_ALLOWED_ALGS),
+                algorithms=sorted(allowed),
                 audience=cfg.audience,
                 issuer=cfg.issuer,
                 leeway=cfg.clock_skew_s,

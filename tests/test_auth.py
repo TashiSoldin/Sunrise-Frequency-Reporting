@@ -845,3 +845,177 @@ class _FailIfRun:
 
     def run(self, *a, **k):
         self._flag["called"] = True
+
+
+# ================================================================ Day 6-prep
+# (31 Aug 2026) Entra is confirmed as the issuer, so the two hardening
+# decisions Akha approved on 31 Aug land: AUTH_ALLOWED_ALGS defaulting to
+# RS256 (Entra signs RS256 only — the other eight asymmetric algorithms were
+# breadth for an issuer Innate never picked), and a size cap on the JWKS
+# fetch. Plus the v1 config-shape proof: go-live is configuration only.
+# See the 31 Aug Decisions entry.
+
+
+class TestAllowedAlgsConfig:
+    FULL = dict(TestLoadAuthConfig.FULL)
+
+    def test_default_is_rs256_only(self):
+        cfg = load_auth_config(dict(self.FULL))
+        assert cfg.allowed_algs == ("RS256",)
+
+    def test_env_widening_parsed(self):
+        env = dict(self.FULL, AUTH_ALLOWED_ALGS="RS256 ES256")
+        assert load_auth_config(env).allowed_algs == ("RS256", "ES256")
+
+    @pytest.mark.parametrize("bad", ["HS256", "none", "RS999", "rs256"])
+    def test_symmetric_or_unknown_alg_refused_at_load(self, bad):
+        # A config that would weaken the asymmetric-only boundary is a hard
+        # error at startup, same as a partial config — never a silent accept.
+        env = dict(self.FULL, AUTH_ALLOWED_ALGS=f"RS256 {bad}")
+        with pytest.raises(ValueError, match="AUTH_ALLOWED_ALGS"):
+            load_auth_config(env)
+
+    def test_whitespace_only_env_means_default(self):
+        env = dict(self.FULL, AUTH_ALLOWED_ALGS="   ")
+        assert load_auth_config(env).allowed_algs == ("RS256",)
+
+
+class TestAllowedAlgsEnforcement:
+    """Default RS256-only: a GENUINELY-signed token in any other algorithm is
+    refused at the header gate. Widening is an explicit config act — and even
+    a hand-built config cannot smuggle a symmetric algorithm past the
+    asymmetric superset."""
+
+    def _es_issuer(self):
+        key = ec.generate_private_key(ec.SECP256R1())
+        jwks = {"keys": [_ec_jwk(key.public_key(), "ec-1")]}
+        now = int(time.time())
+        tok = jwt.encode(
+            {"iss": ISSUER, "aud": AUDIENCE, "sub": "user-larry", "exp": now + 600},
+            key,
+            algorithm="ES256",
+            headers={"kid": "ec-1"},
+        )
+        return jwks, tok
+
+    def test_genuine_es256_refused_by_default(self, config):
+        assert config.allowed_algs == ("RS256",)
+        jwks, tok = self._es_issuer()
+        v = JWKSTokenVerifier(config, jwks_loader=lambda: jwks)
+        assert verify(v, tok) is None
+
+    def test_genuine_es256_accepted_when_configured(self):
+        jwks, tok = self._es_issuer()
+        cfg = AuthConfig(
+            issuer=ISSUER,
+            jwks_url=JWKS_URL,
+            audience=AUDIENCE,
+            resource_url=AUDIENCE,
+            allowed_algs=("RS256", "ES256"),
+        )
+        v = JWKSTokenVerifier(cfg, jwks_loader=lambda: jwks)
+        assert verify(v, tok) is not None
+
+    def test_hs256_refused_even_if_config_carries_it(self, issuer):
+        # load_auth_config refuses to build this config; if one exists anyway
+        # (constructed directly), the verifier intersects with the asymmetric
+        # superset — key confusion stays structurally impossible.
+        cfg = AuthConfig(
+            issuer=ISSUER,
+            jwks_url=JWKS_URL,
+            audience=AUDIENCE,
+            resource_url=AUDIENCE,
+            allowed_algs=("RS256", "HS256"),
+        )
+        tok = jwt.encode(
+            {"iss": ISSUER, "aud": AUDIENCE, "exp": int(time.time()) + 600},
+            "shared-secret",
+            algorithm="HS256",
+            headers={"kid": issuer.kid},
+        )
+        v = JWKSTokenVerifier(cfg, jwks_loader=lambda: issuer.jwks())
+        assert verify(v, tok) is None
+
+
+class TestJwksSizeCap:
+    """The JWKS fetch is a bounded read: an oversized issuer response is
+    refused cleanly (and the verifier fails closed), never buffered whole."""
+
+    @staticmethod
+    def _fake_urlopen(body: bytes):
+        class _Resp:
+            def __init__(self):
+                self._pos = 0
+
+            def read(self, amt=None):
+                end = len(body) if amt is None else self._pos + amt
+                chunk = body[self._pos : end]
+                self._pos = min(end, len(body))
+                return chunk
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        return lambda url, timeout=None, context=None: _Resp()
+
+    def test_normal_document_loads(self, issuer, monkeypatch):
+        body = json.dumps(issuer.jwks()).encode()
+        monkeypatch.setattr(
+            auth_mod.urllib.request, "urlopen", self._fake_urlopen(body)
+        )
+        assert auth_mod._HttpsJWKSLoader(JWKS_URL)() == issuer.jwks()
+
+    def test_oversized_document_refused(self, monkeypatch):
+        body = b"[" + b" " * auth_mod._JWKS_MAX_BYTES + b"]"
+        monkeypatch.setattr(
+            auth_mod.urllib.request, "urlopen", self._fake_urlopen(body)
+        )
+        with pytest.raises(ValueError, match="JWKS"):
+            auth_mod._HttpsJWKSLoader(JWKS_URL)()
+
+    def test_oversized_fails_closed_at_the_verifier(self, issuer, config, monkeypatch):
+        body = b"[" + b" " * auth_mod._JWKS_MAX_BYTES + b"]"
+        monkeypatch.setattr(
+            auth_mod.urllib.request, "urlopen", self._fake_urlopen(body)
+        )
+        v = JWKSTokenVerifier(config)  # the real HTTPS loader
+        assert verify(v, issuer.mint()) is None
+
+
+class TestEntraV1ConfigProof:
+    """The exact v1 config shape from the 31 Aug Decisions entry parses and
+    provisions — proving Day 6 go-live is configuration only. Placeholder
+    tenant GUID: the real values live in the BI-server .env, never here."""
+
+    _TENANT = "11111111-2222-3333-4444-555555555555"
+    V1_ENV = {
+        "AUTH_ISSUER": f"https://sts.windows.net/{_TENANT}/",
+        "AUTH_JWKS_URL": (
+            f"https://login.microsoftonline.com/{_TENANT}/discovery/keys"
+        ),
+        "AUTH_AUDIENCE": "https://mcp-claude.sunriselogistics.net/mcp",
+    }
+
+    def test_v1_values_parse(self):
+        cfg = load_auth_config(dict(self.V1_ENV))
+        assert cfg is not None
+        # v1 `iss` carries the trailing slash — preserved verbatim
+        assert cfg.issuer == self.V1_ENV["AUTH_ISSUER"]
+        # the audience is the connector URL, so it doubles as the RFC 9728
+        # resource — no AUTH_RESOURCE_URL needed
+        assert cfg.resource_url == self.V1_ENV["AUTH_AUDIENCE"]
+        # Entra v1 signs RS256 only — the default fits, nothing to set
+        assert cfg.allowed_algs == ("RS256",)
+
+    def test_v1_values_provision(self):
+        cfg = load_auth_config(dict(self.V1_ENV))
+        verifier, settings = provision(cfg, jwks_loader=lambda: {"keys": []})
+        assert isinstance(verifier, JWKSTokenVerifier)
+        assert str(settings.issuer_url).startswith("https://sts.windows.net/")
+        assert (
+            str(settings.resource_server_url).rstrip("/")
+            == self.V1_ENV["AUTH_AUDIENCE"]
+        )

@@ -143,18 +143,20 @@ unchanged from the 12 Aug reading.
 Config (all-or-nothing; a **partial** set refuses to start — a typo must
 never silently run the server open):
 
-- `AUTH_ISSUER` — the token issuer, exactly as it appears in `iss`
-  (Entra: `https://login.microsoftonline.com/<tenant-id>/v2.0`).
+- `AUTH_ISSUER` — the token issuer, exactly as it appears in `iss`. Entra is
+  confirmed and mints **v1 tokens** (proven 31 Aug 2026 by decoding a minted
+  token): `https://sts.windows.net/<tenant-id>/` — trailing slash included.
 - `AUTH_JWKS_URL` — the issuer's signing keys
-  (Entra: `https://login.microsoftonline.com/<tenant-id>/discovery/v2.0/keys`).
-- `AUTH_AUDIENCE` — the `aud` the tokens carry. With Entra's default
-  v1 tokens that is the Application ID URI (`https://<hostname>/mcp`); with
-  the `requestedAccessTokenVersion = 2` fallback, the application (client)
-  ID — whichever Innate report back.
+  (Entra v1: `https://login.microsoftonline.com/<tenant-id>/discovery/keys`).
+- `AUTH_AUDIENCE` — the `aud` the tokens carry: the Application ID URI,
+  which is the connector URL (`https://mcp-claude.sunriselogistics.net/mcp`).
 - `AUTH_RESOURCE_URL` — the canonical public MCP URL for the RFC 9728
-  metadata; only needed when `AUTH_AUDIENCE` is not itself that URL.
+  metadata; only needed when `AUTH_AUDIENCE` is not itself that URL (it is,
+  so unset).
 - Optional: `AUTH_REQUIRED_SCOPES` (space-separated), `AUTH_CLOCK_SKEW_S`
-  (default 60).
+  (default 60), `AUTH_ALLOWED_ALGS` (space-separated JWT algorithms, default
+  `RS256` — Entra signs RS256 only; asymmetric only, anything else refuses
+  to start).
 
 Unset (the current state): behaviour unchanged, and `__main__` refuses any
 non-loopback bind. Set: the SDK enforces bearer tokens on `/mcp` (401 +
