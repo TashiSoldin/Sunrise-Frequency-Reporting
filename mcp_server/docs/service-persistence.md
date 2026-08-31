@@ -43,7 +43,7 @@ From an **elevated** PowerShell on the BI server:
 ```powershell
 $action  = New-ScheduledTaskAction -Execute 'C:\Users\AkhaM\Sunrise-Frequency-Reporting\run_mcp_server.bat'
 $trigger = New-ScheduledTaskTrigger -AtStartup
-$set     = New-ScheduledTaskSettingsSet -MultipleInstancesPolicy IgnoreNew -ExecutionTimeLimit 0
+$set     = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan)
 Register-ScheduledTask -TaskName 'Sunrise MCP Server' `
   -Action $action -Trigger $trigger -Settings $set `
   -User 'sunrise\akham' -Password (Read-Host 'akham password') -RunLevel Limited
