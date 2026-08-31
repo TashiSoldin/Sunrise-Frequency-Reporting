@@ -35,6 +35,7 @@ import unicodedata
 from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
+from urllib.parse import quote
 
 REPO = Path(__file__).resolve().parent.parent
 # The report builders import each other bare (from data import col, ...), so
@@ -108,6 +109,40 @@ DELIVERY_NOTE = (
     "Give Larry the workbook in the conversation (attachment or link) — "
     "the library folder is the archive, not the delivery."
 )
+DELIVERY_NOTE_LINKED = (
+    "Give Larry the link — it opens the workbook on any device. The local "
+    "path is the BI server's synced copy: the archive record, not the "
+    "delivery."
+)
+
+
+def workbook_link(path) -> str | None:
+    """The workbook's SharePoint web URL: SHAREPOINT_LIBRARY_URL (the web
+    URL of the Claude General library root) joined to the file's
+    library-relative path, URL-encoded. None when the env var is unset —
+    responses stay path-only, exactly as before the link existed — or when
+    the file does not sit under the synced root: a wrong link is worse than
+    no link. Read at call time, after __main__/connect have loaded .env."""
+    base = (os.getenv("SHAREPOINT_LIBRARY_URL") or "").strip().rstrip("/")
+    if not base:
+        return None
+    try:
+        rel = Path(path).resolve().relative_to(_SYNCED.resolve())
+    except ValueError:
+        return None
+    return base + "/" + "/".join(quote(part) for part in rel.parts)
+
+
+def _workbook_payload(path: str) -> dict:
+    """The `workbook` half of a tool response: always the local path (the
+    archive record) and, when the library URL is configured, the `link` the
+    user should be given — the sync path is a different path on Larry's
+    laptop and useless on his phone (31 Aug 2026 live test)."""
+    link = workbook_link(path)
+    if link is None:
+        return {"path": path, "delivery": DELIVERY_NOTE}
+    return {"path": path, "link": link, "delivery": DELIVERY_NOTE_LINKED}
+
 
 # --- row caps (hit cap = refuse, never truncate) -----------------------------
 EXTRACT_CAP = 500_000  # full-FY extract runs ~85k lines; headroom, not a limit
@@ -793,7 +828,7 @@ def unbilled_report(workbook: bool = False, run=run_select) -> dict:
         path = build_unbilled.build(
             None, str(ONDEMAND_DIR), exclude_from=frontier, data=(headers, rows)
         )
-        answer["workbook"] = {"path": path, "delivery": DELIVERY_NOTE}
+        answer["workbook"] = _workbook_payload(path)
     return answer
 
 
@@ -871,7 +906,7 @@ def credit_notes(
     if workbook:
         ONDEMAND_DIR.mkdir(parents=True, exist_ok=True)
         path = build_credit_notes.build(None, str(ONDEMAND_DIR), month=m0, data=pool)
-        answer["workbook"] = {"path": path, "delivery": DELIVERY_NOTE}
+        answer["workbook"] = _workbook_payload(path)
     return answer
 
 
@@ -1035,7 +1070,7 @@ def daily_report(report: str, day: str | None = None, run=run_select) -> dict:
         "ok": True,
         "report": report,
         "day": _iso(d),
-        "workbook": {"path": path, "delivery": DELIVERY_NOTE},
+        "workbook": _workbook_payload(path),
         "warnings": warnings,
         "notes": notes,
     }

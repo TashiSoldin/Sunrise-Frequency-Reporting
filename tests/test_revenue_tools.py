@@ -19,6 +19,7 @@ import sys
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -679,3 +680,98 @@ class TestSharedSqlPassesTheGuard:
         with pytest.raises(InputError):
             revenue._validate_account("TOOLONG7")
         assert revenue._validate_account(" B35 ") == "B35"
+
+
+class TestWorkbookLinks:
+    """Workbook responses carry `link` — the SharePoint web URL — when
+    SHAREPOINT_LIBRARY_URL is set: the local sync path is a different path
+    on Larry's laptop and useless on his phone (31 Aug 2026 live test).
+    Unset, the payload is exactly what it was before the link existed."""
+
+    LIB = "https://example.sharepoint.com/sites/ClaudeGeneral/Shared%20Documents"
+
+    def _sync_root(self, monkeypatch, tmp_path):
+        """Point the module's synced-library root at tmp_path, with the
+        On Demand folder in its real place two levels down."""
+        ondemand = tmp_path / "Dashboards and Data Analysis" / "On Demand"
+        monkeypatch.setattr(revenue, "_SYNCED", tmp_path)
+        monkeypatch.setattr(revenue, "ONDEMAND_DIR", ondemand)
+        return ondemand
+
+    def _expected(self, path) -> str:
+        return (
+            self.LIB
+            + "/Dashboards%20and%20Data%20Analysis/On%20Demand/"
+            + quote(Path(path).name)
+        )
+
+    def test_unset_env_payload_is_exactly_path_and_delivery(
+        self, monkeypatch, tmp_path
+    ):
+        self._sync_root(monkeypatch, tmp_path)
+        monkeypatch.delenv("SHAREPOINT_LIBRARY_URL", raising=False)
+        db = FakeDB(rows=_unbilled_rows())
+        r = revenue.unbilled_report(workbook=True, run=db)
+        assert r["workbook"] == {
+            "path": r["workbook"]["path"],
+            "delivery": revenue.DELIVERY_NOTE,
+        }
+
+    def test_unbilled_workbook_carries_the_link(self, monkeypatch, tmp_path):
+        self._sync_root(monkeypatch, tmp_path)
+        monkeypatch.setenv("SHAREPOINT_LIBRARY_URL", self.LIB)
+        db = FakeDB(rows=_unbilled_rows())
+        r = revenue.unbilled_report(workbook=True, run=db)
+        wb = r["workbook"]
+        assert wb["link"] == self._expected(wb["path"])
+        assert Path(wb["path"]).exists()  # the archive record stays
+        assert "link" in wb["delivery"].lower()
+
+    def test_credit_notes_workbook_carries_the_link(self, monkeypatch, tmp_path):
+        self._sync_root(monkeypatch, tmp_path)
+        monkeypatch.setenv("SHAREPOINT_LIBRARY_URL", self.LIB)
+        db = FakeDB(
+            credit_rows=[credit_row(RECEIPT=-1, RECDATE=D(5))],
+            wb_counts=WB_COUNTS,
+            inv_counts=INV_COUNTS,
+        )
+        r = revenue.credit_notes(
+            month=f"{D(5).year:04d}-{D(5).month:02d}", workbook=True, run=db
+        )
+        wb = r["workbook"]
+        assert wb["link"] == self._expected(wb["path"])
+        assert Path(wb["path"]).exists()
+
+    def test_daily_report_workbook_carries_the_link(self, monkeypatch, tmp_path):
+        self._sync_root(monkeypatch, tmp_path)
+        monkeypatch.setenv("SHAREPOINT_LIBRARY_URL", self.LIB)
+        db = FakeDB(
+            rows=[wb_row(WAYBILL=f"SLJNB1{n:05d}", WAYDATE=D(n)) for n in range(3, 12)],
+            wb_counts=WB_COUNTS,
+            inv_counts=INV_COUNTS,
+        )
+        r = revenue.daily_report("flash", day=D(3).isoformat(), run=db)
+        assert r["ok"] is True
+        assert r["workbook"]["link"] == self._expected(r["workbook"]["path"])
+
+    def test_file_outside_the_library_gets_no_link(self, monkeypatch, tmp_path):
+        # A wrong link is worse than no link: a file that does not sit under
+        # the synced root cannot be mapped, so the payload stays path-only.
+        monkeypatch.setattr(revenue, "_SYNCED", tmp_path / "library")
+        monkeypatch.setenv("SHAREPOINT_LIBRARY_URL", self.LIB)
+        elsewhere = tmp_path / "elsewhere" / "report.xlsx"
+        assert revenue.workbook_link(elsewhere) is None
+        assert revenue._workbook_payload(str(elsewhere)) == {
+            "path": str(elsewhere),
+            "delivery": revenue.DELIVERY_NOTE,
+        }
+
+    def test_link_is_url_encoded_and_tolerates_a_trailing_slash(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr(revenue, "_SYNCED", tmp_path)
+        monkeypatch.setenv("SHAREPOINT_LIBRARY_URL", self.LIB + "/")
+        f = tmp_path / "On Demand" / "Flash Revenue - 14 Aug 2026.xlsx"
+        assert revenue.workbook_link(f) == (
+            self.LIB + "/On%20Demand/Flash%20Revenue%20-%2014%20Aug%202026.xlsx"
+        )

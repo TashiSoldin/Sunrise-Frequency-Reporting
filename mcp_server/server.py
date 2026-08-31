@@ -90,9 +90,9 @@ def revenue_summary(day: str | None = None) -> dict:
 def unbilled_report(workbook: bool = False) -> dict:
     """Waybills older than the billing frontier that have not been invoiced —
     count, value, by-status and top customers. workbook=True also builds the
-    branded Unbilled Waybills workbook (existing format) from the same rows
-    and returns its path; give the user the workbook in the conversation —
-    the library folder is only the archive."""
+    branded Unbilled Waybills workbook (existing format) from the same rows.
+    Give the user the workbook's `link` — it opens on any device; the
+    folder and local path are mentioned only as the archive."""
     return revenue.unbilled_report(workbook)
 
 
@@ -101,7 +101,8 @@ def credit_notes(month: str | None = None, workbook: bool = False) -> dict:
     """Credit notes for one month (YYYY-MM; default = the month of the last
     invoiced trading day). Types Credit Note + Journal Credit only — the
     net-revenue rule. workbook=True also builds the branded Credit Notes
-    workbook for that month and returns its path."""
+    workbook for that month; give the user the workbook's `link` — it opens
+    on any device; the folder and local path are only the archive."""
     return revenue.credit_notes(month, workbook)
 
 
@@ -115,7 +116,8 @@ def daily_report(report: str, day: str | None = None) -> dict:
     captured), and a billing detail for a day whose invoicing has not
     finished (a not-yet-invoiced day gets a flash, never a billing detail).
     Workbooks build from the full FY extract and can take a minute or two.
-    Deliver the workbook in the conversation; the folder is the archive."""
+    Give the user the workbook's `link` — it opens on any device; the
+    folder and local path are only the archive."""
     return revenue.daily_report(report, day)
 
 

@@ -51,7 +51,13 @@ builders. Business rules are imported from the modules that own them, never
 re-derived. Workbooks always build from the **unfiltered FY extract**
 (filtered extracts answer inline only) and land in
 `…\Dashboards and Data Analysis\On Demand` — the archive; Larry receives the
-workbook in the conversation. Guards throughout: future dates refused,
+workbook in the conversation. Every workbook response carries the local
+`path` (the archive record) and, when `SHAREPOINT_LIBRARY_URL` is set in
+`.env` (the web URL of the Claude General library root), a `link` — the
+library URL joined to the file's library-relative path, URL-encoded — which
+is what the user should be given: the sync path is a different path on
+Larry's laptop and useless on his phone (31 Aug 2026 live test). Unset,
+responses carry the path only, unchanged. Guards throughout: future dates refused,
 still-being-captured/invoiced days warned or refused, date bases from
 `day_guards.last_trading_day`, row caps that refuse rather than truncate.
 
