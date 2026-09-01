@@ -20,7 +20,7 @@ if not exist logs\mcp_server mkdir logs\mcp_server
 
 :loop
 echo [%date% %time%] starting mcp_server >> logs\mcp_server\service.log
-"%UV%" run python -m mcp_server >> logs\mcp_server\service.log 2>&1
+"%UV%" run python -m mcp_server --host 0.0.0.0 >> logs\mcp_server\service.log 2>&1
 echo [%date% %time%] mcp_server exited with code %ERRORLEVEL% - restarting in 15s >> logs\mcp_server\service.log
 timeout /t 15 /nobreak > NUL
 goto loop
