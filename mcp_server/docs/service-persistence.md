@@ -11,18 +11,46 @@ rather than answer around them.
    Task Scheduler.
 2. **Task Scheduler** — the "starts with the server" half.
 
-## Current state (18 Aug 2026)
+## Current state (3 Sep 2026)
 
-- **Registered and verified**: task `Sunrise MCP Server (interim logon
-  trigger)` — starts the bat when `sunrise\akham` logs on. Registerable
-  without elevation, which is all the session account had.
-- **NOT yet registered**: the boot-time task. `sunrise\akham` is not an
-  administrator on Sunrise-ReportingSvr, and both `ONSTART` triggers and
-  `SYSTEM`/S4U principals require elevated registration (Access is denied,
-  verified 18 Aug). The two revenue tasks got around this with stored-password
-  logon, typed interactively when they were created.
+- **Boot task registered and Ready**: `Sunrise MCP Server` (AtStartup,
+  runs as `sunrise\akham` with a stored password — the recommended pattern
+  below, registered from an elevated prompt 31 Aug). The interim at-logon
+  task is deleted. **The reboot proof is still outstanding** — other users
+  hold disconnected sessions on the server, so the restart sits with Innate
+  in their maintenance window.
+- **Windows Firewall inbound rule added (3 Sep)**: see "Network exposure"
+  below. A rebuilt server needs it re-created or the published endpoint
+  dies silently at this host.
 
-## To finish (one elevated command — Akha or Innate)
+## Network exposure (Day 6, 1–3 Sep 2026)
+
+Since Day 6 the bat runs the server with `--host 0.0.0.0` (auth configured
+in `.env` is what lifts the loopback-only refusal), so NSN's edge can
+forward `mcp-claude.sunriselogistics.net:443` to this host on port 8787.
+Windows Firewall blocks new inbound ports by default and **drops them
+silently — the service log shows nothing**, which cost an afternoon on
+3 Sep. The rule (elevated):
+
+```powershell
+New-NetFirewallRule -DisplayName 'Sunrise MCP Server (8787 inbound)' `
+  -Direction Inbound -Protocol TCP -LocalPort 8787 -Action Allow
+```
+
+Verified 3 Sep: a machine on another office subnet gets the service's 401.
+Exposure stays bounded by the bearer-token requirement on every request
+(auth.py) and NSN's edge allowlisting Anthropic's 160.79.104.0/21 upstream.
+
+## Registration history (18 Aug 2026)
+
+- The interim at-logon task was used while elevation was unavailable:
+  `sunrise\akham` is not an administrator on Sunrise-ReportingSvr, and both
+  `ONSTART` triggers and `SYSTEM`/S4U principals require elevated
+  registration (Access is denied, verified 18 Aug). The two revenue tasks
+  got around this with stored-password logon, typed interactively when they
+  were created.
+
+## The boot task (registered 31 Aug — commands kept for a rebuild)
 
 A boot trigger requires elevation whichever principal runs it (`ONSTART` and
 `SYSTEM`/S4U are both Access-denied to the non-admin session account, verified
@@ -33,10 +61,10 @@ equivalent on a client server.**
 ### Recommended — run as `sunrise\akham` with a stored password (least privilege)
 
 This is the revenue-task pattern (the 07:00/16:30 jobs were registered exactly
-this way — password typed at registration, not stored in any file). The server
-only binds loopback, reads `.env` and writes logs under the repo — it needs no
-more than the `akham` account, and the interim at-logon task already proved it
-runs fine as `akham`.
+this way — password typed at registration, not stored in any file), and the
+pattern the live task uses. The server reads `.env` and writes logs under the
+repo — it needs no more than the `akham` account, and the interim at-logon
+task already proved it runs fine as `akham`.
 
 From an **elevated** PowerShell on the BI server:
 
@@ -70,16 +98,17 @@ call.
 
 ### Then, for either principal
 
-Delete the interim task:
+Delete the interim task (done 31 Aug):
 
 ```powershell
 Unregister-ScheduledTask -TaskName 'Sunrise MCP Server (interim logon trigger)' -Confirm:$false
 ```
 
 Then **reboot the BI server and check** `http://127.0.0.1:8787/mcp` answers
-(or run `research\db_query_interface\day5_wiring_check.py`) without anyone
-logging in. The reboot test is the difference between "working" and
-"permanent" — do not skip it.
+(expect **401 Unauthorized** now that auth is on — that IS the healthy
+answer) without anyone logging in. The reboot test is the difference between
+"working" and "permanent" — do not skip it. As of 3 Sep it has not run:
+the restart is with Innate.
 
 ## Failure reporting
 
