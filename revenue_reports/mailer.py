@@ -35,7 +35,10 @@ logger = logging.getLogger(__name__)
 # The exco distribution list — same convention as EmailConfigs in
 # report_generation/enums/email_enums.py.
 RECIPIENTS = ["exco@sunriselogistics.net"]
-CC_RECIPIENTS: list[str] = ["akha@sunriselogistics.net"]
+CC_RECIPIENTS: list[str] = [
+    "akha@sunriselogistics.net",
+    "reuven@sunriselogistics.net",
+]
 
 BODY = """
 <html>
@@ -57,9 +60,14 @@ BODY = """
 """
 
 
-def send_reports(subject: str, intro: str, attachments: list[str],
-                 to: list[str] | None = None, cc: list[str] | None = None,
-                 dry_run: bool = False) -> None:
+def send_reports(
+    subject: str,
+    intro: str,
+    attachments: list[str],
+    to: list[str] | None = None,
+    cc: list[str] | None = None,
+    dry_run: bool = False,
+) -> None:
     """Send one email carrying every workbook in `attachments`.
 
     Raises if a file is missing — better to fail the run loudly than to send
@@ -77,9 +85,11 @@ def send_reports(subject: str, intro: str, attachments: list[str],
     body = BODY.format(intro=intro, items=items)
 
     if dry_run:
-        logger.info(f"Dry run — would email {', '.join(to)}"
-                    + (f" (cc {', '.join(cc)})" if cc else "")
-                    + f": {subject}")
+        logger.info(
+            f"Dry run — would email {', '.join(to)}"
+            + (f" (cc {', '.join(cc)})" if cc else "")
+            + f": {subject}"
+        )
         for p in paths:
             logger.info(f"Dry run — would attach {p.name}")
         return
@@ -103,8 +113,10 @@ def send_reports(subject: str, intro: str, attachments: list[str],
             body=body,
             attachments=[str(p) for p in paths],
         )
-    logger.info(f"Emailed {len(paths)} report(s) to {', '.join(to)}"
-                + (f" (cc {', '.join(cc)})" if cc else ""))
+    logger.info(
+        f"Emailed {len(paths)} report(s) to {', '.join(to)}"
+        + (f" (cc {', '.join(cc)})" if cc else "")
+    )
 
 
 def flash_subject(day: date) -> str:

@@ -26,6 +26,7 @@ class EmailConfigs:
         cc_recipients=[],
         default_recipients=[
             "larry@sunriselogistics.net",
+            "reuven@sunriselogistics.net",
             "hatchjhb@sunriselogistics.net",
             "hatchcpt@sunriselogistics.net",
             "hatchdbn@sunriselogistics.net",
@@ -62,6 +63,7 @@ class EmailConfigs:
         cc_recipients=[],
         default_recipients=[
             "larry@sunriselogistics.net",
+            "reuven@sunriselogistics.net",
             "christine@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
         ],
@@ -98,6 +100,7 @@ class EmailConfigs:
         recipient_type=EmailRecipientType.EXTERNAL,
         cc_recipients=[
             "larry@sunriselogistics.net",
+            "reuven@sunriselogistics.net",
             "mirika@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
             "arlene@sunriselogistics.net",
@@ -106,6 +109,7 @@ class EmailConfigs:
         default_recipients=[
             "larry@sunriselogistics.net",
             "mirika@sunriselogistics.net",
+            "arlene@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
         ],
         default_ccs=[],
@@ -139,14 +143,16 @@ class EmailConfigs:
         recipient_type=EmailRecipientType.EXTERNAL,
         cc_recipients=[
             "larry@sunriselogistics.net",
+            "reuven@sunriselogistics.net",
             "mirika@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
-            "arlene@sunriselogitics.net",
+            "arlene@sunriselogistics.net",
             "anneline@sunriselogistics.net",
         ],
         default_recipients=[
             "larry@sunriselogistics.net",
             "mirika@sunriselogistics.net",
+            "arlene@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
         ],
         default_ccs=[],
@@ -181,9 +187,10 @@ class EmailConfigs:
         cc_recipients=[],
         default_recipients=[
             "larry@sunriselogistics.net",
+            "reuven@sunriselogistics.net",
             "mirika@sunriselogistics.net",
             "raeesa@sunriselogistics.net",
-            "arlene@sunriselogitics.net",
+            "arlene@sunriselogistics.net",
             "anneline@sunriselogistics.net",
         ],
         default_ccs=[],
@@ -215,6 +222,7 @@ class EmailConfigs:
         recipient_type=EmailRecipientType.EXTERNAL,
         cc_recipients=[
             "larry@sunriselogistics.net",
+            "reuven@sunriselogistics.net",
             "christine@sunriselogistics.net",
             "kim@sunriselogistics.net",
             "krishnie@sunriselogistics.net",
