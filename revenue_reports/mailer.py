@@ -32,12 +32,17 @@ from clients.outlook_email_client import OutlookEmailClient
 
 logger = logging.getLogger(__name__)
 
-# The exco distribution list — same convention as EmailConfigs in
-# report_generation/enums/email_enums.py.
-RECIPIENTS = ["exco@sunriselogistics.net"]
+# The exco and billing distribution lists — same convention as EmailConfigs
+# in report_generation/enums/email_enums.py. billing@ added 14 Sep 2026
+# (Larry's call on ticket 0230625: Mariette, Reuven and Geraldine, who are
+# not exco); Reuven's explicit address dropped the same day — he is on
+# billing@.
+RECIPIENTS = [
+    "exco@sunriselogistics.net",
+    "billing@sunriselogistics.net",
+]
 CC_RECIPIENTS: list[str] = [
     "akha@sunriselogistics.net",
-    "reuven@sunriselogistics.net",
 ]
 
 BODY = """
