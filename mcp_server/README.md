@@ -24,10 +24,49 @@ when provisioned. **Must be replaced before handover.**
 
     uv run python -m mcp_server                 # streamable HTTP, 127.0.0.1:8787/mcp
     uv run python -m mcp_server --transport stdio
+    uv run python -m mcp_server --host 0.0.0.0 --port 9443   # the published shape (auth + TLS in .env)
 
-Localhost-only until Innate publish the HTTPS endpoint. The auth layer is
-**built** (Day 6a, 19 Aug 2026 — see "Auth" below); Day 6 is setting the
-issuer values in `.env` once Innate confirm the method, not code.
+`--host`/`--port` pick the bind; auth configured in `.env` is what lifts the
+loopback-only refusal ("Auth" below). The live service is started by
+`run_mcp_server.bat` (`--host 0.0.0.0`, port 8787 until the Day 6-final
+cutover to 9443).
+
+### TLS (Day 6-TLS, 17 Sep 2026) — configuration, not code
+
+NSN's MX67 edge forwards `mcp-claude.sunriselogistics.net:9443` to this host
+**without terminating TLS** (14 Sep Decisions entry), so the service serves
+HTTPS itself when `.env` sets both of:
+
+- `TLS_CERTFILE` — the **FULL CHAIN** PEM: leaf + intermediates concatenated
+  (the issued Certum file is already in that shape).
+- `TLS_KEYFILE` — the matching unencrypted PEM private key.
+
+Both live **outside the repo** — `C:\Users\AkhaM\mcp-tls\` on the BI server,
+never committed (`.gitignore` refuses `*.pem`/`*.key`/`*.crt`/`*.csr` as a
+backstop). Rules, all-or-nothing like auth:
+
+- both unset → plain HTTP, exactly as before (test-pinned: the uvicorn config
+  is identical to the one the SDK builds);
+- exactly one set, a path that does not exist, a file that will not parse, or
+  a key that does not match the certificate → **refuse to start**, with the
+  variable and path in the message. A typo can never leave the published
+  endpoint answering plain HTTP.
+
+How: `MCPServer.run("streamable-http")` builds its uvicorn config with no ssl
+arguments (pinned in `tests/test_tls.py`), so `runner.py` drives uvicorn on
+the SDK's own ASGI app (`streamable_http_app`) and adds
+`ssl_certfile`/`ssl_keyfile` when configured; `tls.py` loads the pair into an
+SSL context at startup so a broken file fails there, clearly. The bearer
+layer is untouched — `tests/test_tls.py` mints throwaway certificates in temp
+files (self-signed, and a CA-signed chain in the issued-file shape) and
+proves the 401 challenge and the protected-resource metadata are served over
+HTTPS. **No real certificate or key material in the repo or the tests, ever.**
+
+Cutover to 9443 is **Day 6-final**, run with Akha once the vendor edits land:
+bat `--port 9443`, the two TLS lines in `.env`, `AUTH_AUDIENCE` moving to the
+`:9443` URL, a Windows Firewall inbound rule for 9443, the connector URL edit
+on the Claude side, end-to-end sign-in. Renewal is a managed event —
+`docs/service-persistence.md` "TLS".
 
 ## Tools
 
@@ -155,7 +194,10 @@ never silently run the server open):
 - `AUTH_JWKS_URL` — the issuer's signing keys
   (Entra v1: `https://login.microsoftonline.com/<tenant-id>/discovery/keys`).
 - `AUTH_AUDIENCE` — the `aud` the tokens carry: the Application ID URI,
-  which is the connector URL (`https://mcp-claude.sunriselogistics.net/mcp`).
+  which is the connector URL (`https://mcp-claude.sunriselogistics.net/mcp`
+  today; **`https://mcp-claude.sunriselogistics.net:9443/mcp` after the Day
+  6-final cutover** — the port is part of the string, Gédry is re-pointing
+  the Application ID URI (17 Sep), and `.env` changes in the same step).
 - `AUTH_RESOURCE_URL` — the canonical public MCP URL for the RFC 9728
   metadata; only needed when `AUTH_AUDIENCE` is not itself that URL (it is,
   so unset).
@@ -172,6 +214,9 @@ signature (against the JWKS, asymmetric algorithms only), issuer, audience,
 expiry/not-before with bounded clock skew. Every refusal writes an audit
 line with the reason class — never token material. Tests mint against a
 mock issuer in `tests/test_auth.py` (local JWKS, never a running service).
+The bearer layer sits on the same ASGI app whether it is served over plain
+HTTP or, with `TLS_CERTFILE`/`TLS_KEYFILE` set, over HTTPS — `tests/test_tls.py`
+proves the same 401 challenge and metadata document over TLS ("Run" above).
 
 Claude-side, no server action: PKCE `S256` on every authorization request;
 `offline_access` appended for refresh tokens; Claude's token-endpoint

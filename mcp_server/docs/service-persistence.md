@@ -41,6 +41,48 @@ Verified 3 Sep: a machine on another office subnet gets the service's 401.
 Exposure stays bounded by the bearer-token requirement on every request
 (auth.py) and NSN's edge allowlisting Anthropic's 160.79.104.0/21 upstream.
 
+**Superseded 14–17 Sep 2026.** Public 443 was never ours (Parcel Perfect's),
+and the MX67 forwards without terminating TLS, so the endpoint is now
+`https://mcp-claude.sunriselogistics.net:9443/mcp` with TLS terminated by
+this service — see "TLS" below. At the Day 6-final cutover the inbound rule
+for 9443 is the same command with `-LocalPort 9443` (display name "Sunrise
+MCP Server (9443 inbound)"); the 8787 rule stays for loopback-era
+compatibility until then, and can be narrowed afterwards.
+
+## TLS (Day 6-TLS, 17 Sep 2026)
+
+The service serves HTTPS itself: `TLS_CERTFILE` + `TLS_KEYFILE` in the
+gitignored `.env` (README "Run" for the rules — all-or-nothing, fail-closed).
+Both files live **outside the repo** in `C:\Users\AkhaM\mcp-tls\`:
+
+- `mcp-claude.key.pem` — RSA 2048 private key, **generated on this box on
+  16 Sep 2026 and never copied off it** (the CSR went to Innate, not the key).
+- `mcp-claude.sunriselogistics.net.fullchain.pem` — the issued certificate,
+  Certum DV, leaf + intermediate concatenated (the FULL CHAIN uvicorn
+  needs), verified 17 Sep: CN/SAN exactly the hostname, public key
+  byte-identical to the CSR's, chain verifies to public roots.
+- `mcp-claude.csr.pem` — the request, kept for provenance.
+
+`.gitignore` refuses `*.pem`/`*.key`/`*.crt`/`*.csr` so none of it can be
+committed by accident. A copy of the public full-chain file may sit
+elsewhere for verification, but the key exists **only** in that folder —
+back it up per Innate's practice or accept that a rebuilt server means a
+new key + CSR + reissue (the certificate names the host, not the machine).
+
+**Certificate renewal is a managed event.** The certificate is valid
+16 Sep 2026 → **3 Apr 2027**; the Coda Decisions page carries the dated
+reminder (17 Sep 2026 entry, alongside the client secret's 24 Feb 2027
+rotation). Renewal is: new CSR from the existing key on the box (or a fresh
+key — then a fresh CSR), Innate reissue, replace the full-chain file in
+`mcp-tls\`, bounce the service. No code and no `.env` change unless the
+filename changes. An expired certificate is a hard outage for Claude (it
+requires a valid chain), not a warning — diarise it.
+
+**Cutover checklist (Day 6-final, with Akha):** bat `--port 9443`; the two
+TLS lines in `.env`; `AUTH_AUDIENCE` to the `:9443` URL (Gédry re-points the
+Application ID URI first); the 9443 firewall rule above; bounce; connector
+URL edit on the Claude side; end-to-end sign-in; then the reboot proof.
+
 ## Registration history (18 Aug 2026)
 
 - The interim at-logon task was used while elevation was unavailable:

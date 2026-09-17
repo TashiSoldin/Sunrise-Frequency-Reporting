@@ -9,6 +9,14 @@ gitignored .env puts bearer-token validation on the HTTP path and serves the
 RFC 9728 protected-resource metadata. Unset (the current state) the server
 runs exactly as before and only a loopback bind is allowed. The issuer is
 configuration, not code — Entra, if Innate confirm it, is just values.
+
+TLS (Day 6-TLS): NSN's edge forwards the published port WITHOUT terminating
+TLS, so the service serves HTTPS itself when TLS_CERTFILE + TLS_KEYFILE are
+set in .env (the full-chain PEM and its key, kept outside the repo). Both
+unset = plain HTTP as before. Exactly one, a missing file or an unparseable
+file refuses to start — the same all-or-nothing rule as auth. The SDK's
+run() cannot pass ssl arguments to uvicorn, so mcp_server.runner drives
+uvicorn on the SDK's ASGI app directly.
 """
 
 import argparse
@@ -18,7 +26,9 @@ from dotenv import load_dotenv
 
 from mcp_server.audit import configure_logging
 from mcp_server.auth import check_bind_allowed, load_auth_config, provision
+from mcp_server.runner import serve
 from mcp_server.server import create_server
+from mcp_server.tls import load_tls_config
 
 
 def main() -> None:
@@ -35,6 +45,7 @@ def main() -> None:
     args = ap.parse_args()
 
     auth_config = load_auth_config(os.environ)  # raises on a partial config
+    tls_config = load_tls_config(os.environ)  # raises on partial/missing/unparseable
 
     if args.transport == "stdio":
         # stdio carries credentials-from-environment per the MCP spec; the
@@ -48,7 +59,7 @@ def main() -> None:
         server = create_server()
     else:
         server = create_server(*provision(auth_config))
-    server.run(transport="streamable-http", host=args.host, port=args.port)
+    serve(server, host=args.host, port=args.port, tls=tls_config)
 
 
 if __name__ == "__main__":

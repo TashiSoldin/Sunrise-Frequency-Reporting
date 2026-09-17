@@ -8,3 +8,10 @@ logs/
 .env
 .ruff_cache
 PR-DESCRIPTION.md
+
+# TLS material never enters the repo (Day 6-TLS, 17 Sep 2026): the issued
+# certificate and its key live in C:\Users\AkhaM\mcp-tls\ on the BI server.
+*.pem
+*.key
+*.crt
+*.csr
