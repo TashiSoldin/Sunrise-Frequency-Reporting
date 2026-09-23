@@ -167,6 +167,9 @@ CREDIT_COLS = [
     "REPNAME",
     "COSTCNTRNAME",
     "CREDCONTROLLER",
+    # the two RECALLOC link aggregates (QT-000006, 23 Sep 2026)
+    "WAYBILLS",
+    "INVOICES",
 ]
 
 
@@ -190,6 +193,8 @@ CREDIT_ROWS = [
         REASON="Rate query",
         ALLOCATED=Decimal("-115.00"),
         USERNAME="MARI",
+        WAYBILLS="OB67, OB68",  # a multi-waybill note, as receipt -1 in the probe
+        INVOICES="1012239",
     ),
     credit_row(
         RECEIPT=-1002,
@@ -221,6 +226,25 @@ class TestCreditsRoundTrip:
         _, rows = credits_shaped(CREDIT_COLS, CREDIT_ROWS)
         ti = CREDITS_HEADERS.index("Type")
         assert [r[ti] for r in rows] == ["Credit Note", "Journal Credit"]
+
+    def test_link_columns_carry_through_and_blank_when_unallocated(self):
+        """QT-000006: Waybills / Invoices ride the export shape; a note with no
+        RECALLOC row reads back blank — present, never dropped."""
+        assert CREDITS_HEADERS[-2:] == ["Waybills", "Invoices"]
+        _, rows = credits_shaped(CREDIT_COLS, CREDIT_ROWS)
+        wi, ii = CREDITS_HEADERS.index("Waybills"), CREDITS_HEADERS.index("Invoices")
+        assert (rows[0][wi], rows[0][ii]) == ("OB67, OB68", "1012239")
+        assert (rows[1][wi], rows[1][ii]) == ("", "")
+        assert len(rows) == 2
+
+    def test_cursor_without_link_columns_still_shapes(self):
+        """A caller whose cursor predates the link columns (or a fake that
+        does) gets blanks in the two new columns, not a KeyError."""
+        cols = CREDIT_COLS[:-2]
+        hdr, rows = credits_shaped(cols, [r[:-2] for r in CREDIT_ROWS])
+        assert hdr == CREDITS_HEADERS
+        assert rows[0][CREDITS_HEADERS.index("Waybills")] == ""
+        assert rows[0][CREDITS_HEADERS.index("Invoices")] == ""
 
 
 # --- extraction_sql parameterisation ----------------------------------------
@@ -531,6 +555,9 @@ _CREDITS = [
         BRANCHNAME="JHB",
         CREDCONTROLLER="Mari V",
         REFERENCE="CN-1",
+        COMMENT="Rate query on two waybills",
+        WAYBILLS="OB67, OB68",
+        INVOICES="1000101",
     ),
     credit_row(
         RECEIPT=-2002,
@@ -560,6 +587,10 @@ _CREDITS = [
         REPNAME="Tracy Flandorp",
         BRANCHNAME="JHB",
         CREDCONTROLLER="Mari V",
+        REFERENCE="1012239 - SL0288371",
+        COMMENT="Short delivered",
+        WAYBILLS="SL0288371",  # single-waybill note
+        INVOICES="1000102",
     ),
     credit_row(
         RECEIPT=-2004,
@@ -574,7 +605,11 @@ _CREDITS = [
         REPNAME="Christine Naidoo",
         BRANCHNAME="CPT",
         CREDCONTROLLER="Mari V",
+        WAYBILLS="OB67, OB68",  # multi-waybill note, one invoice
+        INVOICES="1000101",
     ),
+    # -2005 carries no WAYBILLS / INVOICES: the unallocated case (1 of 1,308
+    # FY27 notes in the 16 Sep probe) — blank link cells, still on the sheet.
     credit_row(
         RECEIPT=-2005,
         ACCNUM="XYZ003",
@@ -779,6 +814,87 @@ class TestCreditNotesInjection:
         a = build(credits, out_a)  # month=None: derived from the data
         b = build(credits, out_b, data=credits_shaped(CREDIT_COLS, _CREDITS))
         assert_workbooks_identical(a, b)
+
+
+class TestCreditNoteDetailSheet:
+    """Reuven's change request (QT-000006, built 23 Sep 2026): the Detail
+    sheet's 13-column layout, sorted by credit note number ascending, header
+    count + total on Subtotal, waybill/invoice links per note, and blank —
+    never dropped — link cells for an unallocated note. Overview and By
+    Customer are untouched by the change; the header total must equal both."""
+
+    HEADERS = [
+        "Date",
+        "Credit Note No",
+        "Waybill(s)",
+        "Invoice(s)",
+        "Reference",
+        "Account",
+        "Customer",
+        "Rep",
+        "Branch",
+        "Reason Code",
+        "Description",
+        "Value",
+        "Processed By",
+    ]
+
+    def _build(self, tmp_path, data):
+        import openpyxl
+        from build_credit_notes import build
+
+        out = build("unused.xlsx", str(tmp_path), month=date(2026, 8, 1), data=data)
+        wb_ = openpyxl.load_workbook(out, data_only=True)
+        return wb_["Overview"], wb_["By Customer Aug"], wb_["Detail Aug"]
+
+    @staticmethod
+    def _rows(ws, first=8, count=3):
+        return [
+            [c.value for c in row[1:14]]
+            for row in ws.iter_rows(min_row=first, max_row=first + count - 1)
+        ]
+
+    def test_layout_sort_links_and_header_totals(self, tmp_path):
+        ov, bc, ws = self._build(tmp_path, credits_shaped(CREDIT_COLS, _CREDITS))
+        assert ws["B3"].value == "Credit Note Detail — August FY27 MTD"
+        assert [c.value for c in ws[7][1:14]] == self.HEADERS
+        rows = self._rows(ws)
+        # August MTD holds -2003, -2004, -2005 (Bad Debt / Cancelled excluded):
+        # ascending by credit note number, shown unsigned
+        assert [r[1] for r in rows] == [2003, 2004, 2005]
+        by_no = {r[1]: r for r in rows}
+        assert by_no[2003][2:4] == ["SL0288371", "1000102"]
+        assert by_no[2004][2:4] == ["OB67, OB68", "1000101"]
+        assert by_no[2005][2:4] == [None, None]  # unallocated: blank, present
+        assert by_no[2003][4] == "1012239 - SL0288371"  # Reference stays
+        assert by_no[2003][9:11] == ["Rate query", "Short delivered"]
+        assert by_no[2003][12] == "MARI"  # Processed By = User Name
+        assert "Credit Controller" not in [c.value for c in ws[7]]
+        # Value = Subtotal excl VAT: -300, -50, -20
+        assert [r[11] for r in rows] == [-300, -50, -20]
+        # header count + total, exactly as the By Customer sheet phrases it
+        assert ws["B4"].value == "3 notes · total R-370 · Subtotal excl VAT · ZAR"
+        assert ws["B4"].value == bc["B4"].value
+        # ... and equal to the Overview KPI and both TOTAL rows (cached values)
+        assert ov["B8"].value == -370
+        assert ws["B11"].value == "TOTAL" and ws["M11"].value == -370
+        bc_total = next(r for r in bc.iter_rows(min_row=8) if r[1].value == "TOTAL")
+        assert bc_total[5].value == -370
+
+    def test_old_credits_file_without_the_new_columns_builds_blank(self, tmp_path):
+        """The staff .xls predates Waybills / Invoices (and a minimal fixture
+        may lack User Name / Comment too): those cells go blank, nothing
+        raises, and the rest of the sheet is unchanged."""
+        hdr, rows = credits_shaped(CREDIT_COLS, _CREDITS)
+        drop = {hdr.index(h) for h in ("Waybills", "Invoices", "User Name", "Comment")}
+        hdr2 = [h for i, h in enumerate(hdr) if i not in drop]
+        rows2 = [[v for i, v in enumerate(r) if i not in drop] for r in rows]
+        _, _, ws = self._build(tmp_path, (hdr2, rows2))
+        rows_ = self._rows(ws)
+        assert [r[1] for r in rows_] == [2003, 2004, 2005]
+        for r in rows_:
+            assert r[2] is None and r[3] is None and r[10] is None and r[12] is None
+        assert [r[11] for r in rows_] == [-300, -50, -20]
 
 
 class TestDashboardInjection:

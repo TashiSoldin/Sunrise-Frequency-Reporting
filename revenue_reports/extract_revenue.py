@@ -361,15 +361,40 @@ CREDITS_HEADERS = [
     "VAT Type",
     "Cash",
     "Credit Controller",
+    # Two columns the staff export never had (QT-000006, 23 Sep 2026): the
+    # waybills a credit note was allocated to and their invoice numbers, one
+    # row per receipt. Readers must tolerate their absence — an old staff .xls
+    # still has to build.
+    "Waybills",
+    "Invoices",
 ]
 
+# Waybill / invoice link (QT-000006, probe 16 Sep 2026): RECALLOC holds one
+# row per credit note per waybill (PK RECEIPT + WAYBILL); the invoice follows
+# from WAYBILL.INVOICE. 1,307 of 1,308 FY27 credit notes (N/J) have >= 1 row;
+# the unallocated one gets NULL here and blank cells downstream, never dropped.
+# Two correlated LIST() subqueries rather than a GROUP BY derived table: both
+# take seconds over a FY (Firebird 3.0.13, measured 23 Sep: 4.2 s vs 1.7 s for
+# 1,425 receipts), but the sort-based GROUP BY returns waybills alphabetically,
+# while the keyed lookup returns them in RECALLOC storage order — the order the
+# allocations were captured in, which is what the Detail sheet lists.
+# LIST(DISTINCT) on the invoice side: one invoice per waybill, several waybills
+# per invoice. Never look up VIEW_WBANALYSE by RECEIPT (no index; the 16 Sep
+# probe ran for many minutes on exactly that).
 CREDITS_SQL = """
 SELECT r.RECEIPT, r.ACCNUM, c.CUSTNAME, r.RECDATE, r.AMOUNT, r.DISCOUNT,
        r.REFERENCE, r.RECTYPE, nt.DESCRIPTION AS REASON, r.ALLOCATED,
        r.COMMENT, r.AIF, vu.NAME AS USERNAME, r.EXPORT, r.VAT, r.VATTYPE,
        b.NAME AS BRANCHNAME, r.BANK, r.CUSTOMSVAT, r.CUSTOMSDUTIES,
        rep.NAME AS REPNAME, cn.NAME AS COSTCNTRNAME,
-       cc.NAME AS CREDCONTROLLER
+       cc.NAME AS CREDCONTROLLER,
+       (SELECT LIST(ra.WAYBILL, ', ')
+          FROM RECALLOC ra
+         WHERE ra.RECEIPT = r.RECEIPT) AS WAYBILLS,
+       (SELECT LIST(DISTINCT CAST(wb.INVOICE AS VARCHAR(12)), ', ')
+          FROM RECALLOC ra
+          LEFT JOIN WAYBILL wb ON wb.WAYBILL = ra.WAYBILL
+         WHERE ra.RECEIPT = r.RECEIPT) AS INVOICES
 FROM RECEIPT r
 LEFT JOIN CUSTOMER c ON c.ACCNUM = r.ACCNUM
 LEFT JOIN NOTETYPE nt ON nt.NOTETYPE = r.NOTETYPE
@@ -394,6 +419,11 @@ def credits_export_rows(
 
     def g(r, c):
         return _clean(r[ix[c]])
+
+    def g_opt(r, c):
+        """A column a caller's cursor may not carry (the two link columns
+        added 23 Sep 2026): blank rather than KeyError."""
+        return _clean(r[ix[c]]) if c in ix else None
 
     out_rows = []
     tot = collections.defaultdict(float)  # totals row, like the staff export
@@ -445,6 +475,8 @@ def credits_export_rows(
                 g(r, "VATTYPE"),
                 False,
                 g(r, "CREDCONTROLLER"),
+                g_opt(r, "WAYBILLS"),
+                g_opt(r, "INVOICES"),
             ]
         )
     # Totals row, mirroring the staff export's final row: Receipt = row count,

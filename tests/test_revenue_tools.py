@@ -59,6 +59,8 @@ CREDIT_COLS = [
     "REPNAME",
     "COSTCNTRNAME",
     "CREDCONTROLLER",
+    "WAYBILLS",  # RECALLOC link aggregates (QT-000006, 23 Sep 2026)
+    "INVOICES",
 ]
 
 # "Today" is pinned through revenue._today so the fixtures are deterministic

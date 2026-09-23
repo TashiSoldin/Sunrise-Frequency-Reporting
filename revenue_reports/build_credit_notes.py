@@ -6,7 +6,9 @@ workbook, following the same conventions (types Credit Note + Journal Credit onl
 Subtotal excl VAT; reduces revenue).
 
 Tabs: Overview (KPIs, FY27 monthly trend, MTD by reason) / By Customer (MTD) /
-Detail (MTD, largest first).
+Detail (MTD, by credit note number — Reuven's change request, QT-000006,
+23 Sep 2026: Credit Note No, Waybill(s), Invoice(s), Reason Code, Description,
+Processed By; Credit Controller dropped; count + total in the title block).
 
 Usage:
     python build_credit_notes.py --credits-file ".../Credits - March24 - Feb27.xls" \
@@ -63,16 +65,29 @@ def load_credits(path, data=None):
             "Rep",
             "Reason",
             "Branch",
-            "Credit Controller",
         ]
     }
+    # Columns an older credits file may not carry: Waybills / Invoices were
+    # added to the extract on 23 Sep 2026 (QT-000006) and the staff .xls never
+    # had them; minimal fixtures lack User Name / Comment too. Blank, never
+    # KeyError, so a hand run against an old file still builds.
+    opt = {n: (hdr.index(n) if n in hdr else None) for n in OPTIONAL_COLS}
+
+    def text(r, n):
+        i = opt[n]
+        return "" if i is None or r[i] is None else str(r[i]).strip()
+
     out = []
     for r in rows:
         if str(r[ic["Type"]]) not in CREDIT_TYPES or r[ic["Date"]] is None:
             continue
+        rec = r[ic["Receipt"]]
         out.append(
             {
                 "date": r[ic["Date"]],
+                # The credit note number: Parcel Perfect stores credit notes
+                # as negative receipt numbers (a float when read from .xls).
+                "receipt": int(float(rec)) if rec not in (None, "") else None,
                 "acct": str(r[ic["Account"]]).strip(),
                 "customer": str(r[ic["Customer Name"]]).strip(),
                 "value": r[ic["Subtotal"]] or 0,
@@ -80,11 +95,47 @@ def load_credits(path, data=None):
                 "reason": str(r[ic["Reason"]]).strip() or "(unspecified)",
                 "rep": str(r[ic["Rep"]]).strip(),
                 "branch": str(r[ic["Branch"]]).strip(),
-                "controller": str(r[ic["Credit Controller"]]).strip(),
                 "type": str(r[ic["Type"]]).strip(),
+                "user": text(r, "User Name"),  # Processed By
+                "comment": text(r, "Comment"),  # Description
+                "waybills": text(r, "Waybills"),
+                "invoices": text(r, "Invoices"),
             }
         )
     return out
+
+
+OPTIONAL_COLS = ("User Name", "Comment", "Waybills", "Invoices")
+
+# Detail sheet columns, in Reuven's agreed order (QT-000006, 17 Sep 2026).
+DETAIL_HEADERS = [
+    "Date",
+    "Credit Note No",
+    "Waybill(s)",
+    "Invoice(s)",
+    "Reference",
+    "Account",
+    "Customer",
+    "Rep",
+    "Branch",
+    "Reason Code",
+    "Description",
+    "Value",
+    "Processed By",
+]
+DETAIL_WIDTHS = [2, 9, 13, 40, 22, 24, 9, 32, 18, 14, 22, 30, 12, 18]
+DETAIL_VALUE_COL = DETAIL_HEADERS.index("Value")  # 0-based within the headers
+
+
+def credit_note_no(n: dict) -> int | str:
+    """The number shown in Credit Note No and sorted on: the receipt number
+    without its sign. ASSUMPTION recorded 23 Sep 2026, to confirm with Akha
+    against how Parcel Perfect prints a credit note — the export's Receipt
+    column is negative; Reuven asked for 'credit note number, lowest to
+    highest', which reads naturally on the unsigned number (20995 before
+    20999, i.e. capture order). To show the sign instead, return n['receipt']
+    here — one line, and the sort stays in capture order."""
+    return abs(n["receipt"]) if n["receipt"] is not None else ""
 
 
 def build(
@@ -370,59 +421,69 @@ def build(
     set_rows(ws3, {7: 22})
     freeze_below(ws3, 7)
     ws3.hide_gridlines(2)
-    for i, w in enumerate([2, 9, 13, 9, 32, 18, 14, 22, 13, 20]):
+    for i, w in enumerate(DETAIL_WIDTHS):
         ws3.set_column(i, i, w)
+    last_col = chr(ord("B") + len(DETAIL_HEADERS) - 1)  # B..N for 13 columns
     title_block(
         ws3,
         st,
-        "J",
+        last_col,
         "SUNRISE LOGISTICS",
-        f"Credit Note Detail — {mon_lab} MTD (largest first)",
-        "As captured in the credits system · Subtotal excl VAT · ZAR",
+        f"Credit Note Detail — {mon_lab} MTD",
+        # The same two figures the Overview KPI row and the By Customer
+        # subtitle compute (len(mtd), mtd_total) — they reconcile by
+        # construction. Subtotal, excl VAT: Reuven's call, 17 Sep 2026.
+        f"{len(mtd)} notes · total R{mtd_total:,.0f} · Subtotal excl VAT · ZAR",
     )
-    for i, h in enumerate(
-        [
-            "Date",
-            "CN Ref",
-            "Account",
-            "Customer",
-            "Rep",
-            "Branch",
-            "Reason",
-            "Value",
-            "Credit Controller",
-        ]
-    ):
+    for i, h in enumerate(DETAIL_HEADERS):
         ws3.write(6, 1 + i, h, th)
     rr = 8
     detail_tot = 0
-    for n in sorted(mtd, key=lambda n_: -n_["value"]):
+    # Credit Note No ascending (Reuven, 16 Sep 2026: "lowest to highest");
+    # date breaks ties for a note without a number.
+    for n in sorted(mtd, key=lambda n_: (abs(n_["receipt"] or 0), n_["date"])):
         bg = ALT if rr % 2 == 0 else "white"
         vals = [
             n["date"].strftime("%d %b"),
+            credit_note_no(n),
+            n["waybills"],  # comma-separated, RECALLOC order; blank if none
+            n["invoices"],  # distinct, comma-separated; blank if none
             n["ref"],
             n["acct"],
             n["customer"],
             n["rep"],
             n["branch"],
             n["reason"],
-            round(n["value"]),
-            n["controller"],
+            n["comment"],
+            # The source Subtotal, unrounded (NUM displays whole rand): the
+            # TOTAL row then equals the header total to the cent. Summing
+            # per-row rounded values put the old TOTAL R4 over the month's
+            # figure (Sep 2026: 154,422 vs 154,418) — invisible while the
+            # header carried no total, visible now that it does.
+            n["value"],
+            n["user"],
         ]
         for j, v in enumerate(vals):
             kw = {"font_size": 9, "bg_color": bg}
-            if j == 7:
-                kw.update(num_format=NUM, font_color="#0000FF")
+            if j == DETAIL_VALUE_COL:
+                kw.update(num_format=NUM, font_color="#0000FF")  # blue = source
+            elif j == 1:
+                kw.update(num_format="0")  # a number, not 20,998
+            elif j in (2, 3):
+                # A note can cover dozens of waybills (41 on one Sep 2026
+                # note): wrap so the whole list is readable, not cut off.
+                kw.update(text_wrap=True)
             ws3.write(rr - 1, 1 + j, v, F(**kw))
-        detail_tot += round(n["value"])
+        detail_tot += n["value"]
         rr += 1
     ws3.write(rr - 1, 1, "TOTAL", F(bold=True, font_size=9, bg_color=ORANGE))
+    vcol = chr(ord("B") + DETAIL_VALUE_COL)  # M
     Vals(ws3).f(
         rr - 1,
-        8,
-        f"=SUM(I8:I{rr - 1})",
+        1 + DETAIL_VALUE_COL,
+        f"=SUM({vcol}8:{vcol}{rr - 1})",
         F(bold=True, font_size=9, bg_color=ORANGE, num_format=NUM),
-        value=detail_tot,
+        value=round(detail_tot, 2),
     )
 
     wb.close()
