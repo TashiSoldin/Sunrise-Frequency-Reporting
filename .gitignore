@@ -15,3 +15,7 @@ PR-DESCRIPTION.md
 *.key
 *.crt
 *.csr
+
+# Probe outputs are data, not code (QT-000006, 23 Sep 2026): the 16 Sep run's
+# file lives in the Database Reference folder of the Claude General library.
+credit_note_links_probe_*.txt

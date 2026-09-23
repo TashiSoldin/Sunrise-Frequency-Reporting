@@ -128,14 +128,14 @@ DETAIL_VALUE_COL = DETAIL_HEADERS.index("Value")  # 0-based within the headers
 
 
 def credit_note_no(n: dict) -> int | str:
-    """The number shown in Credit Note No and sorted on: the receipt number
-    without its sign. ASSUMPTION recorded 23 Sep 2026, to confirm with Akha
-    against how Parcel Perfect prints a credit note — the export's Receipt
-    column is negative; Reuven asked for 'credit note number, lowest to
-    highest', which reads naturally on the unsigned number (20995 before
-    20999, i.e. capture order). To show the sign instead, return n['receipt']
-    here — one line, and the sort stays in capture order."""
-    return abs(n["receipt"]) if n["receipt"] is not None else ""
+    """The number shown in Credit Note No: the receipt number SIGNED, as
+    Parcel Perfect's RECEIPT field holds it and as the Billing Detail credits
+    tab has shown it since 3 Aug 2026 (Akha's decision, 23 Sep 2026 — the
+    first build that morning showed it unsigned). The sort is separate: the
+    Detail sheet orders by the ABSOLUTE value ascending, so the oldest note
+    comes first and the sheet reads the way Reuven asked, 'lowest to
+    highest', while every number carries its sign."""
+    return n["receipt"] if n["receipt"] is not None else ""
 
 
 def build(
@@ -439,8 +439,9 @@ def build(
         ws3.write(6, 1 + i, h, th)
     rr = 8
     detail_tot = 0
-    # Credit Note No ascending (Reuven, 16 Sep 2026: "lowest to highest");
-    # date breaks ties for a note without a number.
+    # Credit Note No ascending on the absolute value (Reuven, 16 Sep 2026:
+    # "lowest to highest" — oldest note first), displayed signed; date breaks
+    # ties for a note without a number.
     for n in sorted(mtd, key=lambda n_: (abs(n_["receipt"] or 0), n_["date"])):
         bg = ALT if rr % 2 == 0 else "white"
         vals = [

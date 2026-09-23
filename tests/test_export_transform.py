@@ -860,15 +860,16 @@ class TestCreditNoteDetailSheet:
         assert [c.value for c in ws[7][1:14]] == self.HEADERS
         rows = self._rows(ws)
         # August MTD holds -2003, -2004, -2005 (Bad Debt / Cancelled excluded):
-        # ascending by credit note number, shown unsigned
-        assert [r[1] for r in rows] == [2003, 2004, 2005]
+        # shown SIGNED as Parcel Perfect's RECEIPT holds it (Akha, 23 Sep 2026),
+        # ordered by the absolute value ascending — oldest note first
+        assert [r[1] for r in rows] == [-2003, -2004, -2005]
         by_no = {r[1]: r for r in rows}
-        assert by_no[2003][2:4] == ["SL0288371", "1000102"]
-        assert by_no[2004][2:4] == ["OB67, OB68", "1000101"]
-        assert by_no[2005][2:4] == [None, None]  # unallocated: blank, present
-        assert by_no[2003][4] == "1012239 - SL0288371"  # Reference stays
-        assert by_no[2003][9:11] == ["Rate query", "Short delivered"]
-        assert by_no[2003][12] == "MARI"  # Processed By = User Name
+        assert by_no[-2003][2:4] == ["SL0288371", "1000102"]
+        assert by_no[-2004][2:4] == ["OB67, OB68", "1000101"]
+        assert by_no[-2005][2:4] == [None, None]  # unallocated: blank, present
+        assert by_no[-2003][4] == "1012239 - SL0288371"  # Reference stays
+        assert by_no[-2003][9:11] == ["Rate query", "Short delivered"]
+        assert by_no[-2003][12] == "MARI"  # Processed By = User Name
         assert "Credit Controller" not in [c.value for c in ws[7]]
         # Value = Subtotal excl VAT: -300, -50, -20
         assert [r[11] for r in rows] == [-300, -50, -20]
@@ -891,7 +892,7 @@ class TestCreditNoteDetailSheet:
         rows2 = [[v for i, v in enumerate(r) if i not in drop] for r in rows]
         _, _, ws = self._build(tmp_path, (hdr2, rows2))
         rows_ = self._rows(ws)
-        assert [r[1] for r in rows_] == [2003, 2004, 2005]
+        assert [r[1] for r in rows_] == [-2003, -2004, -2005]
         for r in rows_:
             assert r[2] is None and r[3] is None and r[10] is None and r[12] is None
         assert [r[11] for r in rows_] == [-300, -50, -20]
