@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{title}}</title>
+<style>
+  /* Page template for md_to_pdf.py: the handover-document look (Gelasio body,
+     monospace code, title block, footer with title and page x / y), with the
+     Sunrise brand. Printed by headless Edge; paged.js draws the footer. */
+
+  @font-face { font-family: Gelasio; src: url('{{fonts}}/gelasio/gelasio-latin-400-normal.woff2') format('woff2'); }
+  @font-face { font-family: Gelasio; font-style: italic; src: url('{{fonts}}/gelasio/gelasio-latin-400-italic.woff2') format('woff2'); }
+  @font-face { font-family: Gelasio; font-weight: 500; src: url('{{fonts}}/gelasio/gelasio-latin-500-normal.woff2') format('woff2'); }
+  @font-face { font-family: Gelasio; font-weight: 700; src: url('{{fonts}}/gelasio/gelasio-latin-700-normal.woff2') format('woff2'); }
+  @font-face { font-family: Gelasio; font-weight: 700; font-style: italic; src: url('{{fonts}}/gelasio/gelasio-latin-700-italic.woff2') format('woff2'); }
+
+  :root {
+    --ink: #1a1a1a;
+    --muted: #555555;
+    --faint: #999999;
+    --navy: #05003C;
+    --orange: #FF6900;
+    --paper: #f7f5f1;
+    --paper-edge: #e0ddd6;
+    --mono: Consolas, "Cascadia Mono", "SF Mono", Menlo, monospace;
+  }
+
+  /* Page size and margins, and the footer (title · page x / y), are set by
+     md_to_pdf.py when it prints; Chromium ignores @page margin boxes. */
+  @page { size: A4; }
+
+  body { font-family: Gelasio, serif; font-size: 10pt; line-height: 1.55; color: var(--ink); margin: 0; }
+
+  .titleblock { margin: 0 0 5mm 0; }
+  .titleblock .brand { font-family: var(--mono); font-size: 8.5pt; letter-spacing: 0.25em; color: var(--navy); text-transform: uppercase; }
+  .titleblock h1 { font-size: 24pt; font-weight: 700; margin: 4mm 0 2mm 0; line-height: 1.15; color: var(--ink); }
+  .titleblock .subtitle { font-size: 11pt; font-style: italic; color: var(--muted); }
+  .titleblock .stamp { margin-top: 4mm; font-family: var(--mono); font-size: 8pt; color: #777; }
+
+  h2 { font-size: 14pt; font-weight: 700; border-bottom: 0.6pt solid #ccc; padding-bottom: 1mm; margin: 4.5mm 0 2mm 0; page-break-after: avoid; }
+  .section-pages h2 { page-break-before: always; margin-top: 0; }
+  .section-pages .titleblock { margin-top: 40mm; }
+  h3 { font-size: 11.5pt; font-weight: 700; margin: 6mm 0 2mm 0; page-break-after: avoid; }
+  h4 { font-size: 10.5pt; font-weight: 700; }
+
+  p { margin: 0 0 2.5mm 0; }
+  p, li { orphans: 3; widows: 3; }
+  ul, ol { margin: 0 0 2.5mm 0; padding-left: 6mm; }
+  li { margin: 0 0 0.8mm 0; }
+  li > ul, li > ol { margin-top: 0.8mm; }
+  a { color: var(--navy); }
+
+  code { font-family: var(--mono); font-size: 8.2pt; background: #f4f2ee; padding: 0.2mm 0.8mm; border-radius: 1mm; }
+  pre { background: var(--paper); border: 0.5pt solid var(--paper-edge); border-radius: 2mm; padding: 3mm; overflow: hidden;
+        font-family: var(--mono); font-size: 7.6pt; line-height: 1.45; white-space: pre-wrap; margin: 0 0 3mm 0; }
+  pre code { background: none; padding: 0; }
+
+  table { border-collapse: collapse; width: 100%; margin: 3mm 0; font-size: 9pt; page-break-inside: auto; }
+  th { text-align: left; border-bottom: 1pt solid #444; padding: 1.2mm 2mm; font-weight: 700; }
+  td { border-bottom: 0.4pt solid #ddd; padding: 1.2mm 2mm; vertical-align: top; }
+  tr { page-break-inside: avoid; }
+
+  blockquote { margin: 3mm 0 3mm 4mm; padding-left: 3mm; border-left: 1.2pt solid var(--orange); color: #444; font-style: italic; }
+  blockquote p { margin: 0; }
+  hr { border: none; border-top: 0.5pt solid #ccc; margin: 6mm 0; }
+
+  .diagram { text-align: center; margin: 2mm 0 3mm 0; page-break-inside: avoid; }
+  .diagram pre.mermaid { background: none; border: none; padding: 0; font-family: Gelasio, serif; font-size: 9pt; }
+  .diagram svg { max-width: 100%; height: auto; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body class="{{section_pages}}">
+<div class="titleblock">
+  <div class="brand">{{brand}}</div>
+  <h1>{{title}}</h1>
+  <div class="subtitle">{{subtitle}}</div>
+  <div class="stamp">{{stamp}}</div>
+</div>
+{{body}}
+<script>
+  // Diagrams are drawn with the fonts loaded, so node boxes are measured in
+  // Gelasio. window.__ready tells md_to_pdf.py the page can be printed.
+  window.__ready = false;
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'loose',
+    theme: 'base',
+    themeVariables: {
+      fontFamily: 'Gelasio, serif',
+      fontSize: '12px',
+      primaryColor: '#f7f5f1',
+      primaryBorderColor: '#05003C',
+      primaryTextColor: '#1a1a1a',
+      lineColor: '#666666',
+      clusterBkg: '#ffffff',
+      clusterBorder: '#bbbbbb',
+      edgeLabelBackground: '#ffffff'
+    },
+    flowchart: { padding: 6, nodeSpacing: 22, rankSpacing: 28, htmlLabels: true, curve: 'basis' }
+  });
+  const fonts = Promise.all([
+    document.fonts.load('10pt Gelasio'),
+    document.fonts.load('italic 10pt Gelasio'),
+    document.fonts.load('bold 10pt Gelasio'),
+    document.fonts.load('bold italic 10pt Gelasio')
+  ]);
+  const cap = new Promise(resolve => setTimeout(resolve, 3000));
+  Promise.race([fonts, cap])
+    .then(() => mermaid.run())
+    .catch(err => console.error('mermaid: ' + err))
+    .then(() => { window.__ready = true; });
+</script>
+</body>
+</html>
