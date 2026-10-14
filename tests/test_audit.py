@@ -100,15 +100,16 @@ class TestIdentityStamp:
     """
 
     @staticmethod
-    def _token(subject, client_id="client-app"):
+    def _token(subject, client_id="client-app", **extra_claims):
         from mcp.server.auth.provider import AccessToken
 
+        claims = {"sub": subject, **extra_claims}
         return AccessToken(
             token="opaque",
             client_id=client_id,
             scopes=[],
             subject=subject,
-            claims={"sub": subject},
+            claims=claims,
         )
 
     @staticmethod
@@ -186,3 +187,93 @@ class TestIdentityStamp:
         finally:
             auth_context_var.reset(reset)
         assert "user=client-app" in caplog.records[-1].getMessage()
+
+
+class TestCallerPrefersAPersonOverTheSub:
+    """14 Oct 2026 (Reuven, ticket 0234726: "Names would be perfect"): an
+    Entra access token's `sub` is a stable but opaque per-user string. The
+    same verified token carries the sign-in name — preferred_username on v2
+    tokens, upn / unique_name on v1 — so user= shows that when present and
+    falls back to the sub (then client id, then "-") when it is not. Only
+    these claims are read; the token itself is never logged."""
+
+    _token = staticmethod(TestIdentityStamp._token)
+    _in_context = staticmethod(TestIdentityStamp._in_context)
+
+    def _run(self, token, caplog):
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+
+        from mcp_server.audit import audited
+
+        @audited
+        def tool(**kwargs):
+            return {"ok": True, "row_count": 1}
+
+        reset = self._in_context(token) if token is not None else None
+        try:
+            with caplog.at_level("INFO", logger="mcp_server.audit"):
+                tool(question="q")
+        finally:
+            if reset is not None:
+                auth_context_var.reset(reset)
+        return caplog.records[-1].getMessage()
+
+    def test_preferred_username_wins_over_the_sub(self, caplog):
+        sub = "XTdHMxkiJ9av0WnOVg4vPUHyvzf06dKEPJNoxp4Ok0Y"
+        line = self._run(
+            self._token(sub, preferred_username="reuven@sunriselogistics.net"),
+            caplog,
+        )
+        assert "user=reuven@sunriselogistics.net " in line
+        assert sub not in line
+
+    def test_v1_upn_and_unique_name_are_honoured_in_that_order(self, caplog):
+        line = self._run(
+            self._token(
+                "sub-1",
+                upn="larry@sunriselogistics.net",
+                unique_name="Larry Someone",
+            ),
+            caplog,
+        )
+        assert "user=larry@sunriselogistics.net " in line
+
+        line = self._run(
+            self._token("sub-2", unique_name="akha@sunriselogistics.net"), caplog
+        )
+        assert "user=akha@sunriselogistics.net " in line
+
+    def test_a_token_with_only_a_sub_logs_the_sub(self, caplog):
+        sub = "jdD7eY5at33NE1wm-eCxtFYPgD1eXRpTv0Tm3_tmJxc"
+        line = self._run(self._token(sub), caplog)
+        assert f"user={sub} " in line
+
+    def test_an_empty_name_claim_does_not_blank_the_field(self, caplog):
+        line = self._run(self._token("sub-3", preferred_username=""), caplog)
+        assert "user=sub-3 " in line
+
+    def test_no_claims_at_all_still_never_raises(self, caplog):
+        from mcp.server.auth.provider import AccessToken
+
+        token = AccessToken(
+            token="opaque", client_id="client-app", scopes=[], subject="sub-4"
+        )
+        token.claims = None  # an SDK that stopped carrying claims
+        assert "user=sub-4 " in self._run(token, caplog)
+
+    def test_auth_off_or_no_token_is_a_dash(self, caplog):
+        assert "user=- " in self._run(None, caplog)
+
+    def test_nothing_else_from_the_token_reaches_the_line(self, caplog):
+        line = self._run(
+            self._token(
+                "sub-5",
+                preferred_username="reuven@sunriselogistics.net",
+                name="Reuven Surname",
+                oid="11111111-2222-3333-4444-555555555555",
+            ),
+            caplog,
+        )
+        assert "Reuven Surname" not in line
+        assert "11111111" not in line
+        assert "opaque" not in line

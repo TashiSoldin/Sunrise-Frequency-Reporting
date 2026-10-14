@@ -4,7 +4,10 @@ What is logged per call: tool, the authenticated caller (stamped on the tool
 line itself, so a query is attributed on the line that records it; "-" while
 auth is off — loopback/stdio has no identity to attribute), arguments (the
 question and the query — they ARE the audit trail), outcome, row count,
-duration. What is NEVER logged: result rows. A report answer runs to thousands of rows and storing them would
+duration. user= holds the caller's sign-in name from the verified token
+(14 Oct 2026, Reuven's ask): preferred_username, else upn, else unique_name,
+else the Entra sub, else the client id, else "-". What is NEVER logged:
+result rows. A report answer runs to thousands of rows and storing them would
 write every customer's pricing into log files — a second copy of commercially
 sensitive data outside the database, undercutting the read-only story. The
 query is logged, so any answer can be reproduced by re-running it.
@@ -70,10 +73,14 @@ def _caller() -> str:
     """The verified identity behind the current request, or "-".
 
     Comes from the SDK's request-scoped auth context, which only ever holds a
-    token that passed verify_token — so the subject is a VERIFIED claim, safe
+    token that passed verify_token — so every claim on it is VERIFIED, safe
     to log under auth.py's rule (verified identities only, never token
-    material). Auth off, stdio, or outside a request -> "-". Never raises:
-    attribution must not be able to break a tool call.
+    material). A person's sign-in name is preferred over the opaque Entra
+    sub (Reuven, ticket 0234726, 14 Oct 2026): preferred_username (Entra v2
+    tokens), then upn / unique_name (v1 tokens), then sub, then the client
+    id. Nothing else from the token is read. Auth off, stdio, or outside a
+    request -> "-". Never raises: attribution must not be able to break a
+    tool call.
     """
     try:
         token = get_access_token()
@@ -81,7 +88,16 @@ def _caller() -> str:
         return "-"
     if token is None:
         return "-"
-    return str(token.subject or token.client_id or "-")
+    try:
+        claims = token.claims or {}
+        name = (
+            claims.get("preferred_username")
+            or claims.get("upn")
+            or claims.get("unique_name")
+        )
+    except Exception:
+        name = None
+    return str(name or token.subject or token.client_id or "-")
 
 
 def _args_repr(kwargs: dict) -> str:
