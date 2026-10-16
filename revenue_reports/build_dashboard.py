@@ -490,6 +490,31 @@ def detail_formats(st):
 # ---------------------------------------------------------------- tab 1
 
 
+def period_params(mtd_max: date) -> dict:
+    """Everything tab 1 derives from the latest invoiced day.
+
+    The financial year, which months are complete, the current (part-)month
+    and its trading-day counts. Kept separate from build() so the layout can
+    be exercised for any month without an export behind it — the footnote
+    collision of 14 Oct 2026 only showed in a month nobody had built."""
+    FY = fy_start_year(mtd_max)
+    cur = mtd_max.month
+    cur_y = cal_year(FY, cur)
+    complete = [m for m in MONTHS_FY if month_win(cal_year(FY, m), m)[1] <= mtd_max]
+    elapsed = trading_days_between(date(cur_y, cur, 1), mtd_max)
+    return {
+        "mtd_max": mtd_max,
+        "cur": cur,
+        "cur_days": month_trading_days(FY, cur),
+        "elapsed": elapsed,
+        "complete": complete,
+        "fy": FY,
+        "fyl": fy_label(FY),
+        "ly": fy_label(FY - 1),
+        "ly_mtd_max": nth_trading_day(cur_y - 1, cur, elapsed),
+    }
+
+
 def build_tab1(wb, st, M: Model, p):
     ws = wb.add_worksheet("YTD Revenue vs PY")
     ws.set_tab_color(TAB_SUMMARY)
@@ -914,7 +939,7 @@ def build_tab1(wb, st, M: Model, p):
             value=incl[15],
         )
 
-    # July momentum block
+    # Current-month momentum block
     sect = F(st, bold=True, font_size=11, font_color="white", bg_color=NAVY, border=0)
     ws.merge_range(
         R_SEC - 1, 1, R_SEC - 1, 4, f"{cur_name.upper()} MOMENTUM (MTD, net)", sect
@@ -999,9 +1024,10 @@ def build_tab1(wb, st, M: Model, p):
 
     fn = [
         (
-            f"¹ FY27 July = {elapsed} invoiced trading days (1–{mtd.day} {mtd.strftime('%b %Y')}). "
-            f"FY26 July shown like-for-like (first {elapsed} trading days) for valid comparison; "
-            f"full FY26 July net = {jul_full_py:,}."
+            f"¹ {fyl} {cur_name} = {elapsed} invoiced trading days "
+            f"(1–{mtd.day} {mtd.strftime('%b %Y')}). "
+            f"{ly} {cur_name} shown like-for-like (first {elapsed} trading days) "
+            f"for valid comparison; full {ly} {cur_name} net = {jul_full_py:,}."
         ),
         (
             "Net revenue = gross invoiced (Subtotal, excl. VAT) less credit notes raised in the period. "
@@ -1012,8 +1038,13 @@ def build_tab1(wb, st, M: Model, p):
             "Blue = source inputs; black = formulas."
         ),
     ]
+    # Directly under the last momentum row. These were pinned to rows 33-35,
+    # which is where that row fell with six completed months; with seven the
+    # eighth momentum row reached row 33 and xlsxwriter refused the overlapping
+    # merge, so the 16:30 pack failed on 14 and 15 Oct 2026.
+    fn_row0 = R_P0 + len(pairs) - 1  # 0-indexed (R_P0 is 1-indexed)
     for j, t in enumerate(fn):
-        ws.merge_range(32 + j, 1, 32 + j, 9, t, note8)
+        ws.merge_range(fn_row0 + j, 1, fn_row0 + j, 9, t, note8)
 
 
 # ---------------------------------------------------------------- customer tabs
@@ -2396,25 +2427,11 @@ def build(
     # pinned to a particular month any more.
     mtd_max = latest_data_day(inv.day, inv_asof)
     wb_max = latest_data_day(wbp.day, wb_asof)
-    FY = fy_start_year(mtd_max)
-    fyl, ly = fy_label(FY), fy_label(FY - 1)
-    cur = mtd_max.month
+    p = period_params(mtd_max)
+    FY, fyl, ly = p["fy"], p["fyl"], p["ly"]
+    cur, complete = p["cur"], p["complete"]
     cur_y = cal_year(FY, cur)
-    complete = [m for m in MONTHS_FY if month_win(cal_year(FY, m), m)[1] <= mtd_max]
-    cur_days = month_trading_days(FY, cur)
-    elapsed = trading_days_between(date(cur_y, cur, 1), mtd_max)
-    ly_mtd_max = nth_trading_day(cur_y - 1, cur, elapsed)
-    p = {
-        "mtd_max": mtd_max,
-        "cur": cur,
-        "cur_days": cur_days,
-        "elapsed": elapsed,
-        "complete": complete,
-        "fy": FY,
-        "fyl": fyl,
-        "ly": ly,
-        "ly_mtd_max": ly_mtd_max,
-    }
+    cur_days, elapsed = p["cur_days"], p["elapsed"]
 
     out_path = f"{out_dir}/Revenue Dashboard.xlsx"
     wb = xlsxwriter.Workbook(out_path)
