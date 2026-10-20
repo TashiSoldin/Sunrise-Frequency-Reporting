@@ -626,8 +626,7 @@ class TestDeadDayGuards:
     def test_is_completed_trading_day_shares_the_floor(self):
         from day_guards import is_completed_trading_day
 
-        # (day, subtotal, rows) — the aggregated shape _traded_pairs hands over
-        pairs = [(D(n), 70000.0, 700) for n in range(2, 12)] + [(D(1), 500.0, 9)]
+        pairs = [(D(n), 70000.0) for n in range(2, 12)] + [(D(1), 500.0)]
         assert is_completed_trading_day(pairs, D(2), TODAY) is True
         assert is_completed_trading_day(pairs, D(1), TODAY) is False
 

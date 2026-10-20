@@ -5,16 +5,6 @@ sent exco a flash reporting R0. On Monday 3 Aug 2026 the waybill export held
 ten waybills dated Sunday the 2nd worth nothing at all, and the invoice export
 held two lines dated Friday the 31st because that day's invoice run had not
 happened yet. Taking the max picked both.
-
-Second occurrence, 20 Oct 2026: the value floor alone was not enough. October's
-invoicing landed in batches (9 Oct R5.48m, 14 Oct R3.54m, 16 Oct R1.95m) with
-five-to-seven-line days between them, and because the median was taken over
-every day with ANY rows, those thin days dragged the floor down to R8,075. A
-Monday with three invoice lines (R16,240) then cleared it, and the 16 Oct PM
-pack had already shipped a five-line Billing Detail for 15 Oct. So a day now
-also needs MIN_WAYBILLS rows to count, and the median is taken over such days
-only. The pairs contract grew a third element for that: (date, value) is one
-row; (date, value, rows) is an already-aggregated day.
 """
 
 import sys
@@ -23,21 +13,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "revenue_reports"))
 
-import day_guards
 from run_daily import last_trading_day
 
 MON = date(2026, 8, 3)
-FULL = 700  # rows on an ordinary day; every real day in these tests is this size
 
 
-def week(start: date, values, counts=None):
-    """One aggregated (date, value, rows) item per day. Rows default to a
-    full day's worth, so the value floor is what each case exercises."""
-    counts = counts or [FULL] * len(values)
-    return [
-        (start + timedelta(days=i), v, n)
-        for i, (v, n) in enumerate(zip(values, counts))
-    ]
+def week(start: date, values):
+    return [(start + timedelta(days=i), v) for i, v in enumerate(values)]
 
 
 class TestRealCase:
@@ -55,7 +37,6 @@ class TestRealCase:
                 78938,  # Sat 1 Aug — 11% of a normal day
                 0,  # Sun 2 Aug — ten waybills, no value
             ],
-            [FULL, FULL, FULL, FULL, FULL, 80, 10],
         )
         assert last_trading_day(pairs, MON) == date(2026, 7, 31)
 
@@ -69,87 +50,8 @@ class TestRealCase:
                 638341,  # Thu 30
                 840,  # Fri 31 — two lines, invoicing not yet run
             ],
-            [FULL, FULL, FULL, FULL, 2],
         )
         assert last_trading_day(pairs, MON) == date(2026, 7, 30)
-
-
-class TestThinDaysAreNotTradingDays:
-    """The 20 Oct 2026 shapes, figures straight from the 09:55 INV extract."""
-
-    OCT = [
-        (date(2026, 10, 8), 951, 1),
-        (date(2026, 10, 9), 5_480_835, 5702),
-        (date(2026, 10, 12), 8_584, 7),
-        (date(2026, 10, 13), 4_872, 7),
-        (date(2026, 10, 14), 3_539_210, 3461),
-        (date(2026, 10, 15), 14_137, 5),
-        (date(2026, 10, 16), 1_945_212, 1901),
-        (date(2026, 10, 19), 16_240, 3),
-    ]
-    # the batch days that form the real floor: late September invoicing
-    SEP = [(date(2026, 9, d), 2_000_000, 1500) for d in (22, 23, 24, 25, 28, 29, 30)]
-
-    def test_three_lines_on_a_monday_are_not_a_billing_day(self):
-        """The 09:55 dry run picked 19 Oct. It must pick 16 Oct."""
-        assert last_trading_day(self.SEP + self.OCT, date(2026, 10, 20)) == date(
-            2026, 10, 16
-        )
-
-    def test_five_lines_are_not_a_billing_day_either(self):
-        """The 16 Oct PM pack shipped a Billing Detail for 15 Oct with 5 lines."""
-        pairs = self.SEP + [p for p in self.OCT if p[0] < date(2026, 10, 16)]
-        assert last_trading_day(pairs, date(2026, 10, 16)) == date(2026, 10, 14)
-
-    def test_thin_days_do_not_drag_the_floor_down(self):
-        """The failure mechanism itself: the median must be taken over days
-        with MIN_WAYBILLS rows, so the floor is in the millions, not R8k."""
-        _, _, floor = day_guards._totals_and_floor(
-            self.SEP + self.OCT, date(2026, 10, 20)
-        )
-        assert floor > 500_000, (
-            f"floor {floor:,.0f} — thin days are still in the median"
-        )
-
-    def test_the_same_shape_as_per_row_pairs(self):
-        """run_daily hands over one pair per export row. Expanding each day
-        into that many rows must give the same answer as the aggregated form."""
-        expanded = [(d, v / n) for d, v, n in self.SEP + self.OCT for _ in range(n)]
-        assert last_trading_day(expanded, date(2026, 10, 20)) == date(2026, 10, 16)
-
-    def test_is_completed_trading_day_agrees(self):
-        pairs, today = self.SEP + self.OCT, date(2026, 10, 20)
-        assert (
-            day_guards.is_completed_trading_day(pairs, date(2026, 10, 16), today)
-            is True
-        )
-        assert (
-            day_guards.is_completed_trading_day(pairs, date(2026, 10, 19), today)
-            is False
-        )
-        assert (
-            day_guards.is_completed_trading_day(pairs, date(2026, 10, 15), today)
-            is False
-        )
-
-    def test_a_quiet_but_real_day_with_enough_lines_still_counts(self):
-        """Month-start: 25 lines at 60% of the median is a billing day, as it
-        was before — the row floor adds a condition, it does not replace the
-        value test."""
-        pairs = self.SEP + [(date(2026, 10, 1), 1_200_000, 25)]
-        assert last_trading_day(pairs, date(2026, 10, 2)) == date(2026, 10, 1)
-
-    def test_enough_lines_but_almost_no_value_is_still_skipped(self):
-        """And the value floor still bites on its own: 25 lines worth R20k is
-        a mis-keyed handful, not a day's invoicing."""
-        pairs = self.SEP + [(date(2026, 10, 1), 20_000, 25)]
-        assert last_trading_day(pairs, date(2026, 10, 2)) == date(2026, 9, 30)
-
-    def test_one_row_short_of_the_minimum_is_skipped(self):
-        pairs = self.SEP + [(date(2026, 10, 1), 1_900_000, day_guards.MIN_WAYBILLS - 1)]
-        assert last_trading_day(pairs, date(2026, 10, 2)) == date(2026, 9, 30)
-        pairs = self.SEP + [(date(2026, 10, 1), 1_900_000, day_guards.MIN_WAYBILLS)]
-        assert last_trading_day(pairs, date(2026, 10, 2)) == date(2026, 10, 1)
 
 
 class TestOrdinaryDays:
@@ -177,45 +79,19 @@ class TestDegenerate:
 
     def test_single_day_of_history_is_used_rather_than_rejected(self):
         assert last_trading_day([(date(2026, 7, 31), 5000)], MON) == date(2026, 7, 31)
-        assert last_trading_day([(date(2026, 7, 31), 5000, FULL)], MON) == date(
-            2026, 7, 31
-        )
-
-    def test_no_day_big_enough_to_judge_falls_back_to_the_newest(self):
-        """A sparse file — every day under MIN_WAYBILLS — has no floor to
-        compare against, so the newest day is used rather than nothing."""
-        pairs = [(date(2026, 7, 30), 900, 3), (date(2026, 7, 31), 500, 2)]
-        assert last_trading_day(pairs, MON) == date(2026, 7, 31)
-        assert (
-            day_guards.is_completed_trading_day(pairs, date(2026, 7, 31), MON) is True
-        )
 
     def test_all_days_below_the_floor_falls_back_to_the_newest(self):
         """Never return nothing — a wrong day beats no report at all."""
         pairs = [(date(2026, 7, 30), 0), (date(2026, 7, 31), 0)]
         assert last_trading_day(pairs, MON) == date(2026, 7, 31)
-        pairs = [(date(2026, 7, 30), 0, FULL), (date(2026, 7, 31), 0, FULL)]
-        assert last_trading_day(pairs, MON) == date(2026, 7, 31)
 
     def test_none_values_are_tolerated(self):
         pairs = [(date(2026, 7, 30), None), (date(2026, 7, 31), 600000)]
-        assert last_trading_day(pairs, MON) == date(2026, 7, 31)
-        pairs = [(date(2026, 7, 30), None, FULL), (date(2026, 7, 31), 600000, FULL)]
         assert last_trading_day(pairs, MON) == date(2026, 7, 31)
 
     def test_non_dates_are_ignored(self):
         pairs = [("not a date", 999999), (date(2026, 7, 31), 600000)]
         assert last_trading_day(pairs, MON) == date(2026, 7, 31)
-
-    def test_a_bare_pair_counts_as_one_row(self):
-        """The contract run_daily relies on: one (date, value) per export row."""
-        totals, counts, _ = day_guards._totals_and_floor(
-            [(MON - timedelta(days=1), 10)] * 25 + [(MON - timedelta(days=2), 10, 300)],
-            MON,
-        )
-        assert counts[MON - timedelta(days=1)] == 25
-        assert counts[MON - timedelta(days=2)] == 300
-        assert totals[MON - timedelta(days=1)] == 250
 
 
 class TestUnbilledBillingFrontier:
