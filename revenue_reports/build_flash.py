@@ -7,9 +7,21 @@ literal headers. A second "All Customers" tab lists every client that moved
 freight that day — Larry's request of 4 Aug 2026, on its own tab so page one and
 the archive of already-frozen flashes both keep parsing.
 
+Since 20 Oct 2026 (Reuven, 19 Oct) the workbook also carries "Billing DD Mon"
+— tab 1 of the Billing Detail, every invoice line for the billing day — as its
+SECOND sheet, written by build_billing_detail.write_billing_tab so the two
+reports cannot drift. The billing day is one day further in arrears than the
+flash day (invoice date vs waybill date), which is why the tab keeps its own
+date in its name and "Invoice date" in its title. The flash never fails because
+of that tab: a day with no invoice lines gets the tab with a one-line note, and
+an unreadable invoice export is skipped with a warning. The "All Customers" tab
+moves to third.
+
 Usage:
     python build_flash.py --date 2026-07-27 \
         --wb-file "…/2. Revenue Data/WB Date - March26 - Feb27..xlsx" \
+        [--inv-file "…/2. Revenue Data/INV Date - March26 - Feb27..xlsx" \
+         --billing-date 2026-07-24] \
         --out-dir "…/output"
 
 Notes / assumptions (flagged in PLAN.md Phase 0):
@@ -24,10 +36,12 @@ Notes / assumptions (flagged in PLAN.md Phase 0):
 
 import argparse
 import statistics
+import sys
 from collections import defaultdict
 from datetime import date
 
 import xlsxwriter
+from build_billing_detail import load_day, write_billing_tab
 from style import (
     DEC2,
     H_BILLING,
@@ -68,10 +82,18 @@ def build(
     wb_file: str | None,
     out_dir: str,
     data: tuple[list[str], list[list]] | None = None,
+    inv_file: str | None = None,
+    billing_day: date | None = None,
+    inv_data: tuple[list[str], list[list]] | None = None,
 ) -> str:
     """data, when given, is injected (headers, rows) in export shape — as
     load_export returns them, or extract_revenue.export_shaped builds them
-    from a live query — and wb_file is not read (it may be None)."""
+    from a live query — and wb_file is not read (it may be None).
+
+    billing_day, with inv_file or an inv_data injection of the same shape,
+    adds the "Billing DD Mon" tab for that day as the second sheet. Without a
+    billing_day the workbook is the two-sheet flash it was before 20 Oct 2026.
+    """
     headers, rows = data if data is not None else load_export(wb_file)
     iWD = col(headers, "Waybill Date")
     iWB = col(headers, "Waybill")
@@ -294,10 +316,40 @@ def build(
         fmt(border=0, font_size=8, font_color="#595959"),
     )
 
+    # Second sheet, before All Customers (Akha's call, 20 Oct 2026). After the
+    # flash page, never before it: _flash_comparison reads the FIRST sheet.
+    if billing_day is not None:
+        _billing_tab(wb, st, billing_day, inv_file, inv_data)
+
     _all_customers(wb, fmt, customers, revenue, title_date, weekday)
 
     wb.close()
     return out_path
+
+
+def _billing_tab(wb, st, billing_day, inv_file, inv_data):
+    """Tab 1 of the Billing Detail, for the billing day, via the shared writer.
+
+    The flash must never fail because of this tab. The step that depends on
+    something outside this builder — reading the invoice export and finding
+    its columns — is guarded: if it fails, the tab is left out and a WARNING
+    goes to stderr, which run_daily logs. The writer itself is the same code
+    the Billing Detail runs every afternoon and is not wrapped: a fault in it
+    should surface the same way in both reports rather than leave a half-
+    written sheet that looks finished. A day with no invoice lines is not a
+    failure; the writer gives it the title block and a one-line note.
+    """
+    try:
+        ix, day_rows, _ = load_day(inv_file, billing_day, inv_data)
+    except Exception as e:
+        print(
+            f"WARNING: Billing tab left out of the flash — could not read the "
+            f"invoice lines for {billing_day.day:02d} {billing_day.strftime('%b %Y')} "
+            f"from {inv_file!r}: {e}",
+            file=sys.stderr,
+        )
+        return
+    write_billing_tab(wb, st, billing_day, ix, day_rows)
 
 
 def _all_customers(wb, fmt, customers, revenue, title_date, weekday):
@@ -401,10 +453,39 @@ def _all_customers(wb, fmt, customers, revenue, title_date, weekday):
     ws.print_area(1, 1, rr, 8)
 
 
-if __name__ == "__main__":
-    p = argparse.ArgumentParser()
+def cli_parser() -> argparse.ArgumentParser:
+    class _Parser(argparse.ArgumentParser):
+        def parse_args(self, args=None, namespace=None):
+            a = super().parse_args(args, namespace)
+            if (a.inv_file is None) != (a.billing_date is None):
+                self.error("--inv-file and --billing-date go together")
+            return a
+
+    p = _Parser()
     p.add_argument("--date", required=True, help="YYYY-MM-DD (waybill date)")
     p.add_argument("--wb-file", required=True, help="WB-date export .xlsx")
+    p.add_argument(
+        "--inv-file",
+        default=None,
+        help="INV-date export .xlsx — adds the 'Billing DD Mon' tab (with --billing-date)",
+    )
+    p.add_argument(
+        "--billing-date",
+        default=None,
+        help="YYYY-MM-DD (invoice date) for the Billing tab (with --inv-file)",
+    )
     p.add_argument("--out-dir", default=".")
-    a = p.parse_args()
-    print(build(date.fromisoformat(a.date), a.wb_file, a.out_dir))
+    return p
+
+
+if __name__ == "__main__":
+    a = cli_parser().parse_args()
+    print(
+        build(
+            date.fromisoformat(a.date),
+            a.wb_file,
+            a.out_dir,
+            inv_file=a.inv_file,
+            billing_day=date.fromisoformat(a.billing_date) if a.billing_date else None,
+        )
+    )

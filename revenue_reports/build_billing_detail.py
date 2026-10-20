@@ -4,6 +4,10 @@ Tabs: "Billing DD Mon", optional "Flash Comparison" (only when --flash-file is
 given, mirroring Larry's 24 Jul special), "By Customer", "Consolidations",
 "Credit Notes DD Mon".
 
+"Billing DD Mon" is written by write_billing_tab(), which build_flash also
+calls (Reuven, 19 Oct 2026: the Billing tab in the flash as well) — one
+writer, so the two workbooks cannot drift apart.
+
 Usage:
     python build_billing_detail.py --date 2026-07-24 \
         --inv-file ".../INV Date - March26 - Feb27..xlsx" \
@@ -120,35 +124,26 @@ def line_components(r, ix):
     return basic, outly, svc, fuel, surch, sub
 
 
-def build(
-    day: date,
-    inv_file: str,
-    credits_file: str,
-    out_dir: str,
-    flash_file: str | None = None,
-    inv_data: tuple[list[str], list[list]] | None = None,
-    credits_data: tuple[list[str], list[list]] | None = None,
-) -> str:
-    """inv_data / credits_data, when given, are injected (headers, rows) in
-    export shape — as load_export / load_credit_sheet return them, or
-    extract_revenue.export_shaped / credits_shaped build them from a live
-    query — and the corresponding file is not read. flash_file stays a file:
-    the Flash Comparison tab deliberately reads the day's FROZEN flash."""
-    ix, day_rows, _ = load_day(inv_file, day, inv_data)
-    if not day_rows:
-        raise SystemExit(
-            f"No invoice lines for {day} — not yet invoiced? Use the flash instead."
-        )
+def write_billing_tab(
+    wb, st, day: date, ix: dict, day_rows: list
+) -> tuple[float, float, int]:
+    """Tab 1 of the Billing Detail — every invoice line for `day`, laid out like
+    the tax invoice — written into whichever workbook is passed in.
 
+    Shared with build_flash since 20 Oct 2026 (Reuven's request of 19 Oct: the
+    Billing tab in the flash as well). One writer, two callers, so the two
+    workbooks carry identical cells and formatting for the same lines; copying
+    the block would have let them drift. `ix` and `day_rows` come from
+    load_day(). Returns (invoiced Subtotal, chargeable kg, line count).
+
+    With no lines for the day the tab still carries its title block and a
+    one-line note saying so: the flash must never fail because of this tab,
+    and a month-start quiet day is expected rather than broken. The Billing
+    Detail itself refuses an empty day before it gets here (build()).
+    """
     dm = f"{day.day:02d} {day.strftime('%b')}"
-    long_date = f"{day.day} {day.strftime('%B %Y')}"
     short_date = f"{dm} {day.year}"
 
-    out_path = f"{out_dir}/Billing Detail - {short_date}.xlsx"
-    wb = xlsxwriter.Workbook(out_path)
-    st = Styles(wb)
-
-    # ---------------- Tab 1: Billing lines ----------------
     ws = wb.add_worksheet(f"Billing {dm}")
     ws.set_tab_color(TAB_SUMMARY)
     set_rows(ws, H_BILLING)
@@ -236,6 +231,18 @@ def build(
     )
     for i, h in enumerate(headers):
         ws.write(6, 1 + i, h, th)
+
+    if not day_rows:
+        # Quiet day (month start, fresh deployment): the title says which date
+        # this is for, and this line says there is nothing under it. No totals
+        # row — a row of zeros would read as a figure, and it is not one.
+        ws.write(
+            7,
+            1,
+            f"No invoice lines for {short_date} in the invoice export at the time of this run.",
+            st.get(font_size=9, font_color="#595959", border=0),
+        )
+        return 0.0, 0.0, 0
 
     numfmts = [
         None,
@@ -366,7 +373,49 @@ def build(
         )
     ws.write(r_, 22, (gtot[8] / gtot[2]) if gtot[2] else 0, cellfmt(21, ORANGE, True))
 
-    inv_total, inv_kg, inv_lines = gtot[8], gtot[2], len(day_rows)
+    return gtot[8], gtot[2], len(day_rows)
+
+
+def build(
+    day: date,
+    inv_file: str,
+    credits_file: str,
+    out_dir: str,
+    flash_file: str | None = None,
+    inv_data: tuple[list[str], list[list]] | None = None,
+    credits_data: tuple[list[str], list[list]] | None = None,
+) -> str:
+    """inv_data / credits_data, when given, are injected (headers, rows) in
+    export shape — as load_export / load_credit_sheet return them, or
+    extract_revenue.export_shaped / credits_shaped build them from a live
+    query — and the corresponding file is not read. flash_file stays a file:
+    the Flash Comparison tab deliberately reads the day's FROZEN flash."""
+    ix, day_rows, _ = load_day(inv_file, day, inv_data)
+    if not day_rows:
+        raise SystemExit(
+            f"No invoice lines for {day} — not yet invoiced? Use the flash instead."
+        )
+
+    dm = f"{day.day:02d} {day.strftime('%b')}"
+    long_date = f"{day.day} {day.strftime('%B %Y')}"
+    short_date = f"{dm} {day.year}"
+
+    out_path = f"{out_dir}/Billing Detail - {short_date}.xlsx"
+    wb = xlsxwriter.Workbook(out_path)
+    st = Styles(wb)
+
+    # ---------------- Tab 1: Billing lines ----------------
+    inv_total, inv_kg, inv_lines = write_billing_tab(wb, st, day, ix, day_rows)
+    # The column-heading format the later tabs share with tab 1. Styles caches
+    # on the keyword set, so this is the same Format object the writer used.
+    th = st.get(
+        bold=True,
+        font_size=9,
+        font_color="white",
+        bg_color=NAVY,
+        align="center",
+        text_wrap=True,
+    )
 
     # ---------------- Tab 2: Flash Comparison (optional) ----------------
     if flash_file:

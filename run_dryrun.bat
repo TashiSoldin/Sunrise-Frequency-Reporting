@@ -22,9 +22,16 @@ REM
 REM What to check afterwards, in _diagnostics\dryrun:
 REM
 REM   Flash Revenue - <day>.xlsx
-REM     Two sheets: the front page, and "All Customers".
+REM     Three sheets, in this order: the front page, "Billing DD Mon" (tab 1
+REM     of the Billing Detail for the billing day — Reuven, 19 Oct 2026), and
+REM     "All Customers". The front page must stay FIRST.
 REM     BY REP on page one should have Rep, Revenue, Chg kg, R/kg, Waybills.
 REM     The All Customers total must equal the REVENUE figure in the KPI band.
+REM     The Billing tab's GRAND TOTAL must equal the Billing Detail's tab 1.
+REM     A dry run started mid-morning may pick a billing day whose invoicing
+REM     is still landing (the day guard sees enough lines to count it), so the
+REM     tab can be thin here where the 07:00 run's would not be — that is the
+REM     run time, not the tab.
 REM
 REM   Unbilled Waybills Report FY27 - <today>.xlsx
 REM     Tens of waybills and tens of thousands of rand. Four figures and

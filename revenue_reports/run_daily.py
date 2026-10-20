@@ -8,7 +8,8 @@ writing into the synced SharePoint folder so everything also lands in
 
 Two scheduled windows, per Larry (31 Jul 2026):
 
-    07:00  --only flash   Flash Revenue for the previous trading day
+    07:00  --only flash   Flash Revenue for the previous trading day, with
+                          the Billing tab for the billing day as sheet two
     16:30  --only pm      Revenue Dashboard, Billing Detail, Unbilled,
                           Credit Notes — all one day in arrears
 
@@ -194,6 +195,10 @@ def generate_reports(args: argparse.Namespace) -> None:
     )
 
     if args.only in ("all", "flash"):
+        # The flash carries the Billing tab for the billing day as its second
+        # sheet (Reuven, 19 Oct 2026). The INV file is extracted alongside WB
+        # on every run (extract_revenue's --basis defaults to all), and the
+        # exists() check above has already confirmed it is here.
         flash = run(
             "flash",
             [
@@ -202,6 +207,10 @@ def generate_reports(args: argparse.Namespace) -> None:
                 wb_day.isoformat(),
                 "--wb-file",
                 str(wb_file),
+                "--inv-file",
+                str(inv_file),
+                "--billing-date",
+                inv_day.isoformat(),
                 "--out-dir",
                 str(report_dir),
             ],
