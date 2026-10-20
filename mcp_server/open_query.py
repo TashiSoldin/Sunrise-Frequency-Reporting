@@ -8,9 +8,12 @@ The 3h bought the fence, not per-question logic; the fence is:
 - a table allowlist — every relation a query touches must be on it, and every
   entry is justified from the 6 Aug schema survey (Database Reference folder);
 - a per-table column deny list (QT-000007 line 2, 20 Oct 2026) — password,
-  banking and contact columns are refused when named anywhere in the SQL
-  (a WHERE on a password column is an oracle) and dropped from SELECT *
-  results; the schema resource omits them;
+  banking, contact and infrastructure columns are refused when named
+  anywhere in the SQL (a WHERE on a password column is an oracle), and a
+  projection star (`SELECT *`, `alias.*`) is refused on any statement that
+  touches a table with withheld columns (Fable F1: a star under a column
+  alias list or a UNION carries them out unnamed); the schema resource omits
+  them, and a cursor-name drop sits behind the gate as defence in depth;
 - row and time caps — a cap that is HIT refuses the answer rather than
   truncating silently, the same rule every revenue fetcher applies;
 - date plausibility flags on every date column in the result — Parcel Perfect
@@ -86,7 +89,11 @@ ALLOWLIST: dict[str, str] = {
     "VIEW_WBANALYSE": (
         "Waybill analysis view, 134 cols, one row per waybill — the surface "
         "Alex's frequency/POD reports and the revenue extraction query. The "
-        "sanctioned way to read waybills; the raw WAYBILL table stays off."
+        "sanctioned way to read waybills; the raw WAYBILL table stays off. "
+        "The consignor/consignee phone columns are withheld; ORIGPERCONTACT, "
+        "DESTPERCONTACT and SPECINSTRUCTION are the person names and "
+        "instructions typed on the waybill and can carry contact detail the "
+        "column guard cannot strip."
     ),
     "VIEW_SURCHARGES": "Surcharge names view (2 cols) — decodes surcharge codes.",
     "VIEW_USERCODE": (
@@ -112,7 +119,9 @@ ALLOWLIST: dict[str, str] = {
     "CUSTOMER": (
         "Customer master (1,959 rows, 164 cols) — accounts, names, terms, "
         "rate and surcharge defaults. Phone/fax/email, banking and the "
-        "inter-company login columns are withheld (DENIED_COLUMNS)."
+        "inter-company login columns are withheld (DENIED_COLUMNS). NOTE and "
+        "SPECINSTRUCTION are free text typed by staff and can carry contact "
+        "detail the column guard cannot strip."
     ),
     "CONTACT": (
         "Customer contact people (4,591 rows, 18 cols) — names, positions, "
@@ -205,9 +214,11 @@ ALLOWLIST: dict[str, str] = {
     "COLLECT": (
         "Collection bookings (880,487 rows, 68 cols) — who booked a "
         "collection, where, when, assigned agent/driver, status, pieces and "
-        "mass. Phone/cell/email columns are withheld (DENIED_COLUMNS); NOTES "
-        "is free text. Filter by COLLECTIONDATE or ACCNUM — unbounded reads "
-        "hit the row cap."
+        "mass. Phone/cell/email columns are withheld (DENIED_COLUMNS). NOTES "
+        "and NOTESINT are free text and CONTACT / BOOKINGCONTACT are person "
+        "names typed at booking — all four can carry contact detail the "
+        "column guard cannot strip. Filter by COLLECTIONDATE or ACCNUM — "
+        "unbounded reads hit the row cap."
     ),
 }
 
@@ -216,11 +227,16 @@ ALLOWLIST: dict[str, str] = {
 # 6 Aug 2026 column survey (schema_columns_2026-08-06.csv) by name match
 # (PASS|PWD|BANK|ACCNO|TEL|PHONE|CELL|FAX|EMAIL|MOBILE) as the floor, then
 # read column by column — the edge cases below were decided from live values
-# on 20 Oct 2026, never from the name alone. Enforced twice: a denied name
-# appearing as an identifier ANYWHERE in the SQL refuses the query (a WHERE
-# or ORDER BY on a password column is an oracle, so hiding the column is not
-# enough), and a denied column arriving through SELECT * / alias.* is dropped
-# from the result with a note. Matching is on the bare column name across
+# on 20 Oct 2026, never from the name alone. Enforced three ways: a denied
+# name appearing as an identifier ANYWHERE in the SQL refuses the query (a
+# WHERE or ORDER BY on a password column is an oracle, so hiding the column
+# is not enough); a projection star (SELECT *, alias.*) anywhere in a
+# statement that touches a table with a non-empty set here refuses it too
+# (Fable review F1, 20 Oct 2026 — `SELECT * FROM (SELECT * FROM CONTACT) t
+# (A1, …)` and a UNION named by a WHERE 1=0 first branch carried every
+# withheld value out under other headers; COUNT(*) is still fine); and,
+# behind both, a denied column that somehow arrives in a result is dropped
+# by cursor-description name with a note. Matching is on the bare column name across
 # every table the statement references — a coincidental same-named column on
 # another table in the same query is refused too, and the message says so.
 #
@@ -332,7 +348,15 @@ DENIED_COLUMNS: dict[str, frozenset[str]] = {
     "VIEW_USERCODE": frozenset({"CELL", "EMAIL"}),
     # STAFFID stays: short codes/initials live (3–6 chars), not ID numbers.
     "VIEW_WBANALYSE": frozenset({"ORIGPERPHONE", "DESTPERPHONE"}),
-    "BRANCH": frozenset({"EMAIL"}),
+    # Fable review F2 (20 Oct 2026): the branch table also carries the
+    # installation's plumbing — internal IPs, the database file path, the
+    # replication server and the RTM path. Infrastructure detail, not freight
+    # data; withheld. The survey scan for IP|PATH|SERVER|HOST|PORT|URL|DSN|
+    # CONNECT across all 30 tables found nothing else of that kind: EXPORT /
+    # WEBEXPORT / MOBEXPORT / REPORT / PORTALMODE are flags, EXPORTERNUM /
+    # IMPORTERNUM are customs registration numbers, NEXTIMPORT is a counter,
+    # MOBRECEIPT is a layout blob, and ICDNSPATH is already withheld above.
+    "BRANCH": frozenset({"EMAIL", "IP", "DBPATH", "RDBSERVER", "RTMPATH"}),
     # Nothing sensitive by name or by reading the column list:
     "VIEW_SURCHARGES": frozenset(),
     "MANIFEST": frozenset(),
@@ -564,9 +588,72 @@ def _check_denied_columns(cleaned: str, tables: list[str]) -> None:
     )
 
 
+# Tokens for the star scan: identifiers, numbers, the star itself and the
+# punctuation that decides what a star means.
+_STAR_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*|\d+(?:\.\d+)?|\*|[(),.+\-]")
+# A '(' preceded by one of these is a grouping paren, not a function call —
+# so `( * )` after them is not COUNT(*).
+_NOT_A_FUNCTION = _STOP | {"AND", "OR", "NOT", "IN", "EXISTS", "BETWEEN", "LIKE"}
+_OPERAND_START = re.compile(r"[A-Za-z_0-9(+\-]")
+
+
+def _has_projection_star(cleaned: str) -> bool:
+    """True if any `*` or `alias.*` in the statement is a PROJECTION star —
+    in a select list anywhere (outer query, derived table, CTE body, UNION
+    branch, scalar subquery). `COUNT(*)` projects nothing and `a * b` is
+    arithmetic; both are left alone.
+
+    Fable review F1 (20 Oct 2026): projecting by output NAME was defeated by
+    `SELECT * FROM (SELECT * FROM CONTACT) t (A1, …)` and by a UNION whose
+    names come from a `WHERE 1=0` first branch. The star is the only way a
+    withheld column reaches the result without being named, so the fix is to
+    refuse the star, not to chase the shapes it can hide in."""
+    toks = _STAR_TOKEN.findall(cleaned)
+    for i, tok in enumerate(toks):
+        if tok != "*":
+            continue
+        prev = toks[i - 1].upper() if i else ""
+        prev2 = toks[i - 2].upper() if i >= 2 else ""
+        nxt = toks[i + 1] if i + 1 < len(toks) else ""
+        # COUNT(*) and friends: '(' straight after a function name.
+        if (
+            prev == "("
+            and _IDENT.fullmatch(prev2 or "")
+            and prev2 not in _NOT_A_FUNCTION
+        ):
+            continue
+        # SELECT *, SELECT DISTINCT *, `, *`, `alias.*`
+        if prev in ("SELECT", "DISTINCT", "ALL", ",", "."):
+            return True
+        # SELECT FIRST 5 * / SELECT FIRST (5) * / SKIP n * — a star that is
+        # not followed by an operand is not a multiplication.
+        if not nxt or not _OPERAND_START.match(nxt) or nxt.upper() == "FROM":
+            return True
+    return False
+
+
+def _check_star_projection(cleaned: str, tables: list[str]) -> None:
+    """When any referenced table carries withheld columns, refuse every
+    projection star in the statement (Fable F1). Tables with an empty deny
+    set keep their `*`; the cursor-name drop in run_open_query stays behind
+    this as defence in depth."""
+    guarded = sorted(t for t in tables if DENIED_COLUMNS.get(t))
+    if not guarded or not _has_projection_star(cleaned):
+        return
+    raise GuardError(
+        "SELECT * / alias.* is refused when the statement touches a table "
+        f"with withheld columns ({', '.join(guarded)}) — a star would carry "
+        "them into the result under whatever names the query gives them. "
+        "List the columns explicitly; describe_schema('"
+        f"{guarded[0]}') lists the ones served. COUNT(*) is fine. "
+        f"{_WITHHELD_WHY}."
+    )
+
+
 def check_open_query(sql: str) -> list[str]:
     """Full gate: SELECT-only, no quoted identifiers, every relation in table
-    position on the allowlist, no withheld column named anywhere. Returns the
+    position on the allowlist, no withheld column named anywhere, no
+    projection star over a table that has withheld columns. Returns the
     tables referenced; raises GuardError with the reason otherwise."""
     if '"' in sql:
         raise GuardError(
@@ -595,6 +682,7 @@ def check_open_query(sql: str) -> list[str]:
         )
     tables = sorted(set(tables))
     _check_denied_columns(cleaned, tables)
+    _check_star_projection(cleaned, tables)
     return tables
 
 
@@ -711,10 +799,11 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
             f"is genuinely wanted.{_size_hint(tables)}"
         )
 
-    # Second enforcement of the column deny list: SELECT * and alias.* reach
-    # here with every column of the table, so drop by cursor-description
-    # name and say so. (A denied column NAMED in the SQL never gets this far
-    # — check_open_query refused it.)
+    # Second enforcement of the column deny list — defence in depth. After
+    # Fable F1 no projection star over a withheld table reaches Firebird and
+    # a denied column NAMED in the SQL never gets this far either, so this
+    # only fires if a statement the gate accepted somehow returns a denied
+    # column name. Drop by cursor-description name and say so.
     denied = _denied_for(tables)
     withheld = [c for c in columns if c.upper() in denied]
     if withheld:
@@ -863,10 +952,19 @@ def schema_context(table: str | None = None) -> dict:
                 f"time cap {TIMEOUT_S}s."
             ),
             (
-                "Contact (phone/cell/fax/email), banking and password columns "
-                "are withheld on every table: they are omitted below, a query "
-                "that names one anywhere is refused, and SELECT * drops them "
-                "with a note (QT-000007, 20 Oct 2026)."
+                "Contact (phone/cell/fax/email), banking, password and "
+                "infrastructure columns are withheld on every table: they are "
+                "omitted below, a query that names one anywhere is refused, "
+                "and SELECT * / alias.* is refused on any statement that "
+                "touches a table with withheld columns — list the columns "
+                "(COUNT(*) is fine) (QT-000007, 20 Oct 2026)."
+            ),
+            (
+                "Free-text columns (NOTE.MEMO/MEMOSTRING, COLLECT.NOTES, "
+                "CUSTOMER.NOTE/SPECINSTRUCTION, waybill instructions) and "
+                "person-name columns may carry hand-typed contact detail that "
+                "the column guard cannot strip — relay them as the operational "
+                "record they are, never as a contact source."
             ),
             (
                 "Firebird SQL: SELECT FIRST n ... (not LIMIT); string literals "

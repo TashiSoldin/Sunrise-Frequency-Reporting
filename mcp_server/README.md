@@ -153,17 +153,28 @@ not cover, answered from the raw data through a fence:
   read column by column (after-hours numbers, the inter-company login, the
   invoice PDF blobs are in; notification flags whose names contain EMAIL/FAX
   and `RECEIPT.BANK`, a bank code on Sunrise's own receipts, are not — the
-  decisions are in the dict's comments). Enforced twice: a denied name as an
-  identifier **anywhere** in the SQL refuses the query — a `WHERE` on
-  `WEBPASSWORD` is an oracle, so hiding the column is not enough — and a
-  denied column arriving through `SELECT *` / `alias.*` is dropped from the
-  result by cursor-description name, with a note saying which. Matching is
-  by bare name across every table in the statement; a coincidental
-  same-named column on another table is refused too and the message says
-  so. `describe_schema` omits the columns and says per table how many are
-  withheld. Free text (`NOTE.MEMO`, `COLLECT.NOTES`) can carry hand-typed
-  contact detail that no column guard strips — the NOTE justification says
-  so.
+  decisions are in the dict's comments; `BRANCH`'s IP / DBPATH / RDBSERVER /
+  RTMPATH went in after the Fable review, F2). Enforced three ways: a denied
+  name as an identifier **anywhere** in the SQL refuses the query — a
+  `WHERE` on `WEBPASSWORD` is an oracle, so hiding the column is not enough;
+  a projection star (`SELECT *`, `alias.*`, in any select list — outer
+  query, derived table, CTE body, UNION branch, subquery) is refused on any
+  statement that touches a table with withheld columns, because a star
+  carries them out under whatever names the query gives them (Fable review
+  F1, 20 Oct 2026: `SELECT * FROM (SELECT * FROM CONTACT) t (A1, …)` and a
+  UNION named by a `WHERE 1=0` first branch defeated name-based dropping;
+  `COUNT(*)` and arithmetic `a * b` are untouched, tables with an empty deny
+  set keep their star); and, behind both, a denied column that somehow
+  arrives in a result is dropped by cursor-description name with a note —
+  defence in depth, no longer the fence. Matching is by bare name across
+  every table in the statement; a coincidental same-named column on another
+  table is refused too and the message says so. `describe_schema` omits the
+  columns and says per table how many are withheld. Free text (`NOTE.MEMO`,
+  `COLLECT.NOTES`/`NOTESINT`, `CUSTOMER.NOTE`/`SPECINSTRUCTION`) and
+  person-name columns (`COLLECT.CONTACT`/`BOOKINGCONTACT`,
+  `VIEW_WBANALYSE.ORIGPERCONTACT`/`DESTPERCONTACT`) can carry hand-typed
+  contact detail that no column guard strips — each table's justification
+  and `read_this_first` say so.
 - **Row cap 500 — a hit cap refuses**, never truncates (the every-fetcher
   rule). **Time cap 15s** via the driver socket timeout; honest limitation:
   it bounds how long we wait, not what Firebird keeps executing, so the real

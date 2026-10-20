@@ -71,7 +71,7 @@ class TestAllowlistGate:
 
     def test_comma_list_finds_every_table(self):
         tables = check_open_query(
-            "SELECT * FROM MANIFEST m, AGENT a, HUB h WHERE a.AGENT = m.AGENT"
+            "SELECT m.MANIFEST FROM MANIFEST m, AGENT a, HUB h WHERE a.AGENT = m.AGENT"
         )
         assert tables == ["AGENT", "HUB", "MANIFEST"]
 
@@ -82,7 +82,7 @@ class TestAllowlistGate:
 
     def test_cte_name_is_not_checked_as_a_table(self):
         tables = check_open_query(
-            "WITH big AS (SELECT ACCNUM FROM CUSTOMER) SELECT * FROM big"
+            "WITH big AS (SELECT ACCNUM FROM CUSTOMER) SELECT ACCNUM FROM big"
         )
         assert tables == ["CUSTOMER"]
 
@@ -193,6 +193,18 @@ class TestDeniedColumnsShape:
         assert "AFTERHOURS" in DENIED_COLUMNS["AGENT"]
         assert {"PDFCOPY", "PDFORIG"} <= DENIED_COLUMNS["INVOICE"]
         assert {"SECRETKEY", "HASHED", "MFA"} <= DENIED_COLUMNS["CONTACT"]
+
+    def test_branch_infrastructure_columns_are_withheld(self):
+        # Fable review F2 (20 Oct 2026): internal IPs, DB file paths, the
+        # replication server and the RTM path are infrastructure detail.
+        assert {"IP", "DBPATH", "RDBSERVER", "RTMPATH"} <= DENIED_COLUMNS["BRANCH"]
+        with pytest.raises(GuardError, match="DBPATH"):
+            check_open_query("SELECT IP, DBPATH, RDBSERVER, RTMPATH FROM BRANCH")
+        # the scan for IP|PATH|SERVER|HOST|PORT|URL|DSN|CONNECT found nothing
+        # else that is infrastructure: EXPORT/REPORT/IMPORTERNUM are flags
+        # and customs numbers and stay.
+        assert check_open_query("SELECT EXPORT FROM INVOICE") == ["INVOICE"]
+        assert check_open_query("SELECT IMPORTERNUM FROM CUSTOMER") == ["CUSTOMER"]
 
     def test_the_decided_edge_cases(self):
         # Flags are not addresses; RECEIPT.BANK is a bank code on Sunrise's
@@ -312,24 +324,129 @@ class TestDeniedColumnsGate:
         assert "WEBPASSWORD" in out["reason"]
 
 
+def never_runs(sql, params=(), max_rows=None, timeout=None):
+    raise AssertionError(f"the statement reached the database: {sql}")
+
+
+class TestStarProjectionRefused:
+    """Fable review F1 (BLOCKER, 20 Oct 2026): name-based projection was
+    defeated by SELECT * under a derived-table column alias list, or a UNION
+    taking its names from a WHERE 1=0 first branch — every withheld value
+    came back under a different header, with no note. The fix removes the
+    path: when ANY referenced table carries withheld columns, a projection
+    star anywhere in the statement is refused before Firebird. Tests assert
+    on the SOURCE column (the statement), never on the output name."""
+
+    # The review's two bypasses, as close to verbatim as the identifier gate
+    # allows (the UNION's first branch must not NAME a denied column, so it
+    # repeats a served one under 18 aliases — exactly what an attacker does).
+    BYPASS_A = (
+        "SELECT * FROM (SELECT * FROM CONTACT) t "
+        "(A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A17,A18)"
+    )
+    BYPASS_B = (
+        "SELECT "
+        + ", ".join(f"ACCNUM AS A{i}" for i in range(1, 19))
+        + " FROM CONTACT WHERE 1=0 UNION ALL SELECT * FROM CONTACT"
+    )
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            BYPASS_A,
+            BYPASS_B,
+            "SELECT t.* FROM (SELECT * FROM CONTACT) t",
+            "WITH c AS (SELECT * FROM CONTACT) SELECT ACCNUM FROM c",
+            "SELECT * FROM HOLIDAY, CUSTOMER",  # CUSTOMER is in the statement
+            "SELECT * FROM CUSTOMER",
+            "SELECT c.* FROM CONTACT c",
+            "SELECT FIRST 5 * FROM CUSTOMER",
+            "SELECT FIRST (5) * FROM CUSTOMER",  # Firebird's parenthesised form
+            "SELECT DISTINCT * FROM CONTACT",
+            "SELECT c.*, 1 FROM CUSTOMER c",
+            "SELECT CUSTNAME, * FROM CUSTOMER",
+            "SELECT h.* FROM HOLIDAY h JOIN CUSTOMER c ON c.SALEDATE = h.HOLIDAY",
+            "SELECT ACCNUM FROM CUSTOMER WHERE ACCNUM IN (SELECT * FROM CONTACT)",
+            "SELECT (SELECT * FROM CONTACT) FROM HOLIDAY",
+        ],
+    )
+    def test_a_star_is_refused_when_a_withheld_table_is_in_the_statement(self, sql):
+        with pytest.raises(GuardError, match=r"SELECT \*") as e:
+            check_open_query(sql)
+        msg = str(e.value)
+        assert "describe_schema" in msg
+        assert "CONTACT" in msg or "CUSTOMER" in msg
+
+    def test_the_message_names_only_the_tables_that_carry_withheld_columns(self):
+        with pytest.raises(GuardError) as e:
+            check_open_query("SELECT * FROM HOLIDAY, CUSTOMER")
+        assert "CUSTOMER" in str(e.value)
+        assert "HOLIDAY" not in str(e.value).split("describe_schema")[0]
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT * FROM HOLIDAY",  # empty deny set keeps its star
+            "SELECT h.* FROM HOLIDAY h JOIN HUB u ON u.HUB = u.HUB",
+            "SELECT FIRST 5 * FROM RATE",
+            "SELECT COUNT(*) FROM CUSTOMER",  # projects nothing
+            "SELECT COUNT(*), MAX(CREDITLIMIT) FROM CUSTOMER",
+            "SELECT COUNT( * ) FROM CONTACT",
+            "SELECT CREDITLIMIT * 2 FROM CUSTOMER",  # multiplication
+            "SELECT (CREDITLIMIT) * (2) FROM CUSTOMER",
+            "SELECT ACCNUM FROM CUSTOMER WHERE CREDITLIMIT * 1.15 > SPEND",
+            "SELECT ACCNUM FROM CUSTOMER c WHERE EXISTS (SELECT 1 FROM CONTACT k WHERE k.ACCNUM = c.ACCNUM)",
+        ],
+    )
+    def test_count_star_multiplication_and_clean_tables_still_pass(self, sql):
+        assert check_open_query(sql)
+
+    def test_the_bypass_never_reaches_the_database_whatever_the_cursor_says(self):
+        # A fake cursor whose names differ from the true source columns —
+        # the review's live shape. The guard must refuse before run() is
+        # called; the cursor names are irrelevant to the decision.
+        out = run_open_query("names", self.BYPASS_A, run=never_runs)
+        assert out["refused"] and "SELECT *" in out["reason"]
+        out = run_open_query("names", self.BYPASS_B, run=never_runs)
+        assert out["refused"] and "SELECT *" in out["reason"]
+
+    def test_the_rule_is_what_refuses(self, monkeypatch):
+        # Fable F3: the suite must not stay green with the rule switched off.
+        # Empty CONTACT's deny set and the same statements pass the gate —
+        # so a green suite proves the deny set, not a coincidence of shape.
+        import mcp_server.open_query as oq
+
+        with pytest.raises(GuardError):
+            check_open_query("SELECT * FROM CONTACT")
+        with pytest.raises(GuardError):
+            check_open_query("SELECT NAME FROM CONTACT WHERE WEBPASSWORD LIKE 'a%'")
+        monkeypatch.setitem(oq.DENIED_COLUMNS, "CONTACT", frozenset())
+        assert check_open_query("SELECT * FROM CONTACT") == ["CONTACT"]
+        assert check_open_query(self.BYPASS_A) == ["CONTACT"]
+        assert check_open_query(
+            "SELECT NAME FROM CONTACT WHERE WEBPASSWORD LIKE 'a%'"
+        ) == ["CONTACT"]
+        # ...and the result drop is off too: a denied name in the cursor is
+        # served when the table's deny set is empty.
+        out = run_open_query(
+            "off",
+            "SELECT NAME FROM CONTACT",
+            run=fake_run(["NAME", "EMAIL"], [("Jo", "j@x")]),
+        )
+        assert out["columns"] == ["NAME", "EMAIL"]
+
+
 class TestDeniedColumnsOnResults:
-    """(b) SELECT * / alias.* reach Firebird; denied columns are dropped by
-    cursor-description name and the note says which."""
+    """(b) the cursor-name drop — defence in depth behind the gate. After F1
+    no star over a withheld table reaches Firebird, so this layer only ever
+    fires if a statement the gate accepted somehow returns a denied column
+    name. Exercised here with a fake cursor that does exactly that."""
 
-    CUSTOMER_COLS = [
-        "ACCNUM",
-        "CUSTNAME",
-        "PHONE",
-        "EMAIL",
-        "BANK",
-        "BANKACCNO",
-        "ICPASS",
-    ]
-
-    def test_select_star_from_customer_drops_the_denied_columns_and_notes_it(self):
+    def test_a_denied_cursor_name_behind_an_accepted_statement_is_dropped(self):
+        cols = ["ACCNUM", "CUSTNAME", "PHONE", "EMAIL", "BANK", "BANKACCNO", "ICPASS"]
         rows = [("A01", "Acme", "011 555", "a@b.c", 3, "12345", "pw")]
         out = run_open_query(
-            "all", "SELECT * FROM CUSTOMER", run=fake_run(self.CUSTOMER_COLS, rows)
+            "all", "SELECT ACCNUM, CUSTNAME FROM CUSTOMER", run=fake_run(cols, rows)
         )
         assert out["ok"]
         assert out["columns"] == ["ACCNUM", "CUSTNAME"]
@@ -342,21 +459,13 @@ class TestDeniedColumnsOnResults:
         for leaked in ("011 555", "a@b.c", "12345", "pw"):
             assert leaked not in dumped
 
-    def test_alias_star_from_contact_drops_them(self):
-        cols = ["ACCNUM", "NAME", "CELL", "PHONE", "EMAIL", "WEBPASSWORD", "HASHED"]
-        rows = [("A01", "Jo", "082", "011", "j@x", "secret", 1)]
-        out = run_open_query("c", "SELECT c.* FROM CONTACT c", run=fake_run(cols, rows))
-        assert out["columns"] == ["ACCNUM", "NAME"]
-        assert out["rows"] == [["A01", "Jo"]]
-        assert "secret" not in str(out)
-
-    def test_star_over_a_join_drops_by_name_across_both_tables(self):
+    def test_drop_is_by_name_across_both_tables(self):
         # RECEIPT.BANK is allowed alone, but beside CUSTOMER it is dropped —
         # and the note says the drop is by name across the statement.
         cols = ["RECEIPT", "BANK", "CUSTNAME"]
         out = run_open_query(
             "r",
-            "SELECT r.*, c.CUSTNAME FROM RECEIPT r JOIN CUSTOMER c ON c.ACCNUM = r.ACCNUM",
+            "SELECT r.RECEIPT, c.CUSTNAME FROM RECEIPT r JOIN CUSTOMER c ON c.ACCNUM = r.ACCNUM",
             run=fake_run(cols, [(1, 3, "Acme")]),
         )
         assert out["columns"] == ["RECEIPT", "CUSTNAME"]
@@ -364,7 +473,9 @@ class TestDeniedColumnsOnResults:
 
     def test_a_result_with_only_withheld_columns_is_refused(self):
         out = run_open_query(
-            "x", "SELECT * FROM CONTACT", run=fake_run(["EMAIL", "CELL"], [("a", "b")])
+            "x",
+            "SELECT NAME FROM CONTACT",
+            run=fake_run(["EMAIL", "CELL"], [("a", "b")]),
         )
         assert out["refused"] and "every column" in out["reason"]
 
@@ -420,6 +531,25 @@ class TestSchemaWithholds:
             "withheld" in line and "SELECT *" in line for line in ctx["read_this_first"]
         )
 
+    def test_free_text_caveat_is_stated_where_the_text_lives(self):
+        # Fable review F4: free text and unflagged contact fields can carry
+        # hand-typed contact detail that no column guard strips — say so on
+        # every table that has them, and once up front.
+        ctx = schema_context()
+        assert any(
+            "free-text" in line.lower() and "cannot strip" in line
+            for line in ctx["read_this_first"]
+        )
+        for table, needle in (
+            ("NOTE", "MEMO"),
+            ("COLLECT", "NOTESINT"),
+            ("CUSTOMER", "SPECINSTRUCTION"),
+            ("VIEW_WBANALYSE", "DESTPERCONTACT"),
+        ):
+            why = ALLOWLIST[table]
+            assert needle in why, table
+            assert "contact" in why.lower(), table
+
     def test_served_column_counts_are_the_survey_minus_the_withheld(self):
         ctx = schema_context("CONTACT")
         assert len(ctx["tables"]["CONTACT"]["columns"]) == 18 - len(
@@ -439,7 +569,7 @@ class TestNewRelations:
 
     @pytest.mark.parametrize("table", NEW_TABLES)
     def test_each_passes_the_gate_and_is_served_by_the_schema(self, table):
-        assert check_open_query(f"SELECT FIRST 5 * FROM {table}") == [table]
+        assert check_open_query(f"SELECT COUNT(*) FROM {table}") == [table]
         ctx = schema_context(table)
         assert ctx["tables"][table]["columns"]
         assert ctx["tables"][table]["row_count"] > 0
