@@ -294,7 +294,10 @@ def billing_frontier_live(run=run_select) -> date:
 
 
 def _traded_pairs(counts: dict[date, tuple[int, float, int]]):
-    return [(d, s) for d, (_, s, _) in counts.items()]
+    """(day, subtotal, rows) — the aggregated shape day_guards accepts. The
+    row count rides along so the MIN_WAYBILLS test judges these days exactly
+    as run_daily's per-row pairs are judged (20 Oct 2026)."""
+    return [(d, s, n) for d, (n, s, _) in counts.items()]
 
 
 def credits_pool(run=run_select) -> tuple[list[str], list[list]]:

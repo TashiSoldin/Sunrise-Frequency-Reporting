@@ -24,19 +24,49 @@ from datetime import date, datetime, timedelta
 TRADING_GUARD = 0.5
 TRADING_WINDOW = 28  # days of history the median is taken over
 
+# ...and once it carries at least this many rows. Shared with the billing
+# frontier below: one row is not evidence that a day happened. Added to the
+# trading-day test on 20 Oct 2026, the second time a value floor alone let a
+# thin day through — see _totals_and_floor.
+MIN_WAYBILLS = 20  # ignore weekend and holiday days carrying a handful
 
-def _totals_and_floor(pairs, today: date) -> tuple[dict, float | None]:
-    """Per-day totals before today, and the traded-value floor (half the
-    median of the trailing window) — one home for the arithmetic
-    last_trading_day and is_completed_trading_day both apply. floor is None
-    when there is no history to compare against."""
+
+def _totals_and_floor(pairs, today: date) -> tuple[dict, dict, float | None]:
+    """Per-day totals and row counts before today, and the traded-value floor
+    — one home for the arithmetic last_trading_day and
+    is_completed_trading_day both apply.
+
+    pairs items are (date, value) — one export row — or (date, value, rows)
+    — a day already aggregated, as the query interface's day counts are. A
+    bare pair counts as one row, so run_daily's per-row iteration and the
+    MCP server's aggregates judge a day the same way.
+
+    The floor is half the median daily total over the trailing window, taken
+    over days with at least MIN_WAYBILLS rows ONLY. Taking it over every day
+    with any rows is how October 2026 went wrong: invoicing landed in batches
+    (R5.48m, R3.54m, R1.95m) with five-to-seven-line days between them, the
+    median over all of those was ~R16k, the floor R8,075, and a Monday with
+    three invoice lines (R16,240) was accepted as the billing day — after a
+    five-line Billing Detail had already shipped on 16 Oct. floor is None when
+    no day in the window is big enough to compare against.
+    """
     totals: dict[date, float] = {}
-    for d, v in pairs:
+    counts: dict[date, int] = {}
+    for item in pairs:
+        d, v = item[0], item[1]
+        n = item[2] if len(item) > 2 else 1
         if isinstance(d, date) and d < today:
             totals[d] = totals.get(d, 0.0) + (v or 0)
-    window = [totals[d] for d in totals if d > today - timedelta(days=TRADING_WINDOW)]
+            counts[d] = counts.get(d, 0) + (n or 0)
+    since = today - timedelta(days=TRADING_WINDOW)
+    window = [totals[d] for d in totals if d > since and counts[d] >= MIN_WAYBILLS]
     floor = TRADING_GUARD * statistics.median(window) if window else None
-    return totals, floor
+    return totals, counts, floor
+
+
+def _traded(totals, counts, floor, d: date) -> bool:
+    """The one test both public functions apply: enough rows AND enough value."""
+    return counts.get(d, 0) >= MIN_WAYBILLS and totals.get(d, 0.0) >= floor
 
 
 def last_trading_day(pairs, today: date) -> date:
@@ -45,25 +75,27 @@ def last_trading_day(pairs, today: date) -> date:
     "Latest date present in the file" is not the same thing. Ten waybills carry
     a Sunday date and two invoices carry a Friday date on which invoicing had
     not yet run — taking the max picked those and produced a flash reporting R0
-    and a billing detail of two lines. So walk back to the newest day whose
-    value clears half the median of the trailing window, which skips weekends,
-    public holidays and days whose invoice run has not happened yet.
+    and a billing detail of two lines. So walk back to the newest day that
+    carries at least MIN_WAYBILLS rows and whose value clears half the median
+    of the trailing window, which skips weekends, public holidays and days
+    whose invoice run has not happened yet.
 
     Falls back to the plain newest day if there is no history to compare
-    against, so a first run or a sparse file still produces something.
+    against, or if nothing clears the bar, so a first run or a sparse file
+    still produces something.
     """
-    totals, floor = _totals_and_floor(pairs, today)
+    totals, counts, floor = _totals_and_floor(pairs, today)
     if not totals:
         return today
     days = sorted(totals)
     if floor is None:
         return days[-1]
-    traded = [d for d in days if totals[d] >= floor]
+    traded = [d for d in days if _traded(totals, counts, floor, d)]
     return traded[-1] if traded else days[-1]
 
 
 def is_completed_trading_day(pairs, d: date, today: date) -> bool:
-    """Did day d actually trade — does its value clear the same floor
+    """Did day d actually trade — does it pass the same rows-and-value test
     last_trading_day walks back to?
 
     For judging an EXPLICITLY requested day: a report built for a dead day
@@ -72,10 +104,10 @@ def is_completed_trading_day(pairs, d: date, today: date) -> bool:
     build. Mirrors last_trading_day's fallback: with no history to compare
     against, any day present in the data counts as traded.
     """
-    totals, floor = _totals_and_floor(pairs, today)
+    totals, counts, floor = _totals_and_floor(pairs, today)
     if floor is None:
         return d in totals
-    return totals.get(d, 0.0) >= floor
+    return _traded(totals, counts, floor, d)
 
 
 # --- plausible dates — the window half of the hoist ---------------------------
@@ -135,9 +167,9 @@ def classify_dates(values, today: date) -> dict[str, int]:
 
 
 # A waybill date counts as invoiced once this share of its waybills have been.
-# One row is not evidence that a day is done.
+# One row is not evidence that a day is done. MIN_WAYBILLS (above) is the
+# other half of that test and is shared with the trading-day guard.
 INVOICED_GUARD = 0.5
-MIN_WAYBILLS = 20  # ignore weekend and holiday days carrying a handful
 
 
 class NoInvoicedDays(ValueError):

@@ -78,11 +78,12 @@ def check_parity():
                     f"  frontier: agg={fr_agg} full={fr_full} "
                     f"{'OK' if fr_agg == fr_full else 'MISMATCH'}"
                 )
+            # (day, subtotal, rows): the row count feeds MIN_WAYBILLS (20 Oct 2026)
             lt_agg = last_trading_day(
-                [(d, v[1]) for d, v in agg_map.items()], date.today()
+                [(d, v[1], v[0]) for d, v in agg_map.items()], date.today()
             )
             lt_full = last_trading_day(
-                [(d, v[1]) for d, v in per.items()], date.today()
+                [(d, v[1], v[0]) for d, v in per.items()], date.today()
             )
             print(
                 f"  last_trading_day: agg={lt_agg} full={lt_full} "
