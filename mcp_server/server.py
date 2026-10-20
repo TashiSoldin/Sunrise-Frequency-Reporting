@@ -142,8 +142,10 @@ def waybill_status(waybill_no: str) -> dict:
 def open_query(question: str, sql: str) -> dict:
     """Ask the database a question none of the named tools cover, with one
     Firebird SELECT. Guarded: SELECT-only, a table allowlist (describe_schema
-    lists it — EVENT and the other 100M+-row tables are off it), a row cap
-    that REFUSES rather than truncates, and a time cap.
+    lists it — EVENT and the other 100M+-row tables are off it), a column
+    deny list (contact, banking and password columns: naming one anywhere in
+    the SQL is refused, SELECT * drops them with a note), a row cap that
+    REFUSES rather than truncates, and a time cap.
 
     Call describe_schema (or read the schema resource) FIRST and write the
     SQL against real column names — never guess them. `question` is the
@@ -163,8 +165,9 @@ def describe_schema(table: str | None = None) -> dict:
     why, their real column names and types (6 Aug 2026 survey), row counts,
     and the Firebird/Parcel Perfect caveats — including the 1899-12-30
     null-date placeholders that make unbounded date aggregates wrong. Pass
-    `table` for one table's columns, omit it for the full map. Same content
-    as the schema://parcel-perfect resource."""
+    `table` for one table's columns, omit it for the full map. Contact,
+    banking and password columns are withheld and not listed — each table
+    says how many. Same content as the schema://parcel-perfect resource."""
     return oq.schema_context(table)
 
 

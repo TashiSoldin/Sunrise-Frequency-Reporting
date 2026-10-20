@@ -21,12 +21,27 @@ from day_guards import PP_NULL_DATE, classify_dates, plausible_window
 
 from mcp_server.open_query import (
     ALLOWLIST,
+    DENIED,
+    DENIED_COLUMNS,
     ROW_CAP,
     check_open_query,
     run_open_query,
     schema_context,
 )
 from mcp_server.sql_guard import GuardError
+
+NEW_TABLES = [
+    "RATE",
+    "MASSRATE",
+    "ITEMRATE",
+    "RATENUM",
+    "SURCHRATE",
+    "SURCHNUM",
+    "AGRATE",
+    "AGRATENUM",
+    "NOTE",
+    "COLLECT",
+]
 
 TODAY = date(2026, 8, 18)
 
@@ -136,6 +151,318 @@ class TestAllowlistRefusals:
             check_open_query(
                 "SELECT * FROM CUSTOMER(SELECT 1 FROM AGENT(SELECT 1 FROM EVENT))"
             )
+
+
+# --- QT-000007 line 2: the column deny list ------------------------------------
+
+
+class TestDeniedColumnsShape:
+    def test_every_allowlisted_table_has_an_entry_even_if_empty(self):
+        # "not covered" must never read as "nothing sensitive".
+        assert set(DENIED_COLUMNS) == set(ALLOWLIST)
+
+    def test_the_coda_name_matched_floor_is_in(self):
+        # The starting list from the QT-000007 page, minus the edge cases
+        # decided from live values (flags and RECEIPT.BANK — see the dict).
+        floor = {
+            "CUSTOMER": {
+                "PHONE",
+                "CELL",
+                "FAX",
+                "EMAIL",
+                "EMAILSMS",
+                "ICPASS",
+                "BANK",
+                "BANKACCNO",
+            },
+            "CONTACT": {"CELL", "PHONE", "EMAIL", "WEBPASSWORD", "RECOVERYEMAIL"},
+            "AGENT": {"ACCNO", "PHONE", "FAX", "CELL", "EMAIL", "ICPASS"},
+            "COLLECT": {"PHONE", "PHONE2", "CELL", "BOOKINGEMAIL"},
+            "INVOICE": {"INVPHONE", "INVPHONE2", "INVCELL"},
+            "VIEW_CUSTOMERS": {"PHONE", "AFTERHOURSPHONE", "CELL", "FAX", "EMAIL"},
+            "VIEW_USERCODE": {"CELL", "EMAIL"},
+            "VIEW_WBANALYSE": {"ORIGPERPHONE", "DESTPERPHONE"},
+            "BRANCH": {"EMAIL"},
+        }
+        for table, cols in floor.items():
+            assert cols <= DENIED_COLUMNS[table], table
+
+    def test_beyond_the_name_match(self):
+        # Read, not regexed: after-hours numbers, the IC login, the invoice PDFs.
+        assert {"AFTHOURSNO", "ICUSER"} <= DENIED_COLUMNS["CUSTOMER"]
+        assert "AFTERHOURS" in DENIED_COLUMNS["AGENT"]
+        assert {"PDFCOPY", "PDFORIG"} <= DENIED_COLUMNS["INVOICE"]
+        assert {"SECRETKEY", "HASHED", "MFA"} <= DENIED_COLUMNS["CONTACT"]
+
+    def test_the_decided_edge_cases(self):
+        # Flags are not addresses; RECEIPT.BANK is a bank code on Sunrise's
+        # own receipts, not a customer's banking detail.
+        assert (
+            not {"EMAILINVIMAGE", "PODFAX", "PODSINGLEFAX", "PODEMAIL"}
+            & DENIED_COLUMNS["CUSTOMER"]
+        )
+        assert "BANK" not in DENIED_COLUMNS["RECEIPT"]
+        assert DENIED_COLUMNS["RATE"] == frozenset()
+
+    def test_every_denied_column_exists_in_the_survey(self):
+        ctx_cols = {
+            t: {c["name"] for c in info["columns"]}
+            for t, info in schema_context_raw()["tables"].items()
+        }
+        for table, cols in DENIED_COLUMNS.items():
+            missing = cols - ctx_cols[table]
+            assert not missing, (table, missing)
+
+
+def schema_context_raw():
+    from mcp_server.open_query import _schema_data
+
+    return _schema_data()
+
+
+class TestDeniedColumnsGate:
+    """(a) a denied name as an identifier anywhere refuses — the oracle rule."""
+
+    def test_select_list_refuses_and_names_the_column(self):
+        with pytest.raises(GuardError, match="BANKACCNO \\(withheld on CUSTOMER\\)"):
+            check_open_query("SELECT CUSTNAME, BANKACCNO FROM CUSTOMER")
+
+    def test_where_on_a_password_is_an_oracle_and_refuses(self):
+        with pytest.raises(GuardError, match="WEBPASSWORD"):
+            check_open_query(
+                "SELECT CUSTNAME FROM CUSTOMER c JOIN CONTACT k ON k.ACCNUM = c.ACCNUM "
+                "WHERE k.WEBPASSWORD LIKE 'a%'"
+            )
+        with pytest.raises(GuardError, match="WEBPASSWORD"):
+            check_open_query("SELECT NAME FROM CONTACT WHERE WEBPASSWORD LIKE 'a%'")
+
+    def test_order_by_group_by_having_alias_and_expression_refuse(self):
+        for sql in (
+            "SELECT NAME FROM CONTACT ORDER BY EMAIL",
+            "SELECT COUNT(*) FROM CONTACT GROUP BY CELL",
+            "SELECT ACCNUM FROM CONTACT GROUP BY ACCNUM HAVING MAX(PHONE) > '0'",
+            "SELECT UPPER(EMAIL) AS E FROM CONTACT",
+            "SELECT NAME AS EMAIL FROM CONTACT",
+            "SELECT SUBSTRING(k.WEBPASSWORD FROM 1 FOR 1) FROM CONTACT k",
+            (
+                "SELECT NAME FROM CONTACT WHERE ACCNUM IN "
+                "(SELECT ACCNUM FROM CUSTOMER WHERE BANKACCNO IS NOT NULL)"
+            ),
+            "SELECT X FROM (SELECT EMAIL AS X FROM CONTACT) t",
+            "WITH c AS (SELECT CELL FROM CONTACT) SELECT * FROM c",
+            (
+                "SELECT NAME FROM CONTACT WHERE EXISTS "
+                "(SELECT 1 FROM CUSTOMER WHERE CUSTOMER.PHONE = CONTACT.NAME)"
+            ),
+        ):
+            with pytest.raises(GuardError, match="withheld"):
+                check_open_query(sql)
+
+    def test_case_and_whitespace_do_not_dodge_it(self):
+        with pytest.raises(GuardError, match="EMAIL"):
+            check_open_query("select   name\nfrom contact where email like 'a%'")
+
+    def test_the_message_says_why(self):
+        with pytest.raises(GuardError, match="refused, not just hidden"):
+            check_open_query("SELECT EMAIL FROM CONTACT")
+
+    def test_a_denied_name_in_a_string_literal_does_not_refuse(self):
+        # The guard strips literals: 'WEBPASSWORD' here is data, not a column.
+        assert check_open_query(
+            "SELECT NAME FROM CONTACT WHERE NAME = 'WEBPASSWORD' OR NAME = 'EMAIL'"
+        ) == ["CONTACT"]
+        assert check_open_query(
+            "SELECT NAME FROM CONTACT -- EMAIL\n WHERE NAME = 'x' /* PHONE */"
+        ) == ["CONTACT"]
+
+    def test_a_denied_name_on_an_unreferenced_table_is_not_in_play(self):
+        # MANIFEST.NOTE is a column; NOTE is also a table — neither is denied.
+        # And EMAIL is denied on CONTACT, but a query that never references
+        # CONTACT is not checked against CONTACT's list.
+        assert check_open_query("SELECT NOTE FROM MANIFEST") == ["MANIFEST"]
+        assert check_open_query("SELECT RATE, ACCNUM FROM RATE") == ["RATE"]
+
+    def test_over_refusal_on_a_coincidental_name_is_reported_not_silent(self):
+        # RECEIPT.BANK is allowed; CUSTOMER.BANK is not. A query that joins
+        # both and names BANK is refused — by name across the statement — and
+        # the message says exactly that, naming the table that carries the
+        # allowed same-named column.
+        with pytest.raises(GuardError) as e:
+            check_open_query(
+                "SELECT r.BANK, COUNT(*) FROM RECEIPT r "
+                "JOIN CUSTOMER c ON c.ACCNUM = r.ACCNUM GROUP BY r.BANK"
+            )
+        msg = str(e.value)
+        assert "BANK (withheld on CUSTOMER)" in msg
+        assert "same-named column on RECEIPT" in msg
+        assert "matched by name" in msg
+        # ...and on its own, RECEIPT.BANK answers.
+        assert check_open_query("SELECT BANK, COUNT(*) FROM RECEIPT GROUP BY BANK") == [
+            "RECEIPT"
+        ]
+
+    def test_the_refusal_reason_carries_no_data(self):
+        out = run_open_query(
+            "who",
+            "SELECT NAME FROM CONTACT WHERE WEBPASSWORD = 'hunter2'",
+            run=fake_run([], []),
+        )
+        assert out["refused"]
+        assert "hunter2" not in out["reason"]
+        assert "WEBPASSWORD" in out["reason"]
+
+
+class TestDeniedColumnsOnResults:
+    """(b) SELECT * / alias.* reach Firebird; denied columns are dropped by
+    cursor-description name and the note says which."""
+
+    CUSTOMER_COLS = [
+        "ACCNUM",
+        "CUSTNAME",
+        "PHONE",
+        "EMAIL",
+        "BANK",
+        "BANKACCNO",
+        "ICPASS",
+    ]
+
+    def test_select_star_from_customer_drops_the_denied_columns_and_notes_it(self):
+        rows = [("A01", "Acme", "011 555", "a@b.c", 3, "12345", "pw")]
+        out = run_open_query(
+            "all", "SELECT * FROM CUSTOMER", run=fake_run(self.CUSTOMER_COLS, rows)
+        )
+        assert out["ok"]
+        assert out["columns"] == ["ACCNUM", "CUSTNAME"]
+        assert out["rows"] == [["A01", "Acme"]]
+        note = next(n for n in out["notes"] if n.startswith("Withheld columns"))
+        for c in ("PHONE", "EMAIL", "BANK", "BANKACCNO", "ICPASS"):
+            assert c in note
+        # and no value of a withheld column survives anywhere in the answer
+        dumped = str(out)
+        for leaked in ("011 555", "a@b.c", "12345", "pw"):
+            assert leaked not in dumped
+
+    def test_alias_star_from_contact_drops_them(self):
+        cols = ["ACCNUM", "NAME", "CELL", "PHONE", "EMAIL", "WEBPASSWORD", "HASHED"]
+        rows = [("A01", "Jo", "082", "011", "j@x", "secret", 1)]
+        out = run_open_query("c", "SELECT c.* FROM CONTACT c", run=fake_run(cols, rows))
+        assert out["columns"] == ["ACCNUM", "NAME"]
+        assert out["rows"] == [["A01", "Jo"]]
+        assert "secret" not in str(out)
+
+    def test_star_over_a_join_drops_by_name_across_both_tables(self):
+        # RECEIPT.BANK is allowed alone, but beside CUSTOMER it is dropped —
+        # and the note says the drop is by name across the statement.
+        cols = ["RECEIPT", "BANK", "CUSTNAME"]
+        out = run_open_query(
+            "r",
+            "SELECT r.*, c.CUSTNAME FROM RECEIPT r JOIN CUSTOMER c ON c.ACCNUM = r.ACCNUM",
+            run=fake_run(cols, [(1, 3, "Acme")]),
+        )
+        assert out["columns"] == ["RECEIPT", "CUSTNAME"]
+        assert any("by name across" in n for n in out["notes"])
+
+    def test_a_result_with_only_withheld_columns_is_refused(self):
+        out = run_open_query(
+            "x", "SELECT * FROM CONTACT", run=fake_run(["EMAIL", "CELL"], [("a", "b")])
+        )
+        assert out["refused"] and "every column" in out["reason"]
+
+    def test_no_note_when_nothing_was_withheld(self):
+        out = run_open_query(
+            "h",
+            "SELECT * FROM HUB",
+            run=fake_run(["HUB", "NAME"], [("JNB", "Jo'burg")]),
+        )
+        assert out["ok"] and not any("Withheld" in n for n in out["notes"])
+
+    def test_blob_bytes_are_decoded_not_repr(self):
+        out = run_open_query(
+            "n",
+            "SELECT FIRST 1 MEMO FROM NOTE",
+            run=fake_run(["MEMO"], [(b"1 box short\r\n",)]),
+        )
+        assert out["rows"] == [["1 box short"]]
+
+
+class TestSchemaWithholds:
+    def test_schema_context_carries_none_of_the_denied_names(self):
+        import json
+        import re
+
+        ctx = schema_context()
+        for table, cols in DENIED_COLUMNS.items():
+            served = {c["name"] for c in ctx["tables"][table]["columns"]}
+            assert not (cols & served), (table, cols & served)
+        # Beyond the column lists, the names must not surface anywhere else in
+        # the resource (justifications, hints) — except a name that is
+        # legitimately served on another table (RECEIPT.BANK is a bank code
+        # and stays; CUSTOMER.BANK is withheld), which is per-table by design.
+        dumped = json.dumps(ctx)
+        served_somewhere = {
+            c["name"] for info in ctx["tables"].values() for c in info["columns"]
+        }
+        every_denied = set().union(*DENIED_COLUMNS.values())
+        for name in every_denied - served_somewhere:
+            assert not re.search(rf"\b{name}\b", dumped), name
+        assert "BANK" in served_somewhere  # the RECEIPT decision, pinned
+
+    def test_each_table_says_withheld_or_none(self):
+        ctx = schema_context()
+        assert ctx["tables"]["CUSTOMER"]["withheld_columns"].startswith(
+            f"{len(DENIED_COLUMNS['CUSTOMER'])} contact/banking/password"
+        )
+        assert ctx["tables"]["RATE"]["withheld_columns"].startswith("none")
+
+    def test_read_this_first_has_the_one_line(self):
+        ctx = schema_context()
+        assert any(
+            "withheld" in line and "SELECT *" in line for line in ctx["read_this_first"]
+        )
+
+    def test_served_column_counts_are_the_survey_minus_the_withheld(self):
+        ctx = schema_context("CONTACT")
+        assert len(ctx["tables"]["CONTACT"]["columns"]) == 18 - len(
+            DENIED_COLUMNS["CONTACT"]
+        )
+
+
+# --- QT-000007 line 1: the ten new relations ----------------------------------
+
+
+class TestNewRelations:
+    @pytest.mark.parametrize("table", NEW_TABLES)
+    def test_each_is_allowlisted_with_a_survey_justification(self, table):
+        assert table in ALLOWLIST
+        assert "rows" in ALLOWLIST[table]  # cites the survey count
+        assert table not in DENIED
+
+    @pytest.mark.parametrize("table", NEW_TABLES)
+    def test_each_passes_the_gate_and_is_served_by_the_schema(self, table):
+        assert check_open_query(f"SELECT FIRST 5 * FROM {table}") == [table]
+        ctx = schema_context(table)
+        assert ctx["tables"][table]["columns"]
+        assert ctx["tables"][table]["row_count"] > 0
+
+    def test_routing_and_eventscans_stay_refused_until_lines_3_4(self):
+        with pytest.raises(GuardError, match="window"):
+            check_open_query("SELECT FIRST 1 * FROM ROUTING")
+        with pytest.raises(GuardError, match="window"):
+            check_open_query("SELECT FIRST 1 * FROM VIEW_EVENTSCANS")
+
+    def test_the_row_cap_refusal_names_the_big_table(self):
+        rows = [(i,) for i in range(ROW_CAP + 1)]
+        out = run_open_query(
+            "all rates", "SELECT RATE FROM RATE", run=fake_run(["RATE"], rows)
+        )
+        assert out["refused"]
+        assert "RATE: 680,552 rows" in out["reason"]
+        assert "filter by account" in out["reason"]
+
+    def test_the_row_cap_refusal_is_unchanged_for_a_small_table(self):
+        rows = [(i,) for i in range(ROW_CAP + 1)]
+        out = run_open_query("hubs", "SELECT HUB FROM HUB", run=fake_run(["HUB"], rows))
+        assert out["refused"] and out["reason"].endswith("genuinely wanted.")
 
 
 # --- execution: caps and shaping ------------------------------------------------

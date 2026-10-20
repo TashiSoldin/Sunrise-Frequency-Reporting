@@ -7,6 +7,10 @@ The 3h bought the fence, not per-question logic; the fence is:
   transaction and the grant-less role behind it);
 - a table allowlist — every relation a query touches must be on it, and every
   entry is justified from the 6 Aug schema survey (Database Reference folder);
+- a per-table column deny list (QT-000007 line 2, 20 Oct 2026) — password,
+  banking and contact columns are refused when named anywhere in the SQL
+  (a WHERE on a password column is an oracle) and dropped from SELECT *
+  results; the schema resource omits them;
 - row and time caps — a cap that is HIT refuses the answer rather than
   truncating silently, the same rule every revenue fetcher applies;
 - date plausibility flags on every date column in the result — Parcel Perfect
@@ -44,7 +48,13 @@ from mcp_server.sql_guard import (
     assert_select_only,
 )
 
-__all__ = ["ALLOWLIST", "check_open_query", "run_open_query", "schema_context"]
+__all__ = [
+    "ALLOWLIST",
+    "DENIED_COLUMNS",
+    "check_open_query",
+    "run_open_query",
+    "schema_context",
+]
 
 # --- caps ---------------------------------------------------------------------
 # An open answer is a read of raw rows, not an extract feeding a report — 500
@@ -99,8 +109,16 @@ ALLOWLIST: dict[str, str] = {
         "stray past the named tools carry the honest-boundary caveat."
     ),
     # Parties.
-    "CUSTOMER": "Customer master (1,959 rows) — accounts, names, contact detail.",
-    "CONTACT": "Customer contact people (4,591 rows, 18 cols).",
+    "CUSTOMER": (
+        "Customer master (1,959 rows, 164 cols) — accounts, names, terms, "
+        "rate and surcharge defaults. Phone/fax/email, banking and the "
+        "inter-company login columns are withheld (DENIED_COLUMNS)."
+    ),
+    "CONTACT": (
+        "Customer contact people (4,591 rows, 18 cols) — names, positions, "
+        "cost centres. Phone/cell/email and the web-login password columns "
+        "are withheld (DENIED_COLUMNS)."
+    ),
     "AGENT": (
         "Agents/vehicles (1,220 rows, 70 cols) — carries VEHICLE, REGNO, "
         "CAPACITY, VOLCAPACITY, VEHICLEID, USEDRIVER, GPSMODE: the readable "
@@ -131,7 +149,232 @@ ALLOWLIST: dict[str, str] = {
     "AREA": "Area lookup (715 rows, 4 cols).",
     "BRANCH": "Branch lookup (16 rows, 26 cols).",
     "HOLIDAY": "Public holidays (50 rows, 2 cols) — the trading-calendar edge.",
+    # QT-000007 line 1 (Reuven, approved 19 Oct 2026): customer rates, agent
+    # rates, waybill notes and collections. Row counts are the 6 Aug 2026
+    # survey; every one SELECT-granted to the BI login in
+    # schema_privileges_2026-08-06.csv and confirmed with a live SELECT FIRST 1
+    # on 20 Oct 2026.
+    "RATE": (
+        "Customer rate cards (680,552 rows, 26 cols) — one row per account x "
+        "rate number x service x origin/destination hub (or postcode): the "
+        "handling, docs, non-docs and per-kg surcharge parameters a waybill "
+        "is priced from. Unbounded reads hit the row cap — filter by ACCNUM "
+        "and RATENUM."
+    ),
+    "MASSRATE": (
+        "Mass-break rate lines (774,355 rows, 7 cols) — the TOKG / CHARGE "
+        "steps of each RATE row (RATE is the key). Filter through RATE by "
+        "account; an unbounded read hits the row cap."
+    ),
+    "ITEMRATE": (
+        "Per-item rate lines (8,116 rows, 10 cols) — charges per default item "
+        "(DEFITEM) for a RATE row."
+    ),
+    "RATENUM": (
+        "Rate-card versions (6,656 rows, 4 cols) — which RATENUM applies to an "
+        "account from which STARTDATE; the key for 'what rate was in force'."
+    ),
+    "SURCHRATE": (
+        "Surcharge rate rules (477,914 rows, 20 cols) — per surcharge code, "
+        "account or customer group, service and lane: amount, percentage "
+        "floor and ceiling. Filter by ACCNUM/CUSTGROUP; unbounded reads hit "
+        "the row cap."
+    ),
+    "SURCHNUM": (
+        "Surcharge rate versions (61,234 rows, 4 cols) — SURCHNUM in force "
+        "per account from STARTDATE."
+    ),
+    "AGRATE": (
+        "Agent (carrier) cost rates (33,382 rows, 21 cols) — what Sunrise pays "
+        "an agent per lane/service: handling, non-docs, per-kg surcharge, "
+        "capacity. Joins MANIFEST.AGRATE and AGENT."
+    ),
+    "AGRATENUM": (
+        "Agent rate versions (3,384 rows, 3 cols) — AGRATENUM in force per "
+        "agent from STARTDATE."
+    ),
+    "NOTE": (
+        "Waybill notes (117,916 rows, 27 cols) — the free-text notes staff "
+        "attach to a waybill (MEMO blob, MEMOSTRING first 80 chars), typed by "
+        "NOTETYPE, with due/close dates and claim references. The text is "
+        "operational (short deliveries, damages, delivery instructions, "
+        "customer-service correspondence) and occasionally contains contact "
+        "detail typed in by hand — a column guard cannot strip that; relay "
+        "notes as the operational record they are, not as a contact source."
+    ),
+    "COLLECT": (
+        "Collection bookings (880,487 rows, 68 cols) — who booked a "
+        "collection, where, when, assigned agent/driver, status, pieces and "
+        "mass. Phone/cell/email columns are withheld (DENIED_COLUMNS); NOTES "
+        "is free text. Filter by COLLECTIONDATE or ACCNUM — unbounded reads "
+        "hit the row cap."
+    ),
 }
+
+# --- column deny list (QT-000007 line 2, 20 Oct 2026) ---------------------------
+# Relation -> column names never served on the open path. Built from the
+# 6 Aug 2026 column survey (schema_columns_2026-08-06.csv) by name match
+# (PASS|PWD|BANK|ACCNO|TEL|PHONE|CELL|FAX|EMAIL|MOBILE) as the floor, then
+# read column by column — the edge cases below were decided from live values
+# on 20 Oct 2026, never from the name alone. Enforced twice: a denied name
+# appearing as an identifier ANYWHERE in the SQL refuses the query (a WHERE
+# or ORDER BY on a password column is an oracle, so hiding the column is not
+# enough), and a denied column arriving through SELECT * / alias.* is dropped
+# from the result with a note. Matching is on the bare column name across
+# every table the statement references — a coincidental same-named column on
+# another table in the same query is refused too, and the message says so.
+#
+# Every allowlisted table has an entry, even an empty one, so "not covered"
+# cannot be mistaken for "nothing sensitive" (pinned by a test).
+#
+# What stays: person NAMES (CONTACT.NAME, CUSTOMER.CONTACT, COLLECT.CONTACT,
+# BOOKINGCONTACT, INVCONTACT, ORIGPERCONTACT, PODRECIPIENT) — waybill_status
+# already serves recipient names and the quote's words were password,
+# banking, phone, cell, email; street ADDRESS lines — they are the freight
+# data; WEBSITE — public; VAT/company registration numbers — printed on every
+# invoice; notification FLAGS whose names contain EMAIL/FAX/SMS (see
+# CUSTOMER); free text (NOTE.MEMO, COLLECT.NOTES) — see the NOTE
+# justification.
+DENIED_COLUMNS: dict[str, frozenset[str]] = {
+    "CUSTOMER": frozenset(
+        {
+            # contact detail
+            "PHONE",
+            "AFTHOURSNO",  # after-hours phone number — missed by the name
+            #   regex, caught by reading the list (VARCHAR(30) next to PHONE)
+            "CELL",
+            "FAX",
+            "EMAIL",
+            "EMAILSMS",  # VARCHAR(40) email-to-SMS gateway address: an address
+            #   column by type (empty on every row live, but the shape is an
+            #   address, so withheld)
+            # banking. CUSTOMER.BANK is a SMALLINT 1–8 bank code (live: 1,700
+            # NULL, the rest spread over 8 values) — on its own it names a
+            # bank, but beside BANKACCNO it is the customer's banking detail
+            # and Reuven's ask was "banking" — both withheld.
+            "BANK",
+            "BANKACCNO",
+            # credentials for the inter-company (IC) link: user name,
+            # password and the endpoint they log in to. ICPASS is populated on
+            # 43 customers live (CHAR(20), plain text).
+            "ICUSER",
+            "ICPASS",
+            "ICDNSPATH",
+        }
+    ),
+    # Decided NOT to withhold on CUSTOMER, from live values 20 Oct 2026:
+    # EMAILINVIMAGE, PODEMAIL, PODFAX, PODSINGLEFAX, PODSINGLEEMAIL,
+    # PODSINGLESMS, EVENTEMAIL, EVENTORIGEMAIL, EVENTDESTEMAIL, EVENTORIGSMS,
+    # EVENTDESTSMS, SMSDELNOTIFY, DISABLEINVIMAGE, INVMAILMODE — every one a
+    # SMALLINT (NULL / 0 / 1 / 2 live): notification preference flags, not
+    # addresses. The PODFAX pair (PODFAX, PODSINGLEFAX) are 0/NULL on every
+    # row. SMSDELMSG is the SMS template text, not a number.
+    "CONTACT": frozenset(
+        {
+            "CELL",
+            "PHONE",
+            "EMAIL",
+            "RECOVERYEMAIL",
+            # the web-portal login: password (populated on all 4,766 rows
+            # live; HASHED=1 on 1,319 of them, i.e. most are stored in clear),
+            # the MFA secret, and the two flags that describe how the
+            # password is stored / whether MFA is on — password metadata is
+            # withheld with the password.
+            "WEBPASSWORD",
+            "SECRETKEY",
+            "HASHED",
+            "MFA",
+        }
+    ),
+    # CONTACT.PODEMAIL is a SMALLINT flag (NULL on every row live) — stays.
+    "AGENT": frozenset(
+        {
+            "PHONE",
+            "AFTERHOURS",  # after-hours phone (VARCHAR(30)) — name regex
+            #   misses it; same decision as CUSTOMER.AFTHOURSNO
+            "FAX",
+            "CELL",
+            "EMAIL",
+            # ACCNO: live values are 5–6 char alphanumerics (AG…, KS…, 30…),
+            # populated on 361 of 1,227 agents, zero of them matching a
+            # CUSTOMER.ACCNUM — it reads as the agent's creditor/ledger
+            # account reference, not a bank account. Withheld anyway: the
+            # name says account number, nothing operational needs it, and
+            # the cost of withholding is nil. Revisit if Reuven asks for it.
+            "ACCNO",
+            # inter-company link credentials, as on CUSTOMER (ICPASS is empty
+            # on every agent live — withheld on shape, not on content).
+            "ICUSER",
+            "ICPASS",
+            "ICDNSPATH",
+        }
+    ),
+    "COLLECT": frozenset({"PHONE", "PHONE2", "CELL", "BOOKINGEMAIL"}),
+    # COLLECT.EVENTEMAIL is a SMALLINT flag (NULL/0/1 live) — stays.
+    "INVOICE": frozenset(
+        {
+            "INVPHONE",
+            "INVPHONE2",
+            "INVCELL",
+            # the stored invoice PDFs: binary blobs that carry the printed
+            # banking details and the customer's full address block — not
+            # queryable data, and 500 of them is not an answer.
+            "PDFCOPY",
+            "PDFORIG",
+        }
+    ),
+    # RECEIPT.BANK: SMALLINT 1–8 (live: NULL 50,925 · 3 26,635 · 7 1,355 …)
+    # — the code of the bank the receipt was paid INTO, i.e. which of
+    # Sunrise's own accounts, not a customer's banking detail and not an
+    # account number. Stays queryable: it is how receipts split by bank.
+    "RECEIPT": frozenset(),
+    "VIEW_CUSTOMERS": frozenset({"PHONE", "AFTERHOURSPHONE", "CELL", "FAX", "EMAIL"}),
+    "VIEW_USERCODE": frozenset({"CELL", "EMAIL"}),
+    # STAFFID stays: short codes/initials live (3–6 chars), not ID numbers.
+    "VIEW_WBANALYSE": frozenset({"ORIGPERPHONE", "DESTPERPHONE"}),
+    "BRANCH": frozenset({"EMAIL"}),
+    # Nothing sensitive by name or by reading the column list:
+    "VIEW_SURCHARGES": frozenset(),
+    "MANIFEST": frozenset(),
+    "AGENTDRIVER": frozenset(),
+    "ACTROUTE": frozenset(),
+    "ACTLEG": frozenset(),
+    "SERVICE": frozenset(),
+    "SERVICEGROUP": frozenset(),
+    "HUB": frozenset(),
+    "PLACE": frozenset(),
+    "AREA": frozenset(),
+    "HOLIDAY": frozenset(),
+    # The rate tables carry no contact or banking columns (survey, re-read
+    # 20 Oct): keys, lanes, charge parameters and dates only.
+    "RATE": frozenset(),
+    "MASSRATE": frozenset(),
+    "ITEMRATE": frozenset(),
+    "RATENUM": frozenset(),
+    "SURCHRATE": frozenset(),
+    "SURCHNUM": frozenset(),
+    "AGRATE": frozenset(),
+    "AGRATENUM": frozenset(),
+    # NOTE: no name-matched columns; MEMO/MEMOSTRING are free text — see the
+    # ALLOWLIST justification. CONTACT here is an INTEGER key, not a name.
+    "NOTE": frozenset(),
+}
+
+# One sentence for refusal messages and the schema resource.
+_WITHHELD_WHY = (
+    "contact (phone/cell/fax/email), banking and password/credential columns "
+    "are not served on the open path (QT-000007, Reuven 16 Oct 2026)"
+)
+
+
+def _denied_for(tables) -> dict[str, list[str]]:
+    """Denied column name -> the referenced tables it is denied on."""
+    out: dict[str, list[str]] = {}
+    for t in tables:
+        for c in DENIED_COLUMNS.get(t, ()):
+            out.setdefault(c, []).append(t)
+    return out
+
 
 # Known relations that are deliberately NOT queryable, with the reason said
 # outright — a tailored refusal beats "not on the allowlist" for the tables
@@ -151,11 +394,16 @@ DENIED: dict[str, str] = {
     "SCANLOG": "SCANLOG (3.8M rows) is off the allowlist — event-family scale.",
     "WAYEVENT": "WAYEVENT (573k rows) is off the allowlist — event-family scale.",
     "VIEW_EVENTSCANS": (
-        "VIEW_EVENTSCANS is off the allowlist — it reads over the EVENT family, "
-        "which is a separate quote with a query plan first."
+        "VIEW_EVENTSCANS (over the 113M-row EVENT family) is not yet on the "
+        "open path — QT-000007 lines 3–4 add it with a waybill or date window "
+        "required per query; until that lands, waybill_status answers the "
+        "last recorded movement."
     ),
     "CONTENTS": "CONTENTS (7.3M rows) is off the allowlist.",
-    "ROUTING": "ROUTING (6.0M rows) is off the allowlist.",
+    "ROUTING": (
+        "ROUTING (6.0M rows) is not yet on the open path — QT-000007 lines "
+        "3–4 add it with a waybill or date window required per query."
+    ),
     "WAYREF": "WAYREF (5.3M rows) is off the allowlist.",
     "GPSLOG": "GPSLOG (4.6M rows) is off the allowlist.",
     "WAYEDIT": "WAYEDIT (20.2M rows) is an edit log and off the allowlist.",
@@ -276,10 +524,50 @@ def _referenced_tables(cleaned: str) -> list[str]:
     return names
 
 
+def _check_denied_columns(cleaned: str, tables: list[str]) -> None:
+    """Refuse if any column denied on any referenced table appears as an
+    identifier anywhere in the cleaned SQL — select list, expression, alias,
+    WHERE, HAVING, ORDER BY, GROUP BY, subquery. String literals and comments
+    are already blanked, so a denied NAME inside a literal is data, not a
+    reference. Matching is on the bare name: `c.EMAIL`, `EMAIL`, `UPPER(EMAIL)`
+    and `x AS EMAIL` all tokenise to the identifier EMAIL."""
+    denied = _denied_for(tables)
+    if not denied:
+        return
+    idents = {m.group(0).upper() for m in _IDENT.finditer(cleaned)}
+    hits = sorted(idents & set(denied))
+    if not hits:
+        return
+    parts = []
+    for col in hits:
+        on = ", ".join(sorted(denied[col]))
+        # Over-refusal is reported, never silent: name the OTHER referenced
+        # tables that carry a column of the same name and are not denied it
+        # (RECEIPT.BANK beside CUSTOMER.BANK is the live example).
+        same_name_elsewhere = [
+            t for t in tables if t not in denied[col] and col in _columns_of(t)
+        ]
+        note = ""
+        if same_name_elsewhere:
+            note = (
+                " — matched by name across every table in this statement, so "
+                f"a same-named column on {', '.join(same_name_elsewhere)} is "
+                "refused here too; query that table without "
+                f"{on} in the statement"
+            )
+        parts.append(f"{col} (withheld on {on}){note}")
+    raise GuardError(
+        f"the query names a withheld column: {'; '.join(parts)}. "
+        f"{_WITHHELD_WHY}. Naming one anywhere — select list, expression, "
+        "alias, WHERE, ORDER BY or subquery — is refused, not just hidden, "
+        "because a filter on it would leak the value."
+    )
+
+
 def check_open_query(sql: str) -> list[str]:
     """Full gate: SELECT-only, no quoted identifiers, every relation in table
-    position on the allowlist. Returns the tables referenced; raises
-    GuardError with the reason otherwise."""
+    position on the allowlist, no withheld column named anywhere. Returns the
+    tables referenced; raises GuardError with the reason otherwise."""
     if '"' in sql:
         raise GuardError(
             "quoted identifiers are not supported on the open path — every "
@@ -305,7 +593,9 @@ def check_open_query(sql: str) -> list[str]:
             f"{t} is not on the open-path allowlist. Queryable relations: "
             + ", ".join(sorted(ALLOWLIST))
         )
-    return sorted(set(tables))
+    tables = sorted(set(tables))
+    _check_denied_columns(cleaned, tables)
+    return tables
 
 
 # --- execution ------------------------------------------------------------------
@@ -315,6 +605,11 @@ def _value(v):
     """Serialise for the answer: dates/times to ISO, CHAR padding stripped."""
     if isinstance(v, str):
         v = v.strip()
+        return v if v else None
+    if isinstance(v, (bytes, bytearray)):
+        # Binary-subtype BLOBs (NOTE.MEMO) come back as bytes; the connection
+        # charset is latin1, so decode the same way — never leak b'...' repr.
+        v = bytes(v).decode("latin1", errors="replace").strip()
         return v if v else None
     if isinstance(v, (_dt.datetime, _dt.time)):
         return v.isoformat(timespec="seconds")
@@ -413,12 +708,34 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
             f"the query returned more than {ROW_CAP} rows — refusing to "
             "truncate silently. Aggregate in SQL (COUNT/SUM/GROUP BY), add "
             f"WHERE bounds, or SELECT FIRST {ROW_CAP} explicitly if a sample "
-            "is genuinely wanted."
+            f"is genuinely wanted.{_size_hint(tables)}"
         )
+
+    # Second enforcement of the column deny list: SELECT * and alias.* reach
+    # here with every column of the table, so drop by cursor-description
+    # name and say so. (A denied column NAMED in the SQL never gets this far
+    # — check_open_query refused it.)
+    denied = _denied_for(tables)
+    withheld = [c for c in columns if c.upper() in denied]
+    if withheld:
+        keep = [i for i, c in enumerate(columns) if c.upper() not in denied]
+        if not keep:
+            return _refused(
+                "every column of the result is withheld "
+                f"({', '.join(withheld)}) — {_WITHHELD_WHY}"
+            )
+        columns = [columns[i] for i in keep]
+        rows = [tuple(r[i] for i in keep) for r in rows]
 
     notes = [
         "Open-path answer: a raw read, not a verified report figure.",
     ]
+    if withheld:
+        notes.append(
+            f"Withheld columns (not in this result): {', '.join(withheld)} — "
+            f"{_WITHHELD_WHY}. Dropped by name across every table in the "
+            "statement."
+        )
     if not rows:
         notes.append(
             "0 rows matched. That is the absence of MATCHING ROWS, not a "
@@ -442,6 +759,27 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
         "warnings": _date_warnings(columns, rows),
         "notes": notes,
     }
+
+
+def _size_hint(tables: list[str]) -> str:
+    """' (RATE: 680,552 rows at the 6 Aug survey)' for the big tables in a
+    capped query — so the refusal on a rate table says why 500 was never
+    going to hold it. Empty when nothing referenced is large."""
+    try:
+        data = _schema_data()["tables"]
+    except Exception:
+        return ""
+    big = []
+    for t in tables:
+        n = data.get(t, {}).get("row_count")
+        if n and n > ROW_CAP * 20:
+            big.append(f"{t}: {n:,} rows")
+    if not big:
+        return ""
+    return (
+        f" ({'; '.join(big)} at the {_schema_data()['survey_date']} survey — "
+        "filter by account, agent or date before reading rows)"
+    )
 
 
 def _refused(reason: str, audit_reason: str | None = None) -> dict:
@@ -473,18 +811,39 @@ def _schema_data() -> dict:
     return json.loads(_SCHEMA_JSON.read_text())
 
 
+def _columns_of(table: str) -> set[str]:
+    """Survey column names of one allowlisted table (empty if unknown)."""
+    try:
+        info = _schema_data()["tables"].get(table, {})
+    except Exception:
+        return set()
+    return {c["name"].upper() for c in info.get("columns", ())}
+
+
 def schema_context(table: str | None = None) -> dict:
     """The schema resource content: real column names/types from the 6 Aug
     survey for the allowlisted tables, each with its justification, plus the
     caveats a correct Firebird query against PP needs."""
     data = _schema_data()
-    tables = {
-        name: {
+    tables = {}
+    for name, info in data["tables"].items():
+        denied = DENIED_COLUMNS.get(name, frozenset())
+        served = [c for c in info["columns"] if c["name"].upper() not in denied]
+        n_withheld = len(info["columns"]) - len(served)
+        tables[name] = {
             "why_queryable": ALLOWLIST[name],
-            **info,
+            **{k: v for k, v in info.items() if k != "columns"},
+            "columns": served,
+            # The names themselves are not listed: this resource must carry
+            # none of them (pinned by a test). Naming one in SQL is refused.
+            "withheld_columns": (
+                f"{n_withheld} contact/banking/password column(s) withheld on "
+                "this path — not listed here, refused if named in SQL, dropped "
+                "from SELECT *"
+                if n_withheld
+                else "none — no contact, banking or password columns"
+            ),
         }
-        for name, info in data["tables"].items()
-    }
     if table is not None:
         t = str(table).strip().upper()
         if t not in tables:
@@ -502,6 +861,12 @@ def schema_context(table: str | None = None) -> dict:
             (
                 f"Row cap {ROW_CAP} (a hit cap refuses, not truncates); "
                 f"time cap {TIMEOUT_S}s."
+            ),
+            (
+                "Contact (phone/cell/fax/email), banking and password columns "
+                "are withheld on every table: they are omitted below, a query "
+                "that names one anywhere is refused, and SELECT * drops them "
+                "with a note (QT-000007, 20 Oct 2026)."
             ),
             (
                 "Firebird SQL: SELECT FIRST n ... (not LIMIT); string literals "
