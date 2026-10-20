@@ -418,19 +418,36 @@ def build(
     )
 
     # ---------------- Tab 2: Flash Comparison (optional) ----------------
+    # The PM pack must never die because of the flash workbook. Reading the
+    # frozen flash is the step outside this builder's control — a user may
+    # have re-saved the synced file with another sheet active, renamed its
+    # page, or left it unreadable — so it is guarded: if the page cannot be
+    # parsed, the tab is left out and a WARNING goes to stderr (run_daily
+    # logs it), exactly the path run_daily already takes for a missing flash.
+    # Dashboard, Unbilled and Credit Notes then build as normal.
     if flash_file:
-        _flash_comparison(
-            wb,
-            st,
-            day,
-            day_rows,
-            ix,
-            flash_file,
-            long_date,
-            inv_total,
-            inv_kg,
-            inv_lines,
-        )
+        try:
+            flash = _read_flash(flash_file)
+        except Exception as e:
+            print(
+                f"WARNING: Flash Comparison tab left out — could not read the "
+                f"flash page of {os.path.basename(flash_file)}: {e}",
+                file=sys.stderr,
+            )
+            flash = None
+        if flash is not None:
+            _flash_comparison(
+                wb,
+                st,
+                day,
+                day_rows,
+                ix,
+                flash,
+                long_date,
+                inv_total,
+                inv_kg,
+                inv_lines,
+            )
 
     # ---------------- Tab 3: By Customer ----------------
     ws3 = wb.add_worksheet("By Customer")
@@ -559,17 +576,49 @@ def _check_flash_parse(flash_file, f_rev, f_branch, f_rep):
             )
 
 
-def _flash_comparison(
-    wb, st, day, day_rows, ix, flash_file, long_date, inv_total, inv_kg, inv_lines
-):
-    f = openpyxl.load_workbook(flash_file, data_only=True).active
+FLASH_SECTIONS = ("BY BRANCH (origin)", "BY REP", "TOP 10 CUSTOMERS")
+
+
+def _flash_page(wb):
+    """The flash's page one: the sheet titled "Flash …", else the first sheet.
+
+    Never `.active`. openpyxl's .active is whichever sheet the file was last
+    SAVED with — xlsxwriter writes the first, but a user opening the synced
+    workbook, clicking the Billing tab and letting AutoSave write it back
+    makes .active the Billing tab, B8 a waybill string, and round() a
+    TypeError that killed the whole PM pack (Fable review finding 1, 20 Oct
+    2026; same crash with All Customers active since 4 Aug).
+    """
+    for ws in wb.worksheets:
+        if str(ws.title).startswith("Flash "):
+            return ws
+    return wb.worksheets[0]
+
+
+def _read_flash(flash_file):
+    """Headline KPIs and the branch / rep blocks off the frozen flash.
+
+    Returns (revenue, waybills, chargeable kg, {branch: revenue}, {rep code:
+    revenue}). Raises ValueError when the page is not recognisably a flash —
+    the KPI band is not numeric or the section headers are missing — so the
+    caller can leave the comparison out rather than build a wrong one. A
+    plausible-looking but mis-read block is the warning _check_flash_parse
+    raises on stderr.
+    """
+    f = _flash_page(openpyxl.load_workbook(flash_file, data_only=True))
     f_rev, f_wbs, f_kg = f["B8"].value or 0, f["D8"].value or 0, f["F8"].value or 0
+    for label, v in (("B8", f_rev), ("D8", f_wbs), ("F8", f_kg)):
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise TypeError(
+                f"sheet {f.title!r} has {v!r} in {label}, not a number — not a flash page"
+            )
     f_branch, f_rep = {}, {}
-    section = None
+    section, seen = None, set()
     for row in f.iter_rows(min_col=2, max_col=3):
         v = row[0].value
-        if v in ("BY BRANCH (origin)", "BY REP", "TOP 10 CUSTOMERS"):
+        if v in FLASH_SECTIONS:
             section = v
+            seen.add(v)
         elif (
             section == "BY BRANCH (origin)"
             and v
@@ -579,8 +628,22 @@ def _flash_comparison(
             f_branch[v] = row[1].value
         elif section == "BY REP" and v and row[1].value is not None and v != "Rep":
             f_rep[str(v).split(" — ")[0]] = row[1].value
+    if not {"BY BRANCH (origin)", "BY REP"} <= seen:
+        raise ValueError(
+            f"sheet {f.title!r} carries no 'BY BRANCH (origin)' / 'BY REP' sections "
+            f"— not a flash page"
+        )
 
     _check_flash_parse(flash_file, f_rev, f_branch, f_rep)
+    return f_rev, f_wbs, f_kg, f_branch, f_rep
+
+
+def _flash_comparison(
+    wb, st, day, day_rows, ix, flash, long_date, inv_total, inv_kg, inv_lines
+):
+    """flash is _read_flash's tuple — already validated, so nothing here can
+    fail on the workbook's contents after the worksheet has been added."""
+    f_rev, f_wbs, f_kg, f_branch, f_rep = flash
 
     inv_branch = defaultdict(float)
     inv_rep = defaultdict(float)

@@ -2,16 +2,23 @@
 
 Reuven asked for tab 1 of the Billing Detail — "Billing DD Mon", every invoice
 line for the billing day — to appear in the flash as well. The two reports sit
-on different date bases (flash = waybill date, billing = invoice date, one day
-further in arrears), so the tab keeps its own date in its name and "Invoice
+on different date bases: the flash is the last traded waybill day, the billing
+day the latest day whose invoicing cleared the guard — the same day, or days
+earlier (3 Aug / 31 Jul here; 19 Oct / 16 Oct and 19 Oct / 19 Oct both seen
+live on 20 Oct 2026). So the tab keeps its own date in its name and "Invoice
 date" in its title; that is what makes the two readable side by side.
 
 Three contracts are pinned here:
 
-  * Sheet order. build_billing_detail._flash_comparison opens the frozen flash
-    with openpyxl and reads `.active` — the FIRST sheet — scanning for three
-    literal section headers. The billing tab must come after it, and the
-    "All Customers" tab after that (Akha's default, 20 Oct).
+  * Sheet order and the flash page. build_billing_detail._flash_comparison
+    opens the frozen flash with openpyxl and reads the sheet whose title starts
+    with "Flash " (falling back to the first sheet — never `.active`, which is
+    whatever sheet a user last saved with; Fable review finding 1, 20 Oct),
+    scanning for three literal section headers. The billing tab comes after
+    it, and the "All Customers" tab after that (Akha's default, 20 Oct). If
+    the flash page cannot be parsed at all, the Billing Detail builds without
+    its Flash Comparison tab and warns — the PM pack never dies because of the
+    flash workbook.
   * One writer, not a copy. The tab is written by the function the Billing
     Detail itself calls, so the two workbooks carry identical cells and
     identical formatting for the same invoice lines. Asserted cell by cell.
@@ -43,7 +50,9 @@ PARSER_SECTIONS = ("BY BRANCH (origin)", "BY REP", "TOP 10 CUSTOMERS")
 
 FLASH_DAY = date(2026, 8, 3)  # Monday — waybill basis
 PRIOR = date(2026, 7, 27)  # same weekday, for the typical-Mon benchmark
-BILLING_DAY = date(2026, 7, 31)  # Friday — invoice basis, further in arrears
+BILLING_DAY = date(
+    2026, 7, 31
+)  # Friday — invoice basis; here three days before the flash day
 
 WB_HEADERS = [
     "Waybill",
@@ -229,10 +238,9 @@ class TestSheetOrder:
             build_flash.ALL_TAB,
         ]
 
-    def test_the_flash_page_is_still_the_active_sheet(self, flash):
-        """openpyxl's .active is what _flash_comparison opens."""
-        assert flash.active.title == "Flash 03 Aug"
-        assert flash.sheetnames[0] == flash.active.title
+    def test_the_flash_page_is_the_first_sheet(self, flash):
+        """The fallback _flash_comparison uses when no sheet is titled "Flash …"."""
+        assert flash.sheetnames[0] == "Flash 03 Aug"
 
     def test_the_comparison_parser_still_sees_reps_not_invoice_lines(self, flash):
         """Replays build_billing_detail._flash_comparison against sheet one."""
@@ -513,3 +521,174 @@ class TestFlashCli:
             ]
         )
         assert a.inv_file == "y" and a.billing_date == "2026-07-31"
+
+
+def _resave(
+    src: Path, dst: Path, active: str | None = None, rename: dict | None = None
+):
+    """Re-save a flash the way a user's Excel/OneDrive AutoSave would: same
+    cells, but a different sheet selected — or a sheet renamed."""
+    wb = openpyxl.load_workbook(src)
+    for ws in wb.worksheets:
+        ws.sheet_view.tabSelected = False
+    if active is not None:
+        wb.active = wb.sheetnames.index(active)
+        wb.active.sheet_view.tabSelected = True
+    for old, new in (rename or {}).items():
+        wb[old].title = new
+    wb.save(dst)
+    return dst
+
+
+def _comparison_cells(path):
+    ws = openpyxl.load_workbook(path)["Flash Comparison"]
+    return {
+        c.coordinate: c.value
+        for row in ws.iter_rows()
+        for c in row
+        if c.value is not None
+    }
+
+
+class TestTheComparisonReadsTheFlashPageNotTheActiveSheet:
+    """Fable review finding 1 (20 Oct 2026, HIGH): _flash_comparison read the
+    frozen flash's `.active` sheet. xlsxwriter always writes activeTab=0, so no
+    test could fail — but a user opening the synced file, clicking the Billing
+    tab and letting AutoSave write it back made `.active` the Billing tab, B8 a
+    waybill string, and the whole PM pack died at the Billing Detail. The page
+    is now found by name ("Flash …"), with the first sheet as the fallback."""
+
+    @pytest.fixture
+    def flash_file(self, tmp_path):
+        return Path(
+            build_flash.build(
+                FLASH_DAY,
+                None,
+                str(tmp_path),
+                data=(WB_HEADERS, _wb_rows()),
+                billing_day=BILLING_DAY,
+                inv_data=(INV_HEADERS, _inv_rows()),
+            )
+        )
+
+    def _billing_detail(self, tmp_path, flash_path, sub):
+        out_dir = tmp_path / sub
+        out_dir.mkdir()
+        return build_billing_detail.build(
+            BILLING_DAY,
+            None,
+            None,
+            str(out_dir),
+            str(flash_path),
+            inv_data=(INV_HEADERS, _inv_rows()),
+            credits_data=(CREDIT_HEADERS, []),
+        )
+
+    @pytest.mark.parametrize("active", ["Billing 31 Jul", build_flash.ALL_TAB])
+    def test_a_flash_saved_with_another_sheet_active_still_compares(
+        self, tmp_path, flash_file, active, capsys
+    ):
+        untouched = self._billing_detail(tmp_path, flash_file, "a")
+        resaved = _resave(flash_file, tmp_path / "resaved.xlsx", active=active)
+        assert (
+            openpyxl.load_workbook(resaved).active.title == active
+        )  # the trap is armed
+        rebuilt = self._billing_detail(tmp_path, resaved, "b")
+        assert "Flash Comparison" in openpyxl.load_workbook(rebuilt).sheetnames
+        assert _comparison_cells(rebuilt) == _comparison_cells(untouched)
+        assert capsys.readouterr().err == ""
+
+    def test_the_comparison_carries_the_flash_figures(self, tmp_path, flash_file):
+        """Guards the equality test above against both builds being empty."""
+        ws = openpyxl.load_workbook(self._billing_detail(tmp_path, flash_file, "a"))[
+            "Flash Comparison"
+        ]
+        col_b = [c.value for c in ws["B"]]
+        for header in PARSER_SECTIONS[:2]:
+            assert header in col_b
+        # Revenue row: invoice side 1700 (the injected lines), flash side = the KPI
+        rev = next(
+            r
+            for r in range(1, ws.max_row + 1)
+            if ws.cell(r, 2).value == "Revenue (Subtotal ex-VAT)"
+        )
+        assert ws.cell(rev, 3).value == 1700
+        assert ws.cell(rev, 4).value == pytest.approx(
+            sum(1000 - i * 10 for i in range(12)) + 500
+        )
+
+    def test_a_renamed_flash_page_falls_back_to_the_first_sheet(
+        self, tmp_path, flash_file, capsys
+    ):
+        untouched = self._billing_detail(tmp_path, flash_file, "a")
+        renamed = _resave(
+            flash_file,
+            tmp_path / "renamed.xlsx",
+            active=build_flash.ALL_TAB,
+            rename={"Flash 03 Aug": "Sheet1"},
+        )
+        rebuilt = self._billing_detail(tmp_path, renamed, "b")
+        assert _comparison_cells(rebuilt) == _comparison_cells(untouched)
+        assert capsys.readouterr().err == ""
+
+
+class TestThePackNeverDiesBecauseOfTheFlashWorkbook:
+    """If the flash page cannot be parsed — whatever a user did to the file —
+    the Billing Detail builds without its Flash Comparison tab and says so on
+    stderr (run_daily logs it as WARNING), exactly as it already does when the
+    frozen flash is missing. Dashboard, Unbilled and Credit Notes follow."""
+
+    def _billing_detail(self, tmp_path, flash_path):
+        return build_billing_detail.build(
+            BILLING_DAY,
+            None,
+            None,
+            str(tmp_path),
+            str(flash_path),
+            inv_data=(INV_HEADERS, _inv_rows()),
+            credits_data=(CREDIT_HEADERS, []),
+        )
+
+    def _assert_built_without_comparison(self, out, capsys):
+        wb = openpyxl.load_workbook(out)
+        assert "Flash Comparison" not in wb.sheetnames
+        assert wb.sheetnames[0] == "Billing 31 Jul" and "By Customer" in wb.sheetnames
+        err = capsys.readouterr().err
+        assert "WARNING" in err and "Flash Comparison" in err
+
+    def test_a_flash_page_with_text_in_the_kpi_band(self, tmp_path, capsys):
+        """The review's reproduction: B8 is a waybill string, round() blew up."""
+        import xlsxwriter
+
+        bad = tmp_path / "Flash Revenue - 31 Jul 2026.xlsx"
+        w = xlsxwriter.Workbook(str(bad))
+        ws = w.add_worksheet("Flash 31 Jul")
+        ws.write("B8", "SL0001234")
+        ws.write("B14", "BY BRANCH (origin)")
+        ws.write("B15", "Branch")
+        ws.write("B16", "JHB")
+        ws.write("C16", 100)
+        ws.write("B18", "BY REP")
+        w.close()
+        self._assert_built_without_comparison(
+            self._billing_detail(tmp_path, bad), capsys
+        )
+
+    def test_a_workbook_with_no_recognisable_flash_page(self, tmp_path, capsys):
+        import xlsxwriter
+
+        bad = tmp_path / "Flash Revenue - 31 Jul 2026.xlsx"
+        w = xlsxwriter.Workbook(str(bad))
+        ws = w.add_worksheet("Sheet1")
+        ws.write("A1", "nothing here")
+        w.close()
+        self._assert_built_without_comparison(
+            self._billing_detail(tmp_path, bad), capsys
+        )
+
+    def test_a_file_that_is_not_a_workbook(self, tmp_path, capsys):
+        bad = tmp_path / "Flash Revenue - 31 Jul 2026.xlsx"
+        bad.write_bytes(b"not a zip")
+        self._assert_built_without_comparison(
+            self._billing_detail(tmp_path, bad), capsys
+        )

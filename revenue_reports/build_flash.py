@@ -10,9 +10,11 @@ the archive of already-frozen flashes both keep parsing.
 Since 20 Oct 2026 (Reuven, 19 Oct) the workbook also carries "Billing DD Mon"
 — tab 1 of the Billing Detail, every invoice line for the billing day — as its
 SECOND sheet, written by build_billing_detail.write_billing_tab so the two
-reports cannot drift. The billing day is one day further in arrears than the
-flash day (invoice date vs waybill date), which is why the tab keeps its own
-date in its name and "Invoice date" in its title. The flash never fails because
+reports cannot drift. The two sheets sit on different date bases: the flash
+day is the last traded waybill day, the billing day the latest day whose
+invoicing cleared the guard — the same day, or several days earlier (both
+seen on 20 Oct 2026) — which is why the tab keeps its own date in its name
+and "Invoice date" in its title. The flash never fails because
 of that tab: a day with no invoice lines gets the tab with a one-line note, and
 an unreadable invoice export is skipped with a warning. The "All Customers" tab
 moves to third.
