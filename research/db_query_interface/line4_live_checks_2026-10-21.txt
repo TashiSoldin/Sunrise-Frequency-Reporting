@@ -1,0 +1,86 @@
+line 4 live checks 2026-10-21 10:51:02
+  OK      R key WAYBILL =                                     2 rows      48 ms db /     49 ms total  first=(rows not shown)
+          Window applied — ROUTING: keyed by WAYBILL (1 literal).
+  OK      R key WAYBILL IN (3)                                7 rows      47 ms db /     48 ms total  first=(rows not shown)
+          Window applied — ROUTING: keyed by WAYBILL IN (3 literals).
+  OK      R key MANIFEST alone                                1 rows      77 ms db /     77 ms total  first=[133, 133]
+          Window applied — ROUTING: keyed by MANIFEST (1 literal); manifest numbers repeat across branches and leg types (37733 is 133 rows by MANIFEST alone, 124 with MBRANCH = 0 AND MTYPE = 'M') — add MBRANCH and MTYPE to pin one trip.
+  OK      R key MANIFEST + MBRANCH + MTYPE                    1 rows      17 ms db /     17 ms total  first=[124, 124]
+          Window applied — ROUTING (r): keyed by MANIFEST (1 literal).
+  OK      R window AGENTDATE 31 d aggregate                   5 rows     355 ms db /    355 ms total  first=[None, 2044, 2034]
+          Window applied — ROUTING: AGENTDATE window 2026-09-01..2026-10-01 (31 days).
+  OK      R window >= / < 7 d                                 1 rows     196 ms db /    197 ms total  first=[11951]
+          Window applied — ROUTING: AGENTDATE window 2026-10-05..2026-10-11 (7 days).
+  REFUSED R join to VIEW_WBANALYSE on the ROUTING alias    (30059 ms) the query exceeded the 15s time cap (or the connection dropped mid-query) and was abandoned — narrow it (add WHERE bounds, or aggregate in SQL rather than fetch
+  OK      V key WAYBILL =                                    16 rows      55 ms db /     56 ms total  first=(rows not shown)
+          Window applied — VIEW_EVENTSCANS: keyed by WAYBILL (1 literal).
+  OK      V key TRACKNO =                                     8 rows      28 ms db /     28 ms total  first=(rows not shown)
+          Window applied — VIEW_EVENTSCANS: keyed by TRACKNO (1 literal).
+  OK      V key MANIFEST =                                    1 rows     165 ms db /    165 ms total  first=[1456]
+          Window applied — VIEW_EVENTSCANS: keyed by MANIFEST (1 literal).
+  OK      V window EVENTDATE 1 d + HUB                       14 rows    1628 ms db /   1629 ms total  first=['POD Details Captured', 4390]
+          Window applied — VIEW_EVENTSCANS: EVENTDATE window 2026-10-19..2026-10-19 (1 days).
+  OK      V GROUP BY NAME over 2 days                        30 rows    3067 ms db /   3067 ms total  first=['Consignment details captured', 16758]
+          Window applied — VIEW_EVENTSCANS: EVENTDATE window 2026-10-14..2026-10-15 (2 days).
+          top: [('Consignment details captured', 16758), ('POD Details Captured', 13991), ('Closed and Dispatched', 13570)]
+  REFUSED REFUSE R unwindowed count                        (0 ms) no key or window on ROUTING. Rule: every ROUTING query must carry a key (WAYBILL = '…' or IN (up to 100 literals); MANIFEST = n or IN (up to 20)) or a window (A
+  REFUSED REFUSE V WAYDATE window                          (0 ms) no key or window on VIEW_EVENTSCANS — found: WAYDATE is a filter, not a key or window on VIEW_EVENTSCANS — it belongs to the waybill lookup, not the scan: on it
+  REFUSED REFUSE R 32-day window                           (0 ms) no key or window on ROUTING — found: the AGENTDATE range is 32 days (2026-09-01..2026-10-02) — the limit is 31 days. Rule: every ROUTING query must carry a key 
+  OK      REFUSE V star                                       1 rows      46 ms db /     47 ms total  first=(rows not shown)
+          Window applied — VIEW_EVENTSCANS: keyed by WAYBILL (1 literal).
+  REFUSED R DELOTP named -> refused                        (0 ms) the query names a withheld column: DELOTP (withheld on ROUTING). contact (phone/cell/fax/email), banking and password/credential columns are not served on the o
+  REFUSED R DELOTP population, 7 d (bounded)               (0 ms) the query names a withheld column: DELOTP (withheld on ROUTING). contact (phone/cell/fax/email), banking and password/credential columns are not served on the o
+Exception ignored in: <function ConnectionBase.__del__ at 0x0000022FA1CC1C60>
+Traceback (most recent call last):
+  File "C:\Users\AkhaM\Sunrise-Frequency-Reporting\.venv\Lib\site-packages\firebirdsql\fbcore.py", line 1176, in __del__
+    self.close()
+  File "C:\Users\AkhaM\Sunrise-Frequency-Reporting\.venv\Lib\site-packages\firebirdsql\fbcore.py", line 1153, in close
+    trans._cleanup()
+  File "C:\Users\AkhaM\Sunrise-Frequency-Reporting\.venv\Lib\site-packages\firebirdsql\fbcore.py", line 467, in _cleanup
+    (h, oid, buf) = self.connection._op_response()
+  File "C:\Users\AkhaM\Sunrise-Frequency-Reporting\.venv\Lib\site-packages\firebirdsql\fbcore.py", line 644, in _op_response
+    b = self._recv_channel(4)
+  File "C:\Users\AkhaM\Sunrise-Frequency-Reporting\.venv\Lib\site-packages\firebirdsql\fbcore.py", line 587, in _recv_channel
+    raise OperationalError('Can not recv() packets')
+firebirdsql.err.OperationalError: Can not recv() packets
+== MON$STATEMENTS active now == 10:52:51
+    (13972212, 8623041, datetime.datetime(2026, 10, 21, 10, 56, 0, 250000), 'SELECT s.MON$STATEMENT_ID, s.MON$ATTACHMENT_ID, s.MON$TIMESTAMP, CAST(SUBSTRING(s.MON$SQL_TEXT FROM ')
+
+== PLANS (prepare only) ==
+
+### IN(2) join, view second (the timed-out one)
+    PLAN JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (W WAYBILL NATURAL, W POD INDEX (RDB$PRIMARY26)), W COLLECT INDEX (RDB$PRIMARY16)), W PODIMAGE INDEX (RDB$PRIMARY92)), W INSTYPE INDEX (RDB$PRIMARY39)), W VATTYPE INDEX (RDB$PRIMARY66)), W COSTCENTRE INDEX (RDB$PRIMARY25)), W B2 INDEX (RDB$PRIMARY15)), W WB_DESTPLACE INDEX (RDB$PRIMARY50)), W WB_ORIGPLACE INDEX (RDB$PRIMARY50)), W CUSTOMER INDEX (RDB$PRIMARY28)), W BRANCH INDEX (RDB$PRIMARY15)), W COSTCNTR INDEX (RDB$PRIMARY18)), W COMPANY INDEX (RDB$PRIMARY81)), ...
+    sub-plans: 0
+
+### = join, view second
+    PLAN JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (W WAYBILL INDEX (RDB$PRIMARY13), W POD INDEX (RDB$PRIMARY26)), W COLLECT INDEX (RDB$PRIMARY16)), W PODIMAGE INDEX (RDB$PRIMARY92)), W INSTYPE INDEX (RDB$PRIMARY39)), W VATTYPE INDEX (RDB$PRIMARY66)), W COSTCENTRE INDEX (RDB$PRIMARY25)), W B2 INDEX (RDB$PRIMARY15)), W WB_DESTPLACE INDEX (RDB$PRIMARY50)), W WB_ORIGPLACE INDEX (RDB$PRIMARY50)), W CUSTOMER INDEX (RDB$PRIMARY28)), W BRANCH INDEX (RDB$PRIMARY15)), W COSTCNTR INDEX (RDB$PRIMARY18)), W COMPANY INDEX ...
+    sub-plans: 0
+
+### IN(2) join, key repeated on the view alias
+    PLAN JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (W WAYBILL INDEX (RDB$PRIMARY13, RDB$PRIMARY13), W POD INDEX (RDB$PRIMARY26)), W COLLECT INDEX (RDB$PRIMARY16)), W PODIMAGE INDEX (RDB$PRIMARY92)), W INSTYPE INDEX (RDB$PRIMARY39)), W VATTYPE INDEX (RDB$PRIMARY66)), W COSTCENTRE INDEX (RDB$PRIMARY25)), W B2 INDEX (RDB$PRIMARY15)), W WB_DESTPLACE INDEX (RDB$PRIMARY50)), W WB_ORIGPLACE INDEX (RDB$PRIMARY50)), W CUSTOMER INDEX (RDB$PRIMARY28)), W BRANCH INDEX (RDB$PRIMARY15)), W COSTCNTR INDEX (RDB$PRIMARY18)), W ...
+    sub-plans: 0
+
+### AGENTDATE 7 d join to the view
+    PLAN JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (W WAYBILL NATURAL, W POD INDEX (RDB$PRIMARY26)), W COLLECT INDEX (RDB$PRIMARY16)), W PODIMAGE INDEX (RDB$PRIMARY92)), W INSTYPE INDEX (RDB$PRIMARY39)), W VATTYPE INDEX (RDB$PRIMARY66)), W COSTCENTRE INDEX (RDB$PRIMARY25)), W B2 INDEX (RDB$PRIMARY15)), W WB_DESTPLACE INDEX (RDB$PRIMARY50)), W WB_ORIGPLACE INDEX (RDB$PRIMARY50)), W CUSTOMER INDEX (RDB$PRIMARY28)), W BRANCH INDEX (RDB$PRIMARY15)), W COSTCNTR INDEX (RDB$PRIMARY18)), W COMPANY INDEX (RDB$PRIMARY81)), ...
+    sub-plans: 0
+
+### MANIFEST join to the view
+    PLAN JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (W WAYBILL NATURAL, W POD INDEX (RDB$PRIMARY26)), W COLLECT INDEX (RDB$PRIMARY16)), W PODIMAGE INDEX (RDB$PRIMARY92)), W INSTYPE INDEX (RDB$PRIMARY39)), W VATTYPE INDEX (RDB$PRIMARY66)), W COSTCENTRE INDEX (RDB$PRIMARY25)), W B2 INDEX (RDB$PRIMARY15)), W WB_DESTPLACE INDEX (RDB$PRIMARY50)), W WB_ORIGPLACE INDEX (RDB$PRIMARY50)), W CUSTOMER INDEX (RDB$PRIMARY28)), W BRANCH INDEX (RDB$PRIMARY15)), W COSTCNTR INDEX (RDB$PRIMARY18)), W COMPANY INDEX (RDB$PRIMARY81)), ...
+    sub-plans: 0
+
+### ROUTING join to VIEW_EVENTSCANS, both keyed
+    PLAN JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (V EVENTS W INDEX (RDB$PRIMARY13), V EVENTS T INDEX (RDB$PRIMARY62), V EVENTS E INDEX (EV_TRACKDATETIME)), JOIN (V EVENTS W INDEX (RDB$PRIMARY13), V EVENTS E INDEX (EV_TRACKDATETIME)), V W INDEX (RDB$PRIMARY13), V S INDEX (RDB$PRIMARY131)), V U INDEX (RDB$PRIMARY65)), V B INDEX (RDB$PRIMARY15)), V AG INDEX (RDB$PRIMARY7)), V POD INDEX (RDB$PRIMARY26)), V R INDEX (RDB$PRIMARY51)), V F INDEX (RDB$PRIMARY75)), R INDEX (RDB$PRIMARY51))
+    sub-plans: 0
+
+### 18 Aug probe shape: IN-subquery is refused by the guard, but how does the join plan when driven by ROUTING via a derived table
+    PLAN HASH (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (JOIN (W WAYBILL NATURAL, W POD INDEX (RDB$PRIMARY26)), W COLLECT INDEX (RDB$PRIMARY16)), W PODIMAGE INDEX (RDB$PRIMARY92)), W INSTYPE INDEX (RDB$PRIMARY39)), W VATTYPE INDEX (RDB$PRIMARY66)), W COSTCENTRE INDEX (RDB$PRIMARY25)), W B2 INDEX (RDB$PRIMARY15)), W WB_DESTPLACE INDEX (RDB$PRIMARY50)), W WB_ORIGPLACE INDEX (RDB$PRIMARY50)), W CUSTOMER INDEX (RDB$PRIMARY28)), W BRANCH INDEX (RDB$PRIMARY15)), W COSTCNTR INDEX (RDB$PRIMARY18)), W COMPANY INDEX (RDB$PRIMARY81)), ...
+    sub-plans: 0
+
+== DELOTP population, 7 days by AGENTDATE (below the fence, counts only) ==
+    [(11951, 107, 1)]
+    [(None, 504, 2), ('', 138, 2), ('C', 2280, 0), ('M', 3928, 0), ('R', 5101, 103)]
+
+== addendum 10:56:40 — the join, bounded on the view side (executed) and unbounded (guard only, NOT executed) ==
+  guard notes for the unbounded join: ['ROUTING (r): keyed by WAYBILL IN (2 literals)', "CAUTION — VIEW_WBANALYSE (w) is joined to ROUTING in this query without a literal WAYBILL key or WAYDATE range of its own. Firebird then drives the join from the 3.1M-row view with a full scan (plans read 21 Oct 2026: only a single '=' literal on the ROUTING side propagates to the view; an IN-list, a MANIFEST key or a date window does not), which runs past the 15 s cap and keeps running server-side. Add w.WAYBILL = / IN (the same literals) or a w.WAYDATE range."]
+  bounded join: ok=True rows=4 db=66 ms notes=['Open-path answer: a raw read, not a verified report figure.', 'Window applied — ROUTING (r): keyed by WAYBILL IN (2 literal']
+  1-day window note: ['Window applied — ROUTING: AGENTDATE window 2026-10-19..2026-10-19 (1 day).'] db=62 ms

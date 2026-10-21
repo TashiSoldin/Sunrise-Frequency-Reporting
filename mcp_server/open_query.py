@@ -14,6 +14,11 @@ The 3h bought the fence, not per-question logic; the fence is:
   touches a table with withheld columns (Fable F1: a star under a column
   alias list or a UNION carries them out unnamed); the schema resource omits
   them, and a cursor-name drop sits behind the gate as defence in depth;
+- a window rule on the two big relations (QT-000007 line 4, 21 Oct 2026) —
+  ROUTING and VIEW_EVENTSCANS are queryable only with a waybill / manifest
+  key or a bounded literal date range on every occurrence, widths set from
+  measured plans (WINDOWED); the time cap cannot stop Firebird server-side,
+  so this predicate check is the real load guard for them;
 - row and time caps — a cap that is HIT refuses the answer rather than
   truncating silently, the same rule every revenue fetcher applies;
 - date plausibility flags on every date column in the result — Parcel Perfect
@@ -54,6 +59,7 @@ from mcp_server.sql_guard import (
 __all__ = [
     "ALLOWLIST",
     "DENIED_COLUMNS",
+    "WINDOWED",
     "check_open_query",
     "run_open_query",
     "schema_context",
@@ -219,6 +225,43 @@ ALLOWLIST: dict[str, str] = {
         "names typed at booking — all four can carry contact detail the "
         "column guard cannot strip. Filter by COLLECTIONDATE or ACCNUM — "
         "unbounded reads hit the row cap."
+    ),
+    # QT-000007 lines 3-4 (21 Oct 2026): the two big relations, WINDOWED —
+    # see that dict for the rule and the measurements behind it.
+    "ROUTING": (
+        "Manifest contents (6,018,355 rows at the 6 Aug 2026 survey, 6.22M on "
+        "21 Oct; 67 cols) — one row per waybill per leg: WAYBILL, LEG, MBRANCH, "
+        "MTYPE (M line haul / R local delivery / C collection), MANIFEST, AGENT, "
+        "AGENTDATE, hubs, status. The full waybill-to-manifest history (the 18 Aug "
+        "line-haul probe recovered 124/124 of a trip's waybills through it). "
+        "WINDOWED: every query needs WAYBILL (= or IN, up to 100) or MANIFEST "
+        "(= or IN, up to 20; add MBRANCH and MTYPE to pin one trip) or an "
+        "AGENTDATE range of at most 31 days — set from the live plans in "
+        "research/db_query_interface/routing_eventscans_plans_2026-10-21.md "
+        "(keyed reads 2-25 ms; 31 days = 48,680 rows in 168 ms; the unbounded "
+        "count is 7.9 s). BOOKDATE is indexed but populated only on local-delivery "
+        "rows, so it is a filter, not a window. Masses on ROUTING are unreliable "
+        "(branch-1 rows carry CHARGEMASS 0 / VOLMASS NULL) — take mass and "
+        "revenue from VIEW_WBANALYSE joined on WAYBILL."
+    ),
+    "VIEW_EVENTSCANS": (
+        "Scan history view (29 cols) over the 113M-row EVENT family: a UNION of "
+        "EVENT-TRACK-WAYBILL (parcel-level tracking numbers) and EVENT-WAYBILL, "
+        "with the event description (NAME), hub, user, agent, POD and waybill "
+        "header columns looked up per row. One row per scan: WAYBILL, TRACKNO, "
+        "EVENTDATE, EVENTTIME, NAME, HUB, MANIFEST, plus ACCNUM / WAYDATE / "
+        "hubs from the waybill. WINDOWED: every query needs WAYBILL or TRACKNO "
+        "(= or IN, up to 100) or MANIFEST (= or IN, up to 20) or an EVENTDATE "
+        "range of at most 3 days — set from the live plans in research/"
+        "db_query_interface/routing_eventscans_plans_2026-10-21.md (a waybill's "
+        "scans in 8 ms; 1/3/7 days of EVENTDATE = 1.2/3.5/6.9 s warm, ~50k "
+        "scans a day, so a date window is for aggregates or date + hub / name "
+        "questions). WAYDATE, ACCNUM, NAME, HUB, USERNAME and AGENTNAME are "
+        "lookup-side filters, not windows: on their own the planner scans TRACK "
+        "and WAYBILL. RECIPIENT and USERNAME are people's names (POD recipient, "
+        "the staff member who scanned) and are served, as names are elsewhere. "
+        "Scans by type over a date range are the event-counts tool Reuven asked "
+        "for on 20 Oct 2026, quoted separately; EVENT itself stays off."
     ),
 }
 
@@ -391,6 +434,20 @@ DENIED_COLUMNS: dict[str, frozenset[str]] = {
     # NOTE: no name-matched columns; MEMO/MEMOSTRING are free text — see the
     # ALLOWLIST justification. CONTACT here is an INTEGER key, not a name.
     "NOTE": frozenset(),
+    # QT-000007 line 4 (21 Oct 2026). ROUTING has no contact or banking
+    # column by name (floor pattern re-run on schema_columns_2026-08-06.csv:
+    # only TOTPAID, a money column, matched on 'TOTP'). DELOTP VARCHAR(10) is
+    # the delivery one-time PIN the recipient gives the driver to confirm a
+    # delivery — credential-shaped (a PIN that proves presence), nothing
+    # operational on the open path needs it, and the cost of withholding is
+    # nil, so it goes in on the same footing as INVHASH. Live 21 Oct: see the
+    # Decisions entry for how many rows carry one.
+    "ROUTING": frozenset({"DELOTP"}),
+    # VIEW_EVENTSCANS: no contact, banking or credential column by name or by
+    # reading the 29 (survey CSV re-read 21 Oct). RECIPIENT (POD recipient)
+    # and USERNAME (the staff member who scanned) are person NAMES and stay,
+    # per the Chunk 2 decision that names are served.
+    "VIEW_EVENTSCANS": frozenset(),
 }
 
 # One sentence for refusal messages and the schema resource.
@@ -415,28 +472,24 @@ def _denied_for(tables) -> dict[str, list[str]]:
 DENIED: dict[str, str] = {
     "EVENT": (
         "EVENT is deliberately off the allowlist: 113,123,238 rows on the live "
-        "freight system. Full shipment history is a separate quote with a "
-        "query plan first — waybill_status answers the last recorded movement."
+        "freight system. A waybill's full scan history is on VIEW_EVENTSCANS "
+        "(keyed by WAYBILL, TRACKNO or MANIFEST, or an EVENTDATE window of at "
+        "most 3 days); scans by event type over a date range are the "
+        "event-counts tool Reuven asked for on 20 Oct 2026 — a separate quote, "
+        "measured on 21 Oct, not an open-path read."
     ),
     "WAYBILL": (
         "the raw WAYBILL table (3.1M rows, 146 cols) is off the allowlist — "
         "VIEW_WBANALYSE is the sanctioned waybill surface; query that instead."
     ),
-    "TRACK": "TRACK (14.1M rows) is off the allowlist — event-family scale.",
+    "TRACK": (
+        "TRACK (14.1M rows, parcel tracking numbers) is off the allowlist — "
+        "VIEW_EVENTSCANS resolves parcel-level TRACKNOs to their waybill."
+    ),
     "PAGEEVENT": "PAGEEVENT (12.8M rows) is off the allowlist — event-family scale.",
     "SCANLOG": "SCANLOG (3.8M rows) is off the allowlist — event-family scale.",
     "WAYEVENT": "WAYEVENT (573k rows) is off the allowlist — event-family scale.",
-    "VIEW_EVENTSCANS": (
-        "VIEW_EVENTSCANS (over the 113M-row EVENT family) is not yet on the "
-        "open path — QT-000007 lines 3–4 add it with a waybill or date window "
-        "required per query; until that lands, waybill_status answers the "
-        "last recorded movement."
-    ),
     "CONTENTS": "CONTENTS (7.3M rows) is off the allowlist.",
-    "ROUTING": (
-        "ROUTING (6.0M rows) is not yet on the open path — QT-000007 lines "
-        "3–4 add it with a waybill or date window required per query."
-    ),
     "WAYREF": "WAYREF (5.3M rows) is off the allowlist.",
     "GPSLOG": "GPSLOG (4.6M rows) is off the allowlist.",
     "WAYEDIT": "WAYEDIT (20.2M rows) is an edit log and off the allowlist.",
@@ -984,11 +1037,781 @@ def _check_star_projection(cleaned: str, tables: list[str]) -> None:
     )
 
 
-def check_open_query(sql: str) -> list[str]:
+# --- windowed relations (QT-000007 line 4, 21 Oct 2026) ------------------------
+# ROUTING (6.2M rows) and VIEW_EVENTSCANS (a UNION over the 113M-row EVENT
+# family with eight lookups per row) are on the allowlist only with a KEY or a
+# WINDOW on every query. The 15 s client cap cannot stop Firebird 3 server-side,
+# so this predicate check is the real load guard. The rule rests on live plans
+# and timings measured 21 Oct 2026 (research/db_query_interface/
+# routing_eventscans_plans_2026-10-21.md) and was signed by Akha the same day:
+#
+#   ROUTING          key  WAYBILL = / IN (<= 100 literals) — PK (WAYBILL, LEG), 2 ms;
+#                         MANIFEST = / IN (<= 20) — RO_MANIFEST, ~25 ms a trip;
+#                         MBRANCH + MTYPE optional (the note says they pin one trip);
+#                    window AGENTDATE, <= 31 days — RO_AGNTDATEAGENT, 48,680 rows /
+#                         168 ms cold at 31 d; the unbounded COUNT is 7.9 s.
+#                    filters only: BOOKDATE (indexed, but populated on 1,178 of
+#                         19,856 local-delivery rows in Sept 2026 and on no line-haul
+#                         or collection row — a window on it answers 2.6% of the
+#                         data), AGENT, ORIGHUB/DESTHUB, MTYPE, STATUS.
+#   VIEW_EVENTSCANS  key  WAYBILL / TRACKNO = / IN (<= 100) — pushed into both union
+#                         branches (W PK -> TRACK PK -> EV_TRACKDATETIME), 5-8 ms;
+#                         MANIFEST = / IN (<= 20) — EV_MANIFEST, 1,456 rows / 40 ms;
+#                    window EVENTDATE, <= 3 days — EV_EVENTDATE then the lookups:
+#                         1/2/3/7 days = 1.2/2.5/3.5/6.9 s warm, 5.7/7.1/7.9/14.5 s
+#                         cold (~50k events a day); 3 days is the widest under
+#                         ~5 s warm with its cold time inside the cap.
+#                    filters only: WAYDATE, ACCNUM, NAME, HUB, USERNAME, AGENTNAME —
+#                         on their own each plans a NATURAL scan of TRACK (14M) and
+#                         WAYBILL (3.1M) with an EVENT probe per row (not executed).
+#
+# Predicate rules: literal values only (no subquery, parameter or CURRENT_DATE
+# arithmetic — their width cannot be computed here); on the windowed table's
+# OWN alias (ROUTING.WAYBILL = x does not window VIEW_EVENTSCANS in a join, and
+# a bare column in a multi-table query is refused as unqualified); in WHERE or
+# a JOIN ON clause (HAVING and the select list run after the scan); not negated;
+# not inside an OR (an OR widens the read — alternatives go in IN (...)). A
+# range is inclusive: BETWEEN a AND b = (b - a) + 1 days; >= a AND < b = b - a.
+# Every OCCURRENCE of a windowed table needs its own key or window — a window
+# inside a CTE does not cover an outer unwindowed read, and a self-join needs
+# both sides. The check lives after the allowlist, identifier and star gates
+# and is driven by this dict (the suite proves emptying it lets an unwindowed
+# statement through — Fable F3's lesson).
+WINDOWED: dict[str, dict] = {
+    "ROUTING": {
+        "keys": {"WAYBILL": 100, "MANIFEST": 20},  # key column -> max IN-list literals
+        "date": "AGENTDATE",
+        "max_days": 31,
+        "filters_only": ("BOOKDATE", "AGENT", "ORIGHUB", "DESTHUB", "MTYPE", "STATUS"),
+        # columns that qualify a MANIFEST key without being keys themselves
+        "pins": ("MBRANCH", "MTYPE"),
+        "filter_why": {
+            "BOOKDATE": (
+                "indexed but populated only on local-delivery rows — 1,178 of "
+                "19,856 R rows in Sept 2026, none on line-haul or collection legs "
+                "— so a BOOKDATE window would silently answer about 2.6% of the data"
+            )
+        },
+        "rule": (
+            "every ROUTING query must carry a key (WAYBILL = '…' or IN (up to 100 "
+            "literals); MANIFEST = n or IN (up to 20)) or a window (AGENTDATE "
+            "between two literal dates, at most 31 days) on the ROUTING alias, in "
+            "WHERE or JOIN ON and outside any OR; BOOKDATE, AGENT, hub, MTYPE and "
+            "STATUS are filters only (QT-000007 line 4, measured 21 Oct 2026)"
+        ),
+    },
+    "VIEW_EVENTSCANS": {
+        "keys": {"WAYBILL": 100, "TRACKNO": 100, "MANIFEST": 20},
+        "date": "EVENTDATE",
+        "max_days": 3,
+        "filters_only": ("WAYDATE", "ACCNUM", "NAME", "HUB", "USERNAME", "AGENTNAME"),
+        "pins": (),
+        "filter_why": {
+            "WAYDATE": (
+                "it belongs to the waybill lookup, not the scan: on its own the "
+                "planner walks all of TRACK and WAYBILL and probes EVENT per row"
+            ),
+            "ACCNUM": "it belongs to the waybill lookup — the planner cannot push it into EVENT",
+            "NAME": (
+                "it is the event description from the SCANRULE lookup — scans by "
+                "type over a date range are the event-counts tool, quoted separately"
+            ),
+        },
+        "rule": (
+            "every VIEW_EVENTSCANS query must carry a key (WAYBILL or TRACKNO = '…' "
+            "or IN (up to 100 literals); MANIFEST = n or IN (up to 20)) or a window "
+            "(EVENTDATE between two literal dates, at most 3 days) on its alias, in "
+            "WHERE or JOIN ON and outside any OR; WAYDATE, ACCNUM, NAME, HUB, "
+            "USERNAME and AGENTNAME are filters only — the view is for waybill and "
+            "manifest lookups; a scans-by-type-over-a-date-range question is the "
+            "event-counts tool, quoted separately (QT-000007 line 4, measured "
+            "21 Oct 2026)"
+        ),
+    },
+}
+
+_MANIFEST_HINT = (
+    "manifest numbers repeat across branches and leg types (37733 is 133 rows "
+    "by MANIFEST alone, 124 with MBRANCH = 0 AND MTYPE = 'M') — add MBRANCH and "
+    "MTYPE to pin one trip"
+)
+
+# Tokens for the window check — unlike the guard's cleaned text, string
+# literals are KEPT (the dates and keys live in them); comments are blanked.
+_W_TOKEN = re.compile(
+    r"'(?:[^']|'')*'"
+    r"|[A-Za-z_][A-Za-z0-9_$]*"
+    r"|\d+(?:\.\d+)?"
+    r"|<=|>=|<>|!=|\|\||[=<>()*,.?+\-/]"
+)
+_CMP_OPS = {"=", "<", ">", "<=", ">="}
+_MIRROR = {"<": ">", ">": "<", "<=": ">=", ">=": "<=", "=": "="}
+_CLAUSE_KW = {
+    "SELECT",
+    "FROM",
+    "WHERE",
+    "ON",
+    "GROUP",
+    "HAVING",
+    "ORDER",
+    "UNION",
+    "EXCEPT",
+    "INTERSECT",
+    "ROWS",
+    "FETCH",
+    "OFFSET",
+    "PLAN",
+    "WITH",
+    "JOIN",
+    "INNER",
+    "LEFT",
+    "RIGHT",
+    "FULL",
+    "CROSS",
+}
+_NOT_A_COLUMN = (
+    _STOP
+    | _CLAUSE_KW
+    | {
+        "AND",
+        "OR",
+        "NOT",
+        "IN",
+        "BETWEEN",
+        "LIKE",
+        "IS",
+        "NULL",
+        "CASE",
+        "WHEN",
+        "THEN",
+        "ELSE",
+        "END",
+        "DATE",
+        "TIMESTAMP",
+        "TIME",
+        "CAST",
+        "BY",
+        "ASC",
+        "DESC",
+        "STARTING",
+        "CONTAINING",
+        "SIMILAR",
+        "ESCAPE",
+        "EXISTS",
+        "ANY",
+        "SOME",
+        "ALL",
+        "CURRENT_DATE",
+        "CURRENT_TIMESTAMP",
+        "CURRENT_TIME",
+    }
+)
+
+
+def _blank_comments(sql: str) -> str:
+    """Blank -- and /* */ comments, KEEP string literals (offsets stable).
+    sql_guard has already proven the literals are balanced."""
+    out = list(sql)
+    i, n = 0, len(sql)
+    while i < n:
+        ch = sql[i]
+        if ch == "'":
+            j = i + 1
+            while j < n and sql[j] != "'":
+                j += 1
+            i = j + 1
+        elif ch == "-" and sql[i : i + 2] == "--":
+            j = sql.find("\n", i)
+            j = n if j == -1 else j
+            for k in range(i, j):
+                out[k] = " "
+            i = j
+        elif ch == "/" and sql[i : i + 2] == "/*":
+            j = sql.find("*/", i + 2)
+            j = n - 2 if j == -1 else j
+            for k in range(i, j + 2):
+                out[k] = " "
+            i = j + 2
+        else:
+            i += 1
+    return "".join(out)
+
+
+def _w_tokens(sql: str) -> list[tuple[str, str]]:
+    """(text, kind) with kind in LIT / NUM / ID / P (anything else)."""
+    toks = []
+    for m in _W_TOKEN.finditer(_blank_comments(sql)):
+        t = m.group(0)
+        if t.startswith("'"):
+            toks.append((t[1:-1].replace("''", "'"), "LIT"))
+        elif t[0].isdigit():
+            toks.append((t, "NUM"))
+        elif _IDENT.fullmatch(t):
+            toks.append((t, "ID"))
+        else:
+            toks.append((t, "P"))
+    return toks
+
+
+def _paren_structure(toks):
+    """group[i] = index of the innermost '(' enclosing token i (-1 at top);
+    match[open] = close; is_sub[open] = the paren holds a SELECT."""
+    group = [-1] * len(toks)
+    match: dict[int, int] = {}
+    stack: list[int] = []
+    for i, (t, k) in enumerate(toks):
+        group[i] = stack[-1] if stack else -1
+        if t == "(" and k == "P":
+            stack.append(i)
+        elif t == ")" and k == "P" and stack:
+            match[stack.pop()] = i
+    for s in stack:  # unbalanced — Firebird will refuse; close at the end
+        match[s] = len(toks)
+    is_sub = {
+        s: (
+            s + 1 < len(toks)
+            and toks[s + 1][1] == "ID"
+            and toks[s + 1][0].upper() == "SELECT"
+        )
+        for s in match
+    }
+    return group, match, is_sub
+
+
+def _scope_of(i, group, is_sub):
+    """The query block a token belongs to: the innermost enclosing paren that
+    holds a SELECT, or -1 for the outer statement. Grouping parens are skipped."""
+    g = group[i]
+    while g != -1 and not is_sub.get(g, False):
+        g = group[g]
+    return g
+
+
+def _table_occurrences(toks, ctes):
+    """Every name in table position with its alias (the name itself when none
+    is given) and token index. Same walk as _referenced_tables; CTE names are
+    returned flagged so scope counting can see them but the window check skips
+    them."""
+    occ = []
+    i, n = 0, len(toks)
+    while i < n:
+        if toks[i][1] != "ID" or toks[i][0].upper() not in ("FROM", "JOIN"):
+            i += 1
+            continue
+        i += 1
+        expect_name = True
+        while i < n:
+            t, k = toks[i]
+            u = t.upper()
+            if expect_name:
+                if k != "ID" or u in _STOP:
+                    break
+                name_idx = i
+                alias = t
+                i += 1
+                if i < n and toks[i][1] == "ID" and toks[i][0].upper() == "AS":
+                    if i + 1 < n and toks[i + 1][1] == "ID":
+                        alias = toks[i + 1][0]
+                        i += 2
+                elif i < n and toks[i][1] == "ID" and toks[i][0].upper() not in _STOP:
+                    alias = toks[i][0]
+                    i += 1
+                occ.append((u, alias, name_idx, u in ctes))
+                expect_name = False
+            elif t == "," and k == "P":
+                expect_name = True
+                i += 1
+            else:
+                break
+    return occ
+
+
+def _value_at(toks, j, group, match, is_sub):
+    """Classify the value starting at token j: ('lit', text, end) for a string
+    (also DATE 'x' / TIMESTAMP 'x' / CAST('x' AS …)), ('num', text, end),
+    or ('bad', reason, end). end = index of the last token of the value."""
+    n = len(toks)
+    if j >= n:
+        return ("bad", "nothing after the operator", j)
+    t, k = toks[j]
+    u = t.upper()
+    kind, text, end = None, None, j
+    if k == "LIT":
+        kind, text = "lit", t
+    elif k == "NUM":
+        kind, text = "num", t
+    elif t == "-" and j + 1 < n and toks[j + 1][1] == "NUM":
+        kind, text, end = "num", "-" + toks[j + 1][0], j + 1
+    elif t == "?":
+        return ("bad", "a parameter (?) — write the literal value", j)
+    elif (
+        k == "ID"
+        and u in ("DATE", "TIMESTAMP", "TIME")
+        and j + 1 < n
+        and toks[j + 1][1] == "LIT"
+    ):
+        kind, text, end = "lit", toks[j + 1][0], j + 1
+    elif k == "ID" and u == "CAST" and j + 1 < n and toks[j + 1][0] == "(":
+        close = match.get(j + 1, n)
+        if j + 2 < n and toks[j + 2][1] == "LIT":
+            kind, text, end = "lit", toks[j + 2][0], close
+        else:
+            return ("bad", "a CAST of something other than a literal", close)
+    elif t == "(" and k == "P":
+        close = match.get(j, n)
+        if is_sub.get(j, False):
+            return ("bad", "a subquery — write literal values", close)
+        return ("bad", "an expression in parentheses, not a literal", close)
+    elif k == "ID":
+        if u.startswith("CURRENT_"):
+            return ("bad", f"{u} arithmetic — write literal dates 'YYYY-MM-DD'", j)
+        name = t
+        if j + 2 < n and toks[j + 1][0] == "." and toks[j + 2][1] == "ID":
+            name = f"{t}.{toks[j + 2][0]}"
+        return ("bad", f"{name} (a column or function), not a literal", j)
+    else:
+        return ("bad", "not a literal", j)
+    # a literal followed by arithmetic is an expression
+    if (
+        end + 1 < n
+        and toks[end + 1][0] in ("+", "-", "*", "/", "||")
+        and toks[end + 1][1] == "P"
+    ):
+        return ("bad", "arithmetic on a literal — write the final value", end)
+    return (kind, text, end)
+
+
+def _in_list_at(toks, s, group, match, is_sub):
+    """Items of an IN ( … ) list opening at token s. Returns (count, reason)."""
+    close = match.get(s, len(toks))
+    if is_sub.get(s, False):
+        return 0, "a subquery — write literal values"
+    items = 0
+    j = s + 1
+    while j < close:
+        kind, text, end = _value_at(toks, j, group, match, is_sub)
+        if kind == "bad":
+            return 0, text
+        items += 1
+        j = end + 1
+        if j < close and toks[j][0] == ",":
+            j += 1
+    return items, None
+
+
+def _parse_date(text):
+    """'YYYY-MM-DD' (optionally followed by a time) -> date, else None."""
+    try:
+        return _dt.date.fromisoformat(text.strip()[:10])
+    except ValueError:
+        return None
+
+
+class _Pred:
+    __slots__ = (
+        "alias",
+        "bad",
+        "clause",
+        "col",
+        "count",
+        "in_or",
+        "kind",
+        "negated",
+        "op",
+        "scope",
+        "start",
+        "values",
+    )
+
+    def __init__(self, **kw):
+        for k in self.__slots__:
+            setattr(self, k, kw.get(k))
+
+
+def _predicates(toks, group, match, is_sub, columns_of_interest):
+    """Every comparison on a column of interest: who it is on (alias or bare),
+    what shape (eq / in / between / lo / hi / other), the literal values or
+    why they are not literals, and the structural facts that disqualify it
+    (clause, inside an OR, negated)."""
+    n = len(toks)
+    preds = []
+    i = 0
+    while i < n:
+        t, k = toks[i]
+        u = t.upper()
+        if k != "ID" or u in _NOT_A_COLUMN or u not in columns_of_interest:
+            i += 1
+            continue
+        nxt = toks[i + 1][0] if i + 1 < n else ""
+        if nxt in (".", "("):  # an alias, or a function call
+            i += 1
+            continue
+        alias, start = None, i
+        if i >= 2 and toks[i - 1][0] == "." and toks[i - 2][1] == "ID":
+            alias, start = toks[i - 2][0].upper(), i - 2
+        elif i >= 1 and toks[i - 1][0] == ".":
+            i += 1
+            continue
+        p = _Pred(
+            start=start,
+            alias=alias,
+            col=u,
+            kind="other",
+            op=None,
+            values=[],
+            count=0,
+            bad=None,
+        )
+        j = i + 1
+        negated = i >= 1 and toks[i - 1][1] == "ID" and toks[i - 1][0].upper() == "NOT"
+        if (
+            start >= 1
+            and toks[start - 1][1] == "ID"
+            and toks[start - 1][0].upper() == "NOT"
+        ):
+            negated = True
+        if j < n and toks[j][1] == "ID" and toks[j][0].upper() == "NOT":
+            negated = True
+            j += 1
+        op = toks[j][0].upper() if j < n else ""
+        if op in _CMP_OPS:
+            kind, text, _end = _value_at(toks, j + 1, group, match, is_sub)
+            p.op = op
+            if kind == "bad":
+                p.bad = text
+            else:
+                p.values = [text]
+            p.kind = {"=": "eq", "<": "hi", "<=": "hi", ">": "lo", ">=": "lo"}[op]
+        elif op == "IN" and j + 1 < n and toks[j + 1][0] == "(":
+            p.kind, p.op = "in", "IN"
+            p.count, p.bad = _in_list_at(toks, j + 1, group, match, is_sub)
+        elif op == "BETWEEN":
+            p.kind, p.op = "between", "BETWEEN"
+            k1, t1, e1 = _value_at(toks, j + 1, group, match, is_sub)
+            if k1 == "bad":
+                p.bad = t1
+            elif e1 + 1 < n and toks[e1 + 1][0].upper() == "AND":
+                k2, t2, _e2 = _value_at(toks, e1 + 2, group, match, is_sub)
+                if k2 == "bad":
+                    p.bad = t2
+                else:
+                    p.values = [t1, t2]
+            else:
+                p.bad = "BETWEEN without AND"
+        elif op in ("<>", "!=", "LIKE", "STARTING", "CONTAINING", "SIMILAR", "IS"):
+            p.kind, p.op = "other", op
+        elif (
+            start >= 2
+            and toks[start - 1][0] in _CMP_OPS
+            and toks[start - 1][1] == "P"
+            and toks[start - 2][1] in ("LIT", "NUM")
+        ):
+            # mirrored: 'x' = alias.COL
+            mop = _MIRROR[toks[start - 1][0]]
+            p.op = mop
+            p.kind = {"=": "eq", "<": "hi", "<=": "hi", ">": "lo", ">=": "lo"}[mop]
+            p.values = [toks[start - 2][0]]
+        else:
+            i += 1
+            continue  # not a comparison (select list, GROUP BY, ORDER BY …)
+        p.negated = negated
+        p.scope = _scope_of(start, group, is_sub)
+        p.clause, p.in_or, neg2 = _structure_of(
+            toks, start, group, match, is_sub, p.scope
+        )
+        p.negated = p.negated or neg2
+        preds.append(p)
+        i += 1
+    return preds
+
+
+def _structure_of(toks, s, group, match, is_sub, scope):
+    """Walk up from a predicate: which clause of its query block it is in,
+    whether any enclosing level (grouping parens up to the clause) carries an
+    OR, and whether a NOT fronts an enclosing paren group."""
+    in_or = False
+    negated = False
+    lvl = group[s]
+    while lvl != -1 and not is_sub.get(lvl, False):
+        close = match.get(lvl, len(toks))
+        for j in range(lvl + 1, close):
+            if group[j] == lvl and toks[j][1] == "ID" and toks[j][0].upper() == "OR":
+                in_or = True
+        if lvl >= 1 and toks[lvl - 1][1] == "ID" and toks[lvl - 1][0].upper() == "NOT":
+            negated = True
+        lvl = group[lvl]
+    # clause region at the scope level
+    lo = scope + 1 if scope != -1 else 0
+    hi = match.get(scope, len(toks)) if scope != -1 else len(toks)
+    clause = "SELECT"
+    j = s - 1
+    while j >= lo:
+        if (
+            group[j] == scope
+            and toks[j][1] == "ID"
+            and toks[j][0].upper() in _CLAUSE_KW
+        ):
+            clause = toks[j][0].upper()
+            break
+        j -= 1
+    region_start = j + 1 if j >= lo else lo
+    j = s + 1
+    while j < hi:
+        if (
+            group[j] == scope
+            and toks[j][1] == "ID"
+            and toks[j][0].upper() in _CLAUSE_KW
+        ):
+            break
+        j += 1
+    region_end = j
+    for j in range(region_start, region_end):
+        if group[j] == scope and toks[j][1] == "ID" and toks[j][0].upper() == "OR":
+            in_or = True
+    return clause, in_or, negated
+
+
+def _days(n: int) -> str:
+    return "1 day" if n == 1 else f"{n} days"
+
+
+def _judge(table, spec, alias, mine, pins_seen):
+    """Qualifying descriptions and disqualification reasons for one occurrence."""
+    label = f"{alias}." if alias.upper() != table else ""
+    qualifying: list[str] = []
+    reasons: list[str] = []
+    lows: list[tuple[_dt.date, str]] = []
+    highs: list[tuple[_dt.date, str]] = []
+    for p in mine:
+        ref = f"{label}{p.col}"
+        if p.clause not in ("WHERE", "ON"):
+            reasons.append(
+                f"{ref} is in the {p.clause} clause — only a WHERE or JOIN ON predicate bounds the read"
+            )
+            continue
+        if p.negated:
+            reasons.append(
+                f"{ref} is negated (NOT) — a negation does not bound the read"
+            )
+            continue
+        if p.in_or:
+            reasons.append(
+                f"{ref} sits inside an OR — an OR widens the read; put alternatives in IN (…)"
+            )
+            continue
+        if p.col in spec["keys"]:
+            limit = spec["keys"][p.col]
+            if p.kind == "eq":
+                if p.bad:
+                    reasons.append(f"{ref} = … is {p.bad}")
+                else:
+                    qualifying.append(f"keyed by {p.col} (1 literal)")
+            elif p.kind == "in":
+                if p.bad:
+                    reasons.append(f"{ref} IN (…) holds {p.bad}")
+                elif p.count > limit:
+                    reasons.append(
+                        f"{ref} IN (…) has {p.count} literals — the limit is {limit}"
+                    )
+                else:
+                    qualifying.append(f"keyed by {p.col} IN ({p.count} literals)")
+            else:
+                reasons.append(f"{ref} {p.op} … is not a key — use = or IN (…)")
+        elif p.col == spec["date"]:
+            if p.kind in ("eq", "between"):
+                if p.bad:
+                    reasons.append(f"the {ref} range is {p.bad}")
+                    continue
+                dates = [_parse_date(v) for v in p.values]
+                if any(d is None for d in dates):
+                    reasons.append(
+                        f"{ref} compares to a date that is not 'YYYY-MM-DD' — write dates as 'YYYY-MM-DD'"
+                    )
+                    continue
+                lo_d, hi_d = dates[0], dates[-1]
+                width = (hi_d - lo_d).days + 1
+                if width <= 0:
+                    reasons.append(f"the {ref} bounds are reversed ({lo_d}..{hi_d})")
+                elif width > spec["max_days"]:
+                    reasons.append(
+                        f"the {ref} range is {width} days ({lo_d}..{hi_d}) — the limit is {spec['max_days']} days"
+                    )
+                else:
+                    qualifying.append(f"{p.col} window {lo_d}..{hi_d} ({_days(width)})")
+            elif p.kind in ("lo", "hi"):
+                if p.bad:
+                    reasons.append(f"the {ref} bound is {p.bad}")
+                    continue
+                d = _parse_date(p.values[0])
+                if d is None:
+                    reasons.append(
+                        f"{ref} compares to a date that is not 'YYYY-MM-DD' — write dates as 'YYYY-MM-DD'"
+                    )
+                    continue
+                if p.kind == "lo":
+                    lows.append((d + _dt.timedelta(days=1) if p.op == ">" else d, ref))
+                else:
+                    highs.append((d - _dt.timedelta(days=1) if p.op == "<" else d, ref))
+            else:
+                reasons.append(
+                    f"{ref} {p.op} … is not a date range — use BETWEEN or >= … AND <= …"
+                )
+        elif p.col in spec["filters_only"]:
+            why = spec["filter_why"].get(p.col)
+            reasons.append(
+                f"{p.col} is a filter, not a key or window on {table}"
+                + (f" — {why}" if why else "")
+            )
+    if lows or highs:
+        ref = f"{label}{spec['date']}"
+        if not lows or not highs:
+            reasons.append(
+                f"only one bound on {ref} — give both ends (>= and <= literal dates)"
+            )
+        else:
+            lo_d = max(d for d, _ in lows)
+            hi_d = min(d for d, _ in highs)
+            width = (hi_d - lo_d).days + 1
+            if width <= 0:
+                reasons.append(f"the {ref} bounds are reversed ({lo_d}..{hi_d})")
+            elif width > spec["max_days"]:
+                reasons.append(
+                    f"the {ref} range is {width} days ({lo_d}..{hi_d}) — the limit is {spec['max_days']} days"
+                )
+            else:
+                qualifying.append(
+                    f"{spec['date']} window {lo_d}..{hi_d} ({_days(width)})"
+                )
+    keyed_by_manifest = any(q.startswith("keyed by MANIFEST") for q in qualifying)
+    if spec["pins"] and keyed_by_manifest and not set(spec["pins"]) <= pins_seen:
+        qualifying.append(_MANIFEST_HINT)
+    return qualifying, reasons
+
+
+def _check_windowed(sql: str, tables: list[str], windows: list[str] | None) -> None:
+    """For every occurrence of a windowed table, require a qualifying key or
+    window predicate on its own alias; describe what was applied (into
+    `windows`) or refuse naming what was missing."""
+    specs = {t: WINDOWED[t] for t in tables if t in WINDOWED}
+    if not specs:
+        return
+    toks = _w_tokens(sql)
+    group, match, is_sub = _paren_structure(toks)
+    ctes = {
+        m.group(1).upper()
+        for m in _CTE_NAME.finditer(_strip_literals_and_comments(sql))
+    }
+    occurrences = _table_occurrences(toks, ctes)
+    scope_count: dict[int, int] = {}
+    for _t, _a, idx, _is_cte in occurrences:  # every table, CTE refs included
+        sc = _scope_of(idx, group, is_sub)
+        scope_count[sc] = scope_count.get(sc, 0) + 1
+    interest: set[str] = {"WAYBILL", "WAYDATE"}  # for the VIEW_WBANALYSE join caution
+    for spec in specs.values():
+        interest |= (
+            set(spec["keys"])
+            | {spec["date"]}
+            | set(spec["filters_only"])
+            | set(spec["pins"])
+        )
+    preds = _predicates(toks, group, match, is_sub, interest)
+    windowed_scopes: set[int] = set()
+    for table, alias, idx, is_cte in occurrences:
+        if is_cte or table not in specs:
+            continue
+        spec = specs[table]
+        sc = _scope_of(idx, group, is_sub)
+        single = scope_count.get(sc, 0) == 1
+        alias_u = alias.upper()  # Firebird identifiers are case-insensitive unquoted
+        mine = [
+            p
+            for p in preds
+            if p.scope == sc and (p.alias == alias_u or (p.alias is None and single))
+        ]
+        unqualified = sorted(
+            {p.col for p in preds if p.scope == sc and p.alias is None and not single}
+        )
+        pins_seen = {p.col for p in mine if p.col in spec["pins"]}
+        qualifying, reasons = _judge(table, spec, alias, mine, pins_seen)
+        label = f"{table} (alias {alias})" if alias_u != table else table
+        if qualifying:
+            windowed_scopes.add(sc)
+            if windows is not None:
+                short = f"{table} ({alias})" if alias_u != table else table
+                windows.append(f"{short}: " + "; ".join(qualifying))
+            continue
+        for col in unqualified:
+            reasons.append(
+                f"{col} is unqualified in a multi-table query — qualify it "
+                f"({alias}.{col}) so the key or window is on {table}"
+            )
+        detail = f" — found: {'; '.join(reasons)}" if reasons else ""
+        raise GuardError(f"no key or window on {label}{detail}. Rule: {spec['rule']}.")
+    if windows is not None:
+        windows.extend(
+            _view_join_cautions(occurrences, preds, group, is_sub, windowed_scopes)
+        )
+
+
+_VIEW_JOIN_CAUTION = (
+    "CAUTION — VIEW_WBANALYSE ({alias}) is joined to {other} in this query "
+    "without a literal WAYBILL key or WAYDATE range of its own. Firebird then "
+    "drives the join from the 3.1M-row view with a full scan (plans read "
+    "21 Oct 2026: only a single '=' literal on the ROUTING side propagates to "
+    "the view; an IN-list, a MANIFEST key or a date window does not), which "
+    "runs past the 15 s cap and keeps running server-side. Add "
+    "{alias}.WAYBILL = / IN (the same literals) or a {alias}.WAYDATE range."
+)
+
+
+def _view_join_cautions(occurrences, preds, group, is_sub, windowed_scopes):
+    """A windowed table joined to VIEW_WBANALYSE is bounded on ITS side only;
+    the view's side is a pre-existing open-path exposure (the view is
+    unbounded on its own today). Say so up front, in the notes and in the
+    time-cap refusal, rather than letting the cap be the first warning."""
+    out = []
+    for table, alias, idx, is_cte in occurrences:
+        if is_cte or table != "VIEW_WBANALYSE":
+            continue
+        sc = _scope_of(idx, group, is_sub)
+        if sc not in windowed_scopes:
+            continue
+        alias_u = alias.upper()
+        bounded = any(
+            p.scope == sc
+            and p.alias == alias_u
+            and p.col in ("WAYBILL", "WAYDATE")
+            and p.kind in ("eq", "in", "between", "lo", "hi")
+            and not p.bad
+            and not p.in_or
+            and not p.negated
+            and p.clause in ("WHERE", "ON")
+            for p in preds
+        )
+        if bounded:
+            continue
+        others = sorted(
+            {
+                t
+                for t, a, i, c in occurrences
+                if not c and t in WINDOWED and _scope_of(i, group, is_sub) == sc
+            }
+        )
+        out.append(
+            _VIEW_JOIN_CAUTION.format(
+                alias=alias, other=" / ".join(others) or "a windowed table"
+            )
+        )
+    return out
+
+
+def check_open_query(sql: str, windows: list[str] | None = None) -> list[str]:
     """Full gate: SELECT-only, no quoted identifiers, every relation in table
     position on the allowlist, no withheld column named anywhere, no
-    projection star over a table that has withheld columns. Returns the
-    tables referenced; raises GuardError with the reason otherwise."""
+    projection star over a table that has withheld columns, and a key or
+    window on every occurrence of a WINDOWED table. Returns the tables
+    referenced (and, if `windows` is a list, appends one line per windowed
+    occurrence saying what bounded it); raises GuardError otherwise."""
     if len(sql) > _MAX_SQL_CHARS:
         raise GuardError(
             f"the statement is {len(sql):,} characters — the open path accepts at "
@@ -1051,6 +1874,7 @@ def check_open_query(sql: str) -> list[str]:
     tables = sorted(set(tables))
     _check_denied_columns(cleaned, tables)
     _check_star_projection(cleaned, tables)
+    _check_windowed(sql, tables, windows)
     return tables
 
 
@@ -1120,8 +1944,9 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
         return _refused("no SQL provided")
     sql = str(sql).strip()
 
+    windows: list[str] = []
     try:
-        tables = check_open_query(sql)
+        tables = check_open_query(sql, windows)
     except GuardError as e:
         return _refused(str(e))
 
@@ -1140,11 +1965,12 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
         if isinstance(e, (socket.timeout, TimeoutError)) or (
             "timed out" in msg or "can not recv" in msg
         ):
+            cautions = " ".join(w for w in windows if w.startswith("CAUTION"))
             return _refused(
                 f"the query exceeded the {TIMEOUT_S}s time cap (or the "
                 "connection dropped mid-query) and was abandoned — narrow it "
                 "(add WHERE bounds, or aggregate in SQL rather than fetching "
-                "rows)"
+                "rows)" + (f". {cautions}" if cautions else "")
             )
         return _refused(
             f"Firebird refused the query: {e}",
@@ -1187,6 +2013,8 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
     notes = [
         "Open-path answer: a raw read, not a verified report figure.",
     ]
+    for w in windows:
+        notes.append(w if w.startswith("CAUTION") else f"Window applied — {w}.")
     if withheld:
         notes.append(
             f"Withheld columns (not in this result): {', '.join(withheld)} — "
@@ -1301,6 +2129,8 @@ def schema_context(table: str | None = None) -> dict:
                 else "none — no contact, banking or password columns"
             ),
         }
+        if name in WINDOWED:
+            tables[name]["window_rule"] = WINDOWED[name]["rule"]
     if table is not None:
         t = str(table).strip().upper()
         if t not in tables:
@@ -1313,7 +2143,17 @@ def schema_context(table: str | None = None) -> dict:
         "read_this_first": [
             (
                 "Only these tables are queryable; everything else is refused "
-                "(EVENT and the other 100M+-row tables are a separate quote)."
+                "(EVENT and the other 100M+-row tables stay off: a waybill's scan "
+                "history is on VIEW_EVENTSCANS, and scans by type over a date "
+                "range are the event-counts tool, quoted separately)."
+            ),
+            (
+                "ROUTING and VIEW_EVENTSCANS are windowed: every query must key "
+                "them (WAYBILL / TRACKNO / MANIFEST = or IN, literal values) or "
+                "bound them with a literal date range on AGENTDATE (at most 31 "
+                "days) or EVENTDATE (at most 3 days), on the table's own alias, "
+                "in WHERE or JOIN ON, outside any OR — see each table's "
+                "window_rule (QT-000007 line 4, measured 21 Oct 2026)."
             ),
             (
                 f"Row cap {ROW_CAP} (a hit cap refuses, not truncates); "

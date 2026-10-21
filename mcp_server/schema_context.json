@@ -3397,6 +3397,347 @@
     }
    ]
   },
+  "ROUTING": {
+   "kind": "table",
+   "row_count": 6018355,
+   "columns": [
+    {
+     "name": "WAYBILL",
+     "type": "VARCHAR(24)",
+     "nullable": false
+    },
+    {
+     "name": "LEG",
+     "type": "SMALLINT",
+     "nullable": false
+    },
+    {
+     "name": "MBRANCH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "MTYPE",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "MANIFEST",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "AGENT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "AWB",
+     "type": "VARCHAR(28)",
+     "nullable": true
+    },
+    {
+     "name": "REFERENCE",
+     "type": "VARCHAR(28)",
+     "nullable": true
+    },
+    {
+     "name": "AGENTDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "COSTSERV",
+     "type": "CHAR(4)",
+     "nullable": true
+    },
+    {
+     "name": "SERVTYPE",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "AREA",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "DESTHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "OTHERCHARGE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SUBTOTAL",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "VAT",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "TOTAL",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CURRATE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "STATUS",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSGROUP",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "BRANCH",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "EXPORT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "COMPLETE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SORTORDER",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "PAYGROUP",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "CHARGEMASS",
+     "type": "FLOAT",
+     "nullable": false
+    },
+    {
+     "name": "VATPAID",
+     "type": "FLOAT",
+     "nullable": false
+    },
+    {
+     "name": "TOTPAID",
+     "type": "FLOAT",
+     "nullable": false
+    },
+    {
+     "name": "VATTYPE",
+     "type": "SMALLINT",
+     "nullable": false
+    },
+    {
+     "name": "FAILTYPE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "PIF",
+     "type": "CHAR(1)",
+     "nullable": true
+    },
+    {
+     "name": "INVAMOUNT",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "VOLRATE",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "VOLMASS",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CLOSED",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "INHOUSE",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "BOOKDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "STARTTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "ENDTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "FLIGHT",
+     "type": "VARCHAR(6)",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSDUTIES",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "CUSTOMSVAT",
+     "type": "DOUBLE PRECISION",
+     "nullable": true
+    },
+    {
+     "name": "SECURITY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "DELOTP",
+     "type": "VARCHAR(10)",
+     "nullable": true
+    },
+    {
+     "name": "ESTATECODE",
+     "type": "VARCHAR(10)",
+     "nullable": true
+    },
+    {
+     "name": "MOBEXPORT",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGEFLAG1",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGEFLAG2",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGEFLAG3",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGEFLAG4",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGEFLAG5",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGEFLAG6",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGEFLAG7",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGEFLAG8",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGEFLAG9",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE1",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE2",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE3",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE4",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE5",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE6",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE7",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE8",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "SURCHARGE9",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "TOTSURCHARGE",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "HANDLING",
+     "type": "FLOAT",
+     "nullable": true
+    }
+   ]
+  },
   "SERVICE": {
    "kind": "table",
    "row_count": 138,
@@ -3793,6 +4134,157 @@
     {
      "name": "COMPANY",
      "type": "VARCHAR(60)",
+     "nullable": true
+    }
+   ]
+  },
+  "VIEW_EVENTSCANS": {
+   "kind": "view",
+   "row_count": null,
+   "columns": [
+    {
+     "name": "WAYBILL",
+     "type": "VARCHAR(24)",
+     "nullable": true
+    },
+    {
+     "name": "TRACKNO",
+     "type": "VARCHAR(28)",
+     "nullable": true
+    },
+    {
+     "name": "EVENTDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "EVENTTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "INPUTMETHOD",
+     "type": "CHAR(18)",
+     "nullable": true
+    },
+    {
+     "name": "NAME",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "EXPECTED",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "HUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "MANIFEST",
+     "type": "INTEGER",
+     "nullable": true
+    },
+    {
+     "name": "BRANCHNAME",
+     "type": "VARCHAR(20)",
+     "nullable": true
+    },
+    {
+     "name": "USERNAME",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "ACCNUM",
+     "type": "VARCHAR(6)",
+     "nullable": true
+    },
+    {
+     "name": "SERVICE",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "ACTKG",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "CHARGEUNITS",
+     "type": "FLOAT",
+     "nullable": true
+    },
+    {
+     "name": "REFERENCE",
+     "type": "VARCHAR(28)",
+     "nullable": true
+    },
+    {
+     "name": "CHARGEMASS",
+     "type": "NUMERIC(18,2)",
+     "nullable": true
+    },
+    {
+     "name": "ORIGHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "DESTHUB",
+     "type": "CHAR(3)",
+     "nullable": true
+    },
+    {
+     "name": "WAYDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "BAY",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "SCANSPEED",
+     "type": "SMALLINT",
+     "nullable": true
+    },
+    {
+     "name": "FAILTYPE_DESC",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "TRACKLEVEL",
+     "type": "CHAR(8)",
+     "nullable": true
+    },
+    {
+     "name": "AGENTNAME",
+     "type": "VARCHAR(60)",
+     "nullable": true
+    },
+    {
+     "name": "PODDATE",
+     "type": "DATE",
+     "nullable": true
+    },
+    {
+     "name": "PODTIME",
+     "type": "TIME",
+     "nullable": true
+    },
+    {
+     "name": "RECIPIENT",
+     "type": "VARCHAR(30)",
+     "nullable": true
+    },
+    {
+     "name": "AGTRACKNO",
+     "type": "VARCHAR(28)",
      "nullable": true
     }
    ]

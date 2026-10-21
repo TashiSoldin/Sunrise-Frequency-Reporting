@@ -134,7 +134,7 @@ not cover, answered from the raw data through a fence:
 
 - **SELECT-only** (`sql_guard`), plus a **table allowlist** checked in table
   position (FROM/JOIN through comma lists, CTE-aware, derived tables
-  scanned). 30 relations, each justified from the 6 Aug schema survey in
+  scanned). 32 relations, each justified from the 6 Aug schema survey in
   `ALLOWLIST`: the sanctioned views (`VIEW_WBANALYSE`, `VIEW_SURCHARGES`,
   `VIEW_USERCODE`, `VIEW_CUSTOMERS`), billing documents (`RECEIPT`,
   `INVOICE`), parties (`CUSTOMER`, `CONTACT`, `AGENT`), operations
@@ -142,11 +142,48 @@ not cover, answered from the raw data through a fence:
   `SERVICEGROUP`, `COLLECT`, `NOTE`), lookups (`HUB`, `PLACE`, `AREA`,
   `BRANCH`, `HOLIDAY`) and, from QT-000007 line 1 (20 Oct 2026), the rate
   tables (`RATE`, `MASSRATE`, `ITEMRATE`, `RATENUM`, `SURCHRATE`, `SURCHNUM`,
-  `AGRATE`, `AGRATENUM`). `EVENT` (113M rows) and the other
-  multi-million-row tables refuse with tailored messages — full history is
-  a separate quote with a query plan first; `ROUTING` and `VIEW_EVENTSCANS`
-  arrive with QT-000007 lines 3–4, windowed. Quoted identifiers refuse
-  outright.
+  `AGRATE`, `AGRATENUM`) and, from QT-000007 line 4 (21 Oct 2026), the two
+  windowed relations `ROUTING` and `VIEW_EVENTSCANS` (next bullet). `EVENT`
+  (113M rows) and the other multi-million-row tables refuse with tailored
+  messages — a waybill's scan history is on `VIEW_EVENTSCANS`, and scans by
+  type over a date range are the event-counts tool Reuven asked for on
+  20 Oct 2026, quoted separately. Quoted identifiers refuse outright.
+- **Windowed tables** (`WINDOWED`, QT-000007 line 4, 21 Oct 2026): `ROUTING`
+  (6.2M rows) and `VIEW_EVENTSCANS` (a UNION over the 113M-row EVENT family
+  with eight lookups per row) are queryable only when every occurrence of
+  them carries a **key** or a **window**, checked in `check_open_query`
+  after the allowlist, identifier and star gates. ROUTING: `WAYBILL = '…'`
+  or `IN (up to 100 literals)`, `MANIFEST = n` or `IN (up to 20)` (MBRANCH
+  and MTYPE optional — the result note says they pin one trip), or an
+  `AGENTDATE` range of at most 31 days. VIEW_EVENTSCANS: `WAYBILL` or
+  `TRACKNO` (= or IN, up to 100), `MANIFEST` (= or IN, up to 20), or an
+  `EVENTDATE` range of at most 3 days. `BOOKDATE`, `AGENT`, hubs, `MTYPE`,
+  `STATUS` on ROUTING and `WAYDATE`, `ACCNUM`, `NAME`, `HUB`, `USERNAME`,
+  `AGENTNAME` on the view are filters only — they never satisfy the rule on
+  their own (BOOKDATE is populated only on local-delivery rows; the view's
+  lookup-side columns make the planner scan TRACK and WAYBILL). Values must
+  be literals (no subquery, parameter or `CURRENT_DATE` arithmetic), dates
+  as `'YYYY-MM-DD'` (`DATE '…'`, `TIMESTAMP '…'` and `CAST('…' AS DATE)` are
+  read), on the windowed table's **own alias** (`ROUTING.WAYBILL = x` does
+  not window `VIEW_EVENTSCANS` in a join; a bare column in a multi-table
+  query is refused as unqualified), in `WHERE` or a `JOIN … ON` (HAVING and
+  the select list run after the scan), not negated, and not inside an `OR`
+  (alternatives go in `IN (…)`). Ranges are inclusive: `BETWEEN a AND b` is
+  b − a + 1 days, `>= a AND < b` is b − a. Every occurrence needs its own
+  predicate: a window inside a CTE does not cover an outer unwindowed read,
+  a self-join needs both sides, and a join of the two windowed tables needs
+  each keyed or windowed. The refusal states the rule in one sentence and
+  names what was missing (no predicate, a subquery or `CURRENT_DATE` range,
+  an OR, a filter-only column, an over-long IN-list, reversed or one-sided
+  bounds, the wrong alias); an accepted query carries a `Window applied —`
+  note. The widths come from live plans and timings, every PLAN line
+  recorded in `research/db_query_interface/routing_eventscans_plans_2026-10-21.md`
+  (ROUTING 31 days = 48,680 rows in 168 ms cold, the unbounded count 7.9 s;
+  the view 1/3/7 days = 1.2/3.5/6.9 s warm). The 15 s cap cannot stop
+  Firebird 3 server-side, so this predicate check is the load guard for these
+  two. `ROUTING.DELOTP` (the delivery one-time PIN) is withheld, so `SELECT *`
+  refuses on ROUTING as on any table with withheld columns; the view's
+  `RECIPIENT` and `USERNAME` are names and are served.
 - **Column deny list** (`DENIED_COLUMNS`, QT-000007 line 2, 20 Oct 2026):
   per table, the contact (phone/cell/fax/email), banking and
   password/credential columns, built from the survey by name match and then
