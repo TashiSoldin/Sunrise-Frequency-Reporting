@@ -1001,6 +1001,7 @@ class TestWithOnlyAtTheTop:
     and every table inside escaped the allowlist, DENIED_COLUMNS and the
     star ban. WITH is now accepted only as the first word of the statement."""
 
+
 # --- windowed relations (QT-000007 line 4, 21 Oct 2026) ----------------------
 
 R_WB = "SELECT WAYBILL, LEG, MANIFEST FROM ROUTING WHERE WAYBILL = '102155314'"
@@ -2339,3 +2340,223 @@ class TestWhitelistOnlyExactForms:
             "JOIN BRANCH b ON b.BRANCH = r.MBRANCH"
         )
         assert check_open_query(sql2) == ["BRANCH", "HUB", "ROUTING"]
+
+
+# --- Fable re-review of Chunk 3 (21 Oct 2026, ~14:50): R2, R3, R4, R6, R8 ----------
+
+
+class TestReviewR2UnparsedBlocksRefuse:
+    """R2: an unrecognised FROM item used to abort the block parser and leave
+    what followed unjudged. The hot-fixed scanner on main refuses parenthesised
+    joins outright; the windowed check refuses any block it could not parse
+    and any windowed table it could not attribute to a block."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM (HOLIDAY h JOIN HUB u ON u.HUB = u.HUB) JOIN ROUTING r ON r.ORIGHUB = u.HUB",
+            "SELECT COUNT(*) FROM HOLIDAY h NATURAL JOIN ROUTING r",
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = LEFT(u.HUB, 3) JOIN ROUTING r ON r.ORIGHUB = u.HUB",
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = RIGHT(u.HUB, 3) JOIN VIEW_EVENTSCANS v ON v.HUB = u.HUB",
+            "SELECT COUNT(*) FROM ROUTING r, (HOLIDAY h JOIN HUB u ON u.HUB = u.HUB)",
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN ROUTING r USING (HUB)",
+        ],
+    )
+    def test_the_review_shapes_refuse(self, sql):
+        with pytest.raises(GuardError):
+            check_open_query(sql)
+        assert run_open_query("r2", sql, run=never_runs)["refused"]
+
+    def test_left_as_a_function_in_an_earlier_on_with_a_key_is_fine(self):
+        sql = (
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = LEFT(u.HUB, 3) "
+            "JOIN ROUTING r ON r.ORIGHUB = u.HUB WHERE r.WAYBILL = 'A'"
+        )
+        assert check_open_query(sql) == ["HOLIDAY", "HUB", "ROUTING"]
+
+
+class TestReviewR3OrPrecedence:
+    """R3 BLOCKER: the splitter cut on every top-level AND and ignored OR, so
+    `a OR b AND key` read as a keyed conjunct. Firebird binds AND tighter than
+    OR: a WHERE (or ON) with a top-level OR has no conjuncts that count."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' AND r.LEG = 1 OR r.LEG = 2",
+            "SELECT COUNT(*) FROM ROUTING r WHERE 1 = 1 OR 1 = 1 AND r.WAYBILL = 'A'",
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.LEG BETWEEN 1 AND 9 OR 1 = 1 AND r.WAYBILL = 'A'",
+            (
+                "SELECT COUNT(*) FROM VIEW_EVENTSCANS v WHERE v.EVENTDATE BETWEEN '2026-10-13' AND '2026-10-15' "
+                "AND v.HUB = 'JNB' OR v.HUB = 'CPT'"
+            ),
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' AND NOT r.LEG = 1 OR r.LEG = 2",
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' OR r.WAYBILL = 'B'",
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN ROUTING r ON r.WAYBILL = 'A' AND r.LEG = 1 OR r.LEG = 2",
+        ],
+    )
+    def test_a_top_level_or_leaves_nothing_that_counts(self, sql):
+        with pytest.raises(GuardError, match="top-level OR"):
+            check_open_query(sql)
+        assert run_open_query("r3", sql, run=never_runs)["refused"]
+
+    @pytest.mark.parametrize(
+        "where",
+        [
+            "r.WAYBILL = 'A' AND (r.LEG = 1 OR r.LEG = 2)",
+            "(r.WAYBILL = 'A') AND r.LEG = 1",
+            "(r.WAYBILL = 'A' AND r.LEG = 1) AND (r.LEG = 1 OR r.LEG = 2)",
+        ],
+    )
+    def test_or_inside_parentheses_beside_a_bare_key_is_fine(self, where):
+        assert check_open_query(f"SELECT COUNT(*) FROM ROUTING r WHERE {where}") == [
+            "ROUTING"
+        ]
+
+    def test_the_message_says_what_to_do(self):
+        with pytest.raises(GuardError, match="outside the OR"):
+            check_open_query(
+                "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' OR r.LEG = 2"
+            )
+
+
+class TestReviewR4OperatorSpellings:
+    """R4 HIGH: the tokenizer had no token for ~ ^ or a lone !, so `~=` read
+    as `=`. Every Firebird comparison spelling is now a token of its own, and
+    only = (and IN / BETWEEN / a >= with <= pair) is a key or window."""
+
+    @pytest.mark.parametrize("op", ["~=", "^=", "!=", "<>"])
+    @pytest.mark.parametrize(
+        "col_sql",
+        [
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL {op} 'A'",
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.MANIFEST {op} 37733",
+            "SELECT COUNT(*) FROM VIEW_EVENTSCANS v WHERE v.TRACKNO {op} 'A'",
+            "SELECT COUNT(*) FROM VIEW_EVENTSCANS v WHERE v.WAYBILL {op} 'A'",
+        ],
+    )
+    def test_not_equal_spellings_are_not_keys(self, op, col_sql):
+        sql = col_sql.format(op=op)
+        with pytest.raises(GuardError, match="is not a key|no key or window"):
+            check_open_query(sql)
+        assert run_open_query("r4", sql, run=never_runs)["refused"]
+
+    @pytest.mark.parametrize("lo, hi", [("~<", "~>"), ("^<", "^>"), ("!<", "!>")])
+    def test_negated_range_spellings_are_not_windows(self, lo, hi):
+        sql = f"SELECT COUNT(*) FROM ROUTING r WHERE r.AGENTDATE {lo} '2026-10-11' AND r.AGENTDATE {hi} '2026-10-05'"
+        with pytest.raises(GuardError, match="not a date range|no key or window"):
+            check_open_query(sql)
+        sql2 = f"SELECT COUNT(*) FROM ROUTING r WHERE r.AGENTDATE {lo} '2026-10-11'"
+        with pytest.raises(GuardError):
+            check_open_query(sql2)
+
+    @pytest.mark.parametrize(
+        "op", ["LIKE", "STARTING WITH", "CONTAINING", "SIMILAR TO"]
+    )
+    def test_string_match_operators_are_not_keys(self, op):
+        with pytest.raises(GuardError, match="not a key|no key or window"):
+            check_open_query(f"SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL {op} 'A'")
+
+    def test_an_unknown_character_never_vanishes(self):
+        with pytest.raises(GuardError):
+            check_open_query("SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL ~ = 'A'")
+        with pytest.raises(GuardError):
+            check_open_query("SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' ^ 1")
+
+    def test_the_accepted_operators_are_unchanged(self):
+        assert check_open_query(
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A'"
+        ) == ["ROUTING"]
+        assert check_open_query(
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.AGENTDATE >= '2026-10-05' AND r.AGENTDATE <= '2026-10-11'"
+        ) == ["ROUTING"]
+        assert check_open_query(
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.AGENTDATE > '2026-10-04' AND r.AGENTDATE < '2026-10-12'"
+        ) == ["ROUTING"]
+
+
+class TestReviewR6JudgeNeverRaises:
+    """R6 MEDIUM: a date IN-list raised ValueError inside the judge — a 500,
+    not a refusal. The judge now refuses the shape, and any internal error in
+    the window check becomes a refusal naming the clause."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.AGENTDATE IN ('2026-10-01', '2026-10-02')",
+            "SELECT COUNT(*) FROM VIEW_EVENTSCANS v WHERE v.EVENTDATE IN ('2026-10-01', '2026-10-02')",
+        ],
+    )
+    def test_a_date_in_list_refuses_with_the_rule(self, sql):
+        with pytest.raises(GuardError, match="not a window"):
+            check_open_query(sql)
+        out = run_open_query("r6", sql, run=never_runs)
+        assert out["refused"] and "Rule:" in out["reason"]
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = = 'A' AND (",
+            "SELECT COUNT(*) FROM ROUTING r WHERE ) r.WAYBILL = 'A'",
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL IN (",
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.AGENTDATE BETWEEN",
+            "SELECT COUNT(*) FROM ROUTING r JOIN",
+        ],
+    )
+    def test_a_malformed_where_is_a_refusal_not_an_exception(self, sql):
+        with pytest.raises(GuardError):
+            check_open_query(sql)
+        out = run_open_query("r6", sql, run=never_runs)
+        assert out["refused"]
+
+    def test_an_internal_error_becomes_a_refusal(self, monkeypatch):
+        import mcp_server.open_query as oq
+
+        def boom(*a, **k):
+            raise ZeroDivisionError("judge exploded")
+
+        monkeypatch.setattr(oq, "_judge", boom)
+        with pytest.raises(GuardError, match="could not"):
+            check_open_query("SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A'")
+        out = run_open_query(
+            "r6", "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A'", run=never_runs
+        )
+        assert out["refused"]
+
+
+class TestReviewR8Pins:
+    """R8: pin the FROM-list terminator through the windowed judge, OR
+    precedence, the operator set and PLAN on a windowed statement. Scratch-copy
+    checks on 21 Oct 2026: with the OR rule deleted TestReviewR3OrPrecedence
+    fails; with the operator table regressed TestReviewR4OperatorSpellings fails."""
+
+    def test_hot_fix_shapes_reach_the_windowed_judge(self):
+        with pytest.raises(GuardError, match="no key or window on ROUTING"):
+            check_open_query(
+                "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = u.HUB, ROUTING r"
+            )
+        with pytest.raises(GuardError, match="no key or window on VIEW_EVENTSCANS"):
+            check_open_query(
+                "SELECT COUNT(*) FROM (SELECT 1 AS X FROM HOLIDAY) t, VIEW_EVENTSCANS v"
+            )
+        assert check_open_query(
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = u.HUB, ROUTING r WHERE r.WAYBILL = 'A'"
+        ) == ["HOLIDAY", "HUB", "ROUTING"]
+        assert check_open_query(
+            "SELECT COUNT(*) FROM (SELECT 1 AS X FROM HOLIDAY) t, VIEW_EVENTSCANS v WHERE v.WAYBILL = 'A'"
+        ) == ["HOLIDAY", "VIEW_EVENTSCANS"]
+        with pytest.raises(GuardError, match="repeat the waybill filter"):
+            check_open_query(
+                "SELECT COUNT(*) FROM ROUTING r JOIN HOLIDAY h ON h.HOLIDAY = r.AGENTDATE, VIEW_WBANALYSE w "
+                "WHERE r.WAYBILL = 'A' AND w.WAYBILL = r.WAYBILL"
+            )
+
+    def test_plan_on_a_windowed_statement_is_refused(self):
+        with pytest.raises(GuardError, match="PLAN clause"):
+            check_open_query(
+                "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' PLAN (R NATURAL)"
+            )
+
+    def test_the_rule_sentence_says_outside_any_or(self):
+        for t in ("ROUTING", "VIEW_EVENTSCANS"):
+            assert "outside any OR" in WINDOWED[t]["rule"]
