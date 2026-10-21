@@ -821,3 +821,153 @@ class TestPlausibleWindow:
 
         c = classify_dates([datetime(1899, 12, 30, 0, 0)], TODAY)
         assert c["placeholder"] == 1
+
+
+# --- hot-fix 21 Oct 2026: the FROM-list scanner (Fable re-review R1) and PLAN (R5)
+
+
+class TestFromListScanner:
+    """R1: the Day 5 scanner stopped at the first ON or closing paren, so a
+    comma-listed table after JOIN … ON … or after a derived table was never
+    seen by the allowlist, DENIED_COLUMNS or the star ban. Live on main from
+    18 Aug to 21 Oct 2026. Every FROM list is now read to its end, and a list
+    the scanner cannot finish refuses (fail closed)."""
+
+    def test_event_after_a_comma_following_join_on_is_seen(self):
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = u.HUB, EVENT e"
+            )
+
+    def test_webpassword_after_a_comma_following_join_on_is_refused(self):
+        with pytest.raises(GuardError, match="withheld column: WEBPASSWORD"):
+            check_open_query(
+                "SELECT c.WEBPASSWORD FROM HOLIDAY h JOIN HUB u ON u.HUB = u.HUB, CONTACT c"
+            )
+        with pytest.raises(GuardError, match="SELECT \\*"):
+            check_open_query(
+                "SELECT * FROM HOLIDAY h JOIN HUB u ON u.HUB = u.HUB, CONTACT c"
+            )
+
+    def test_comma_after_a_derived_table_is_seen(self):
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT COUNT(*) FROM (SELECT 1 AS X FROM HOLIDAY) t, EVENT e"
+            )
+        with pytest.raises(GuardError, match="window"):
+            check_open_query(
+                "SELECT COUNT(*) FROM (SELECT 1 AS X FROM HOLIDAY) t, ROUTING r"
+            )
+
+    def test_three_table_comma_lists_after_join_on(self):
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = h.NAME, AREA a, EVENT e"
+            )
+        assert check_open_query(
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = h.NAME, AREA a, BRANCH b"
+        ) == ["AREA", "BRANCH", "HOLIDAY", "HUB"]
+
+    def test_nested_derived_tables_followed_by_a_comma(self):
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT COUNT(*) FROM (SELECT X FROM (SELECT 1 AS X FROM HOLIDAY) i) t, EVENT e"
+            )
+        assert check_open_query(
+            "SELECT COUNT(*) FROM (SELECT X FROM (SELECT 1 AS X FROM HOLIDAY) i) t, AREA a"
+        ) == ["AREA", "HOLIDAY"]
+
+    def test_the_servicegroup_demo_sees_both_tables(self):
+        assert check_open_query(
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HOLIDAY h2 ON h2.HOLIDAY = h.HOLIDAY, SERVICEGROUP g"
+        ) == ["HOLIDAY", "SERVICEGROUP"]
+
+    def test_join_after_on_and_after_a_derived_table(self):
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = h.NAME JOIN EVENT e ON e.HUB = u.HUB"
+            )
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT COUNT(*) FROM (SELECT 1 AS X FROM HOLIDAY) t JOIN EVENT e ON 1 = 1"
+            )
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query("SELECT COUNT(*) FROM HOLIDAY h NATURAL JOIN EVENT e")
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = LEFT(u.HUB, 3) JOIN EVENT e ON 1 = 1"
+            )
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT COUNT(*) FROM HOLIDAY h LEFT OUTER JOIN HUB u ON u.HUB IN (SELECT HUB FROM HUB), EVENT e"
+            )
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u USING (HUB), EVENT e"
+            )
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM HOLIDAY h, (HUB u JOIN AREA a ON a.AREA = u.HUB)",
+            "SELECT COUNT(*) FROM (HOLIDAY h JOIN HUB u ON u.HUB = u.HUB) JOIN AREA a ON 1 = 1",
+            "SELECT COUNT(*) FROM HOLIDAY h,",
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN",
+            "SELECT COUNT(*) FROM HOLIDAY h HUB u",
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = u.HUB ) x",
+        ],
+    )
+    def test_a_from_list_the_scanner_cannot_finish_refuses(self, sql):
+        # fail closed: every name here is allowlisted, so only the scanner's
+        # refusal stands between the statement and Firebird. Proven
+        # load-bearing on 21 Oct 2026 by deleting the refusal in a scratch
+        # copy: this test then fails (the first shape is accepted with
+        # tables == ['HOLIDAY']).
+        with pytest.raises(GuardError, match="could not be read to its end"):
+            check_open_query(sql)
+        assert run_open_query("scan", sql, run=never_runs)["refused"]
+
+    def test_existing_shapes_unchanged(self):
+        assert check_open_query("SELECT FIRST 5 WAYBILL FROM VIEW_WBANALYSE") == [
+            "VIEW_WBANALYSE"
+        ]
+        assert check_open_query(
+            "SELECT m.MANIFEST FROM MANIFEST m, AGENT a, HUB h WHERE a.AGENT = m.AGENT"
+        ) == ["AGENT", "HUB", "MANIFEST"]
+        assert check_open_query(
+            "WITH big AS (SELECT ACCNUM FROM CUSTOMER) SELECT b.ACCNUM FROM big b JOIN HUB h ON 1 = 1"
+        ) == ["CUSTOMER", "HUB"]
+        assert check_open_query(
+            "SELECT h.NAME FROM HOLIDAY h WHERE h.HOLIDAY IN (SELECT HOLIDAY FROM HOLIDAY) "
+            "AND EXISTS (SELECT 1 FROM HUB u WHERE u.HUB = 'JNB')"
+        ) == ["HOLIDAY", "HUB"]
+        assert check_open_query(
+            "SELECT NAME FROM HOLIDAY UNION ALL SELECT NAME FROM HUB"
+        ) == ["HOLIDAY", "HUB"]
+
+
+class TestPlanClauseRefused:
+    """R5: a user PLAN clause beats the key — `… PLAN (R NATURAL)` is a scan
+    on demand. The server chooses the plan."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM HOLIDAY PLAN (HOLIDAY NATURAL)",
+            "SELECT COUNT(*) FROM HOLIDAY h WHERE h.NAME = 'x' PLAN (H INDEX (RDB$PRIMARY33))",
+            "SELECT COUNT(*) FROM HOLIDAY h ORDER BY 1 plan (h natural)",
+        ],
+    )
+    def test_plan_keyword_is_refused(self, sql):
+        with pytest.raises(GuardError, match="PLAN clause is not accepted"):
+            check_open_query(sql)
+        out = run_open_query("plan", sql, run=never_runs)
+        assert out["refused"] and "PLAN" in out["reason"]
+
+    def test_plan_in_a_literal_or_comment_is_fine(self):
+        assert check_open_query(
+            "SELECT NAME FROM HOLIDAY WHERE NAME = 'PLAN' -- PLAN"
+        ) == ["HOLIDAY"]
+        assert check_open_query("SELECT NAME FROM HOLIDAY /* PLAN (x) */") == [
+            "HOLIDAY"
+        ]

@@ -508,6 +508,8 @@ _STOP = {
     "DISTINCT",
 }
 
+_PLAN_WORD = re.compile(r"\bPLAN\b", re.IGNORECASE)
+
 _CTE_NAME = re.compile(
     r"(?:\bWITH\b|,)\s*(?:RECURSIVE\s+)?([A-Za-z_][A-Za-z0-9_$]*)"
     r"(?:\s*\([^)]*\))?\s+AS\s*\(",
@@ -515,45 +517,199 @@ _CTE_NAME = re.compile(
 )
 
 
-def _referenced_tables(cleaned: str) -> list[str]:
-    """Every identifier in table position (after FROM/JOIN, through comma
-    lists), uppercased, in order. Derived tables are skipped here — their
-    inner FROM/JOIN is reached by the same scan."""
-    toks = _TOKEN.findall(cleaned)
-    names: list[str] = []
-    i, n = 0, len(toks)
-    while i < n:
-        if toks[i].upper() not in ("FROM", "JOIN"):
+# Tokens for the FROM-list scan: identifiers, numbers, parens and commas as
+# single tokens, any other run of punctuation as one token (literals and
+# comments are already blanked, so they never appear).
+_FT = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*|\d+(?:\.\d+)?|[(),]|[^\sA-Za-z0-9_$(),]+")
+_JOIN_WORDS = {"JOIN", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "NATURAL", "OUTER"}
+# Keywords that end a FROM list at its own paren depth.
+_FROM_END = {
+    "WHERE",
+    "GROUP",
+    "HAVING",
+    "ORDER",
+    "UNION",
+    "EXCEPT",
+    "INTERSECT",
+    "ROWS",
+    "FETCH",
+    "OFFSET",
+    "PLAN",
+    "FOR",
+    "INTO",
+    "WITH",
+}
+_FROM_LIST_PROBLEM = (
+    "the FROM list could not be read to its end ({what}) — the open path refuses "
+    "a statement whose table list it cannot be sure of (fail closed); write a "
+    "plain FROM / JOIN … ON list of base tables, views and (SELECT …) derived tables"
+)
+
+
+def _scan_from_lists(cleaned: str) -> tuple[list[str], str | None]:
+    """Every identifier in table position across EVERY FROM list in the
+    statement, in order of appearance, plus a problem message if any FROM
+    list could not be read to its end.
+
+    Hot-fix 21 Oct 2026 (Fable re-review R1): the Day 5 scanner stopped at
+    the first ON or closing paren, so a comma-listed table after `JOIN … ON …`
+    or after a derived table was never seen by the allowlist, the column deny
+    list or the star ban. Each FROM is now parsed through to its terminator:
+    table [alias] { , table | <join words> table [alias] [ON … | USING …] }.
+    After ON / USING the condition is skipped at the list's own depth up to
+    the next join word, comma or terminator. Anything in table position the
+    scanner does not understand — a parenthesised join, a procedure call, a
+    stray token, a dangling comma — is reported as a problem, and the caller
+    refuses: the fence never falls through with a partial table set."""
+    toks = _FT.findall(cleaned)
+    n = len(toks)
+    found: list[tuple[int, str]] = []  # (position, name)
+    problem: str | None = None
+    # innermost enclosing '(' per token, and whether that paren opens a SELECT
+    # (a subquery) rather than a function / expression — a FROM inside
+    # SUBSTRING(x FROM 1 FOR 3) or EXTRACT(YEAR FROM d) is not a table list.
+    encl = [-1] * n
+    stack: list[int] = []
+    for k, tk in enumerate(toks):
+        encl[k] = stack[-1] if stack else -1
+        if tk == "(":
+            stack.append(k)
+        elif tk == ")" and stack:
+            stack.pop()
+    sub_paren = {
+        k
+        for k, tk in enumerate(toks)
+        if tk == "(" and k + 1 < n and toks[k + 1].upper() == "SELECT"
+    }
+
+    def is_join_word(i):
+        return (
+            i < n
+            and _IDENT.fullmatch(toks[i]) is not None
+            and toks[i].upper() in _JOIN_WORDS
+            and not (i + 1 < n and toks[i + 1] == "(")  # LEFT( / RIGHT( are functions
+        )
+
+    def skip_paren(i):
+        """i at '(' -> index just past its matching ')' (or n)."""
+        depth = 0
+        while i < n:
+            if toks[i] == "(":
+                depth += 1
+            elif toks[i] == ")":
+                depth -= 1
+                if depth == 0:
+                    return i + 1
             i += 1
-            continue
-        i += 1
-        expect_name = True
+        return n
+
+    def parse_list(i, top):
+        """i just after a FROM; top = the list is not inside any paren, so a
+        ')' cannot legitimately end it. Returns (names, problem)."""
+        names = []
+        expect_table = True
+        derived = False
         while i < n:
             tok = toks[i]
             u = tok.upper()
-            if expect_name:
-                if tok == "(" or u in _STOP:
-                    break  # derived table / keyword — outer scan continues
-                if not _IDENT.fullmatch(tok):
-                    break
-                names.append(u)
-                expect_name = False
+            if expect_table:
+                derived = False
+                if tok == "(":
+                    if (
+                        i + 1 < n
+                        and _IDENT.fullmatch(toks[i + 1])
+                        and toks[i + 1].upper() == "SELECT"
+                    ):
+                        i = skip_paren(
+                            i
+                        )  # derived table; its own FROM is scanned separately
+                        derived = True
+                    else:
+                        return names, "a parenthesised join or a bracketed FROM item"
+                elif _IDENT.fullmatch(tok) and u not in _STOP and u not in _JOIN_WORDS:
+                    names.append((i, u))
+                    i += 1
+                    if i < n and toks[i] == "(":
+                        # SOME_PROC(args): not a base relation. The name is
+                        # still reported so the allowlist refuses it by name;
+                        # the problem makes the refusal certain either way.
+                        return names, f"{u}(…) in table position (a procedure call)"
+                else:
+                    return names, f"'{tok}' where a table name was expected"
+                # optional alias
+                if i < n and _IDENT.fullmatch(toks[i]) and toks[i].upper() == "AS":
+                    if i + 1 < n and _IDENT.fullmatch(toks[i + 1]):
+                        i += 2
+                    else:
+                        return names, "AS without an alias"
+                elif (
+                    i < n
+                    and _IDENT.fullmatch(toks[i])
+                    and toks[i].upper() not in _STOP
+                    and toks[i].upper() not in _JOIN_WORDS
+                ):
+                    i += 1
+                # a derived table may name its columns: (SELECT …) t (A1, A2)
+                if derived and i < n and toks[i] == "(":
+                    i = skip_paren(i)
+                expect_table = False
+                continue
+            # after a table reference
+            if tok == ",":
+                expect_table = True
                 i += 1
-                # A '(' right after a table-position name is NOT skipped: on
-                # Firebird that is a selectable-procedure call (no allowlisted
-                # name is a procedure, so the name itself is refused), and
-                # skipping the parens whole would swallow any subquery inside
-                # them — `CUSTOMER(SELECT 1 FROM EVENT)` would hide EVENT. We
-                # break instead and let the outer scan walk into the parens,
-                # so an inner FROM/JOIN is still checked. Firebird will reject
-                # the `name(...)` syntax, but the fence must not depend on that.
-                if i < n and _IDENT.fullmatch(toks[i]) and toks[i].upper() not in _STOP:
-                    i += 1  # alias
-            elif tok == ",":
-                expect_name = True
+                continue
+            if is_join_word(i):
+                while is_join_word(i):
+                    i += 1
+                expect_table = True
+                continue
+            if _IDENT.fullmatch(tok) and u in ("ON", "USING"):
                 i += 1
-            else:
-                break
+                # skip the condition at this depth
+                while i < n:
+                    t2 = toks[i]
+                    if t2 == "(":
+                        i = skip_paren(i)
+                        continue
+                    if t2 == ")" or t2 == ",":
+                        break
+                    if _IDENT.fullmatch(t2) and (
+                        t2.upper() in _FROM_END or is_join_word(i)
+                    ):
+                        break
+                    i += 1
+                continue
+            if tok == ")":
+                return names, ("a ')' with no open paren" if top else None)
+            if _IDENT.fullmatch(tok) and u in _FROM_END:
+                return names, None
+            return names, f"'{tok}' after a table reference"
+        if expect_table:
+            return names, "a FROM list that ends after a comma or JOIN"
+        return names, None
+
+    i = 0
+    while i < n:
+        if _IDENT.fullmatch(toks[i]) and toks[i].upper() == "FROM":
+            if encl[i] != -1 and encl[i] not in sub_paren:
+                i += 1  # FROM inside a function / expression, not a table list
+                continue
+            names, prob = parse_list(i + 1, encl[i] == -1)
+            found.extend(names)
+            if prob and problem is None:
+                problem = _FROM_LIST_PROBLEM.format(what=prob)
+        i += 1
+    found.sort()
+    return [name for _, name in found], problem
+
+
+def _referenced_tables(cleaned: str) -> list[str]:
+    """Every table-position identifier in the statement; raises if a FROM
+    list could not be read to its end (see _scan_from_lists)."""
+    names, problem = _scan_from_lists(cleaned)
+    if problem:
+        raise GuardError(problem)
     return names
 
 
@@ -672,10 +828,21 @@ def check_open_query(sql: str) -> list[str]:
         )
     assert_select_only(sql)
     cleaned = _strip_literals_and_comments(sql)
+    if _PLAN_WORD.search(cleaned):
+        # Fable re-review R5 (21 Oct 2026): a user PLAN clause beats every
+        # index the guard relies on — `… PLAN (R NATURAL)` is a scan on demand.
+        raise GuardError(
+            "a PLAN clause is not accepted on the open path — the server chooses "
+            "the plan; remove it"
+        )
     ctes = {m.group(1).upper() for m in _CTE_NAME.finditer(cleaned)}
-    tables = [t for t in _referenced_tables(cleaned) if t not in ctes]
-    if not tables:
+    names, from_problem = _scan_from_lists(cleaned)
+    tables = [t for t in names if t not in ctes]
+    if not tables and from_problem is None:
         raise GuardError("no table found in the FROM clause")
+    # The names that WERE read are checked first so a refused relation gets
+    # its own message; a FROM list the scanner could not finish refuses after
+    # that regardless — never a partial table set.
     for t in tables:
         if t in ALLOWLIST:
             continue
@@ -690,6 +857,10 @@ def check_open_query(sql: str) -> list[str]:
             f"{t} is not on the open-path allowlist. Queryable relations: "
             + ", ".join(sorted(ALLOWLIST))
         )
+    if from_problem:
+        raise GuardError(from_problem)
+    if not tables:
+        raise GuardError("no table found in the FROM clause")
     tables = sorted(set(tables))
     _check_denied_columns(cleaned, tables)
     _check_star_projection(cleaned, tables)
