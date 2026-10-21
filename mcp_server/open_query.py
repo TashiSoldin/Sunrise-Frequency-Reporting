@@ -587,7 +587,12 @@ def _scan_from_lists(cleaned: str) -> tuple[list[str], str | None]:
             i < n
             and _IDENT.fullmatch(toks[i]) is not None
             and toks[i].upper() in _JOIN_WORDS
-            and not (i + 1 < n and toks[i + 1] == "(")  # LEFT( / RIGHT( are functions
+            # LEFT( / RIGHT( are string functions; JOIN ( is a join to a derived table
+            and not (
+                toks[i].upper() in ("LEFT", "RIGHT")
+                and i + 1 < n
+                and toks[i + 1] == "("
+            )
         )
 
     def skip_paren(i):

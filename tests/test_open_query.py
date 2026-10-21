@@ -927,6 +927,20 @@ class TestFromListScanner:
             check_open_query(sql)
         assert run_open_query("scan", sql, run=never_runs)["refused"]
 
+    def test_join_to_a_derived_table_is_a_join_not_a_function(self):
+        # second hot-fix commit: JOIN ( was read as a function call like LEFT(
+        assert check_open_query(
+            "SELECT w.NAME FROM HUB w JOIN (SELECT NAME FROM HOLIDAY) k ON k.NAME = w.NAME"
+        ) == ["HOLIDAY", "HUB"]
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT w.NAME FROM HUB w JOIN (SELECT TRACKNO FROM EVENT) k ON k.TRACKNO = w.NAME"
+            )
+        with pytest.raises(GuardError, match="EVENT is deliberately off"):
+            check_open_query(
+                "SELECT w.NAME FROM HUB w LEFT JOIN (SELECT NAME FROM HOLIDAY) k ON k.NAME = w.NAME, EVENT e"
+            )
+
     def test_existing_shapes_unchanged(self):
         assert check_open_query("SELECT FIRST 5 WAYBILL FROM VIEW_WBANALYSE") == [
             "VIEW_WBANALYSE"
