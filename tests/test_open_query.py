@@ -1787,10 +1787,12 @@ class TestWindowedRefusals:
 
 
 class TestWindowedJoinsAndWrapping:
-    def test_join_windowed_on_the_routing_alias_passes(self):
+    def test_join_windowed_on_the_routing_alias_and_keyed_on_the_view_passes(self):
+        # since Akha's 21 Oct call the view side must carry its own key too
+        # (TestJoinBounds); the ROUTING side is windowed on its alias as before
         sql = (
             "SELECT r.WAYBILL, w.CUSTNAME FROM ROUTING r JOIN VIEW_WBANALYSE w ON w.WAYBILL = r.WAYBILL "
-            "WHERE r.WAYBILL = 'A'"
+            "WHERE r.WAYBILL = 'A' AND w.WAYBILL = 'A'"
         )
         assert check_open_query(sql) == ["ROUTING", "VIEW_WBANALYSE"]
 
@@ -1866,53 +1868,141 @@ class TestWindowedSchema:
         assert "DELOTP" not in served and "WAYBILL" in served
 
 
-class TestViewJoinCaution:
-    """Plans read 21 Oct 2026: a ROUTING key or window joined to
-    VIEW_WBANALYSE makes Firebird scan the 3.1M-row view unless the view's
-    own WAYBILL is a literal '=' (propagated) or the key is repeated on the
-    view alias. The guard says so up front and in the time-cap refusal; it
-    does not refuse (the view is unbounded on the open path by design)."""
+class TestJoinBounds:
+    """Akha's call, 21 Oct 2026, on the join finding: refuse, do not caution.
+    A windowed table joined (JOIN or comma) to VIEW_WBANALYSE, MANIFEST or
+    AGENTDRIVER needs the big relation's OWN literal key (WAYBILL, or MANIFEST
+    for the two trip tables; = or IN up to 100) or, for VIEW_WBANALYSE only, a
+    literal WAYDATE range of at most 31 days — the plans read 21 Oct show
+    Firebird otherwise scans the big relation for the join."""
 
-    JOIN = (
-        "SELECT r.WAYBILL, w.CUSTNAME FROM ROUTING r JOIN VIEW_WBANALYSE w "
+    LIVE = (
+        "SELECT FIRST 5 r.WAYBILL, r.LEG, w.CUSTNAME FROM ROUTING r JOIN VIEW_WBANALYSE w "
         "ON w.WAYBILL = r.WAYBILL WHERE r.WAYBILL IN ('A', 'B')"
     )
 
-    def test_unbounded_view_side_gets_the_caution(self):
-        windows = []
-        check_open_query(self.JOIN, windows)
-        assert any(
-            w.startswith("CAUTION") and "VIEW_WBANALYSE (w)" in w for w in windows
-        )
-        out = run_open_query("j", self.JOIN, run=fake_run(["W", "C"], [("A", "x")]))
-        assert any(n.startswith("CAUTION") for n in out["notes"])
+    def test_the_shape_that_hit_the_cap_live_is_refused(self):
+        with pytest.raises(
+            GuardError, match="repeat the waybill filter on the VIEW_WBANALYSE alias"
+        ):
+            check_open_query(self.LIVE)
+        out = run_open_query("j", self.LIVE, run=never_runs)
+        assert out["refused"] and "WAYDATE" in out["reason"]
 
     @pytest.mark.parametrize(
         "extra",
         [
             " AND w.WAYBILL IN ('A', 'B')",
-            " AND w.WAYDATE BETWEEN '2026-10-01' AND '2026-10-07'",
+            " AND w.WAYBILL = 'A'",
+            " AND w.WAYDATE BETWEEN '2026-10-05' AND '2026-10-11'",
+            " AND w.WAYDATE >= DATE '2026-09-01' AND w.WAYDATE <= DATE '2026-10-01'",
         ],
     )
-    def test_bounding_the_view_side_clears_it(self, extra):
-        windows = []
-        check_open_query(self.JOIN + extra, windows)
-        assert not any(w.startswith("CAUTION") for w in windows)
+    def test_the_view_bounded_on_its_own_alias_is_accepted(self, extra):
+        assert check_open_query(self.LIVE + extra) == ["ROUTING", "VIEW_WBANALYSE"]
 
-    def test_no_caution_without_a_windowed_table(self):
-        windows = []
-        check_open_query(
-            "SELECT COUNT(*) FROM VIEW_WBANALYSE w WHERE w.ORIGHUB = 'JNB'", windows
+    @pytest.mark.parametrize(
+        "extra, needle",
+        [
+            (" AND w.WAYDATE BETWEEN '2026-09-01' AND '2026-10-02'", "32 days"),
+            (" AND w.ACCNUM = 'S135'", "repeat the waybill filter"),
+            (" AND (w.WAYBILL = 'A' OR w.WAYDATE = '2026-10-01')", "inside an OR"),
+            (
+                " AND w.WAYBILL IN (SELECT WAYBILL FROM VIEW_WBANALYSE WHERE WAYDATE = '2026-10-01')",
+                "subquery",
+            ),
+        ],
+    )
+    def test_the_view_side_still_unbounded_is_refused(self, extra, needle):
+        with pytest.raises(GuardError, match=needle):
+            check_open_query(self.LIVE + extra)
+
+    def test_comma_join_counts_as_a_join(self):
+        sql = "SELECT r.LEG FROM ROUTING r, VIEW_WBANALYSE w WHERE w.WAYBILL = r.WAYBILL AND r.WAYBILL = 'A'"
+        with pytest.raises(GuardError, match="VIEW_WBANALYSE"):
+            check_open_query(sql)
+        assert check_open_query(sql + " AND w.WAYBILL = 'A'") == [
+            "ROUTING",
+            "VIEW_WBANALYSE",
+        ]
+
+    def test_an_equality_on_the_routing_side_is_not_enough_on_its_own(self):
+        # the planner does propagate a single '=' today, but the rule asks for
+        # the view's own key so the fence does not depend on the optimizer
+        sql = (
+            "SELECT r.LEG, w.CUSTNAME FROM ROUTING r JOIN VIEW_WBANALYSE w ON w.WAYBILL = r.WAYBILL "
+            "WHERE r.WAYBILL = 'A'"
         )
-        assert windows == []
+        with pytest.raises(GuardError, match="VIEW_WBANALYSE"):
+            check_open_query(sql)
 
-    def test_the_time_cap_refusal_carries_the_caution(self):
+    def test_manifest_needs_its_own_manifest_key(self):
+        sql = (
+            "SELECT r.WAYBILL, m.AGENT FROM ROUTING r JOIN MANIFEST m ON m.MANIFEST = r.MANIFEST "
+            "WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M'"
+        )
+        with pytest.raises(
+            GuardError, match="repeat the manifest filter on the MANIFEST alias"
+        ):
+            check_open_query(sql)
+        assert check_open_query(sql + " AND m.MANIFEST = 37733") == [
+            "MANIFEST",
+            "ROUTING",
+        ]
+        assert check_open_query(sql + " AND m.MANIFEST IN (37733, 37739)") == [
+            "MANIFEST",
+            "ROUTING",
+        ]
+
+    def test_agentdriver_needs_its_own_agent_key(self):
+        # AGENTDRIVER has no MANIFEST column; AGENT is its key (survey columns:
+        # AGENTDRIVER, AGENT, DRIVER, FROMDATE, FROMTIME, USERCODE, LOADLVL, ROUTE)
+        sql = (
+            "SELECT r.WAYBILL, d.DRIVER FROM ROUTING r JOIN AGENTDRIVER d ON d.AGENT = r.AGENT "
+            "WHERE r.WAYBILL = 'A'"
+        )
+        with pytest.raises(
+            GuardError, match="repeat the agent filter on the AGENTDRIVER alias"
+        ):
+            check_open_query(sql)
+        assert check_open_query(sql + " AND d.AGENT = 30105") == [
+            "AGENTDRIVER",
+            "ROUTING",
+        ]
+
+    def test_routing_alone_windowed_is_unchanged(self):
+        assert check_open_query(
+            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11'"
+        ) == ["ROUTING"]
+
+    def test_the_two_windowed_tables_joined_each_keyed_is_unchanged(self):
+        sql = (
+            "SELECT r.LEG, v.NAME FROM ROUTING r JOIN VIEW_EVENTSCANS v ON v.WAYBILL = r.WAYBILL "
+            "WHERE r.WAYBILL = 'A' AND v.WAYBILL = 'A'"
+        )
+        assert check_open_query(sql) == ["ROUTING", "VIEW_EVENTSCANS"]
+
+    def test_the_view_on_its_own_is_still_unbounded(self):
+        # the Day 5 availability boundary is untouched: no windowed table, no rule
+        assert check_open_query("SELECT COUNT(*) FROM VIEW_WBANALYSE") == [
+            "VIEW_WBANALYSE"
+        ]
+        assert check_open_query(
+            "SELECT COUNT(*) FROM MANIFEST m JOIN AGENTDRIVER d ON d.MANIFEST = m.MANIFEST"
+        ) == [
+            "AGENTDRIVER",
+            "MANIFEST",
+        ]
+
+    def test_the_time_cap_refusal_text_is_unchanged(self):
         def slow(sql, params=(), max_rows=None, timeout=None):
             raise OSError("Can not recv() packets")
 
-        out = run_open_query("j", self.JOIN, run=slow)
-        assert (
-            out["refused"]
-            and "time cap" in out["reason"]
-            and "CAUTION" in out["reason"]
-        )
+        out = run_open_query("j", self.LIVE + " AND w.WAYBILL IN ('A', 'B')", run=slow)
+        assert out["refused"] and out["reason"].endswith("rather than fetching rows)")
+        assert "CAUTION" not in out["reason"]
+
+    def test_no_caution_note_survives(self):
+        windows = []
+        check_open_query(self.LIVE + " AND w.WAYBILL IN ('A', 'B')", windows)
+        assert not any("CAUTION" in w for w in windows)

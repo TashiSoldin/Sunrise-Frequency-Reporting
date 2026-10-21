@@ -1097,7 +1097,10 @@ WINDOWED: dict[str, dict] = {
             "literals); MANIFEST = n or IN (up to 20)) or a window (AGENTDATE "
             "between two literal dates, at most 31 days) on the ROUTING alias, in "
             "WHERE or JOIN ON and outside any OR; BOOKDATE, AGENT, hub, MTYPE and "
-            "STATUS are filters only (QT-000007 line 4, measured 21 Oct 2026)"
+            "STATUS are filters only; joined to VIEW_WBANALYSE, MANIFEST or "
+            "AGENTDRIVER, that relation's own alias must carry its key too "
+            "(WAYBILL / MANIFEST / AGENT = or IN, or a WAYDATE range of at most "
+            "31 days on the view) (QT-000007 line 4, measured 21 Oct 2026)"
         ),
     },
     "VIEW_EVENTSCANS": {
@@ -1124,8 +1127,10 @@ WINDOWED: dict[str, dict] = {
             "WHERE or JOIN ON and outside any OR; WAYDATE, ACCNUM, NAME, HUB, "
             "USERNAME and AGENTNAME are filters only — the view is for waybill and "
             "manifest lookups; a scans-by-type-over-a-date-range question is the "
-            "event-counts tool, quoted separately (QT-000007 line 4, measured "
-            "21 Oct 2026)"
+            "event-counts tool, quoted separately; joined to VIEW_WBANALYSE, "
+            "MANIFEST or AGENTDRIVER, that relation's own alias must carry its key "
+            "too (WAYBILL / MANIFEST / AGENT = or IN, or a WAYDATE range of at most "
+            "31 days on the view) (QT-000007 line 4, measured 21 Oct 2026)"
         ),
     },
 }
@@ -1706,7 +1711,9 @@ def _check_windowed(sql: str, tables: list[str], windows: list[str] | None) -> N
     for _t, _a, idx, _is_cte in occurrences:  # every table, CTE refs included
         sc = _scope_of(idx, group, is_sub)
         scope_count[sc] = scope_count.get(sc, 0) + 1
-    interest: set[str] = {"WAYBILL", "WAYDATE"}  # for the VIEW_WBANALYSE join caution
+    interest: set[str] = set()
+    for jb in _JOIN_BOUND.values():  # the joined relations' own keys
+        interest |= set(jb["keys"]) | ({jb["date"]} if jb["date"] else set())
     for spec in specs.values():
         interest |= (
             set(spec["keys"])
@@ -1747,48 +1754,75 @@ def _check_windowed(sql: str, tables: list[str], windows: list[str] | None) -> N
             )
         detail = f" — found: {'; '.join(reasons)}" if reasons else ""
         raise GuardError(f"no key or window on {label}{detail}. Rule: {spec['rule']}.")
-    if windows is not None:
-        windows.extend(
-            _view_join_cautions(occurrences, preds, group, is_sub, windowed_scopes)
-        )
+    _check_join_bounds(occurrences, preds, group, is_sub, windowed_scopes)
 
 
-_VIEW_JOIN_CAUTION = (
-    "CAUTION — VIEW_WBANALYSE ({alias}) is joined to {other} in this query "
-    "without a literal WAYBILL key or WAYDATE range of its own. Firebird then "
-    "drives the join from the 3.1M-row view with a full scan (plans read "
-    "21 Oct 2026: only a single '=' literal on the ROUTING side propagates to "
-    "the view; an IN-list, a MANIFEST key or a date window does not), which "
-    "runs past the 15 s cap and keeps running server-side. Add "
-    "{alias}.WAYBILL = / IN (the same literals) or a {alias}.WAYDATE range."
-)
+# Akha's call on the 21 Oct join finding: refuse, do not caution. A windowed
+# table joined (JOIN or comma list) to one of these large relations needs the
+# large relation's OWN literal key — the plans read 21 Oct 2026 show Firebird
+# driving such a join from the big side with a NATURAL scan unless its own
+# column is bounded (only a single '=' on the ROUTING side propagates, and
+# the fence must not depend on the optimizer). VIEW_WBANALYSE may instead
+# carry a WAYDATE range (WA_WAYDATE, the daily extraction's path). AGENTDRIVER
+# has no MANIFEST column (AGENTDRIVER, AGENT, DRIVER, FROMDATE, FROMTIME,
+# USERCODE, LOADLVL, ROUTE), so its key is AGENT. On their own, without a
+# windowed table in the query, these relations stay as they were on Day 5.
+_JOIN_BOUND: dict[str, dict] = {
+    "VIEW_WBANALYSE": {
+        "keys": {"WAYBILL": 100},
+        "date": "WAYDATE",
+        "max_days": 31,
+        "filters_only": (),
+        "pins": (),
+        "filter_why": {},
+        "rows": "3.1M",
+        "fix": (
+            "repeat the waybill filter on the VIEW_WBANALYSE alias ({a}.WAYBILL = "
+            "/ IN the same literals, up to 100), or bound it on WAYDATE "
+            "({a}.WAYDATE between two literal dates, at most 31 days)"
+        ),
+    },
+    "MANIFEST": {
+        "keys": {"MANIFEST": 100},
+        "date": None,
+        "max_days": 0,
+        "filters_only": (),
+        "pins": (),
+        "filter_why": {},
+        "rows": "308k",
+        "fix": "repeat the manifest filter on the MANIFEST alias ({a}.MANIFEST = / IN literals, up to 100)",
+    },
+    "AGENTDRIVER": {
+        "keys": {"AGENT": 100},
+        "date": None,
+        "max_days": 0,
+        "filters_only": (),
+        "pins": (),
+        "filter_why": {},
+        "rows": "723k",
+        "fix": (
+            "repeat the agent filter on the AGENTDRIVER alias ({a}.AGENT = / IN "
+            "literals, up to 100 — AGENTDRIVER has no MANIFEST column; AGENT is its key)"
+        ),
+    },
+}
 
 
-def _view_join_cautions(occurrences, preds, group, is_sub, windowed_scopes):
-    """A windowed table joined to VIEW_WBANALYSE is bounded on ITS side only;
-    the view's side is a pre-existing open-path exposure (the view is
-    unbounded on its own today). Say so up front, in the notes and in the
-    time-cap refusal, rather than letting the cap be the first warning."""
-    out = []
+def _check_join_bounds(occurrences, preds, group, is_sub, windowed_scopes):
+    """In any query block where a windowed table qualified, every occurrence
+    of a _JOIN_BOUND relation must carry its own literal key (or, for the
+    view, a WAYDATE range) under the same structural rules; refuse otherwise."""
     for table, alias, idx, is_cte in occurrences:
-        if is_cte or table != "VIEW_WBANALYSE":
+        if is_cte or table not in _JOIN_BOUND:
             continue
         sc = _scope_of(idx, group, is_sub)
         if sc not in windowed_scopes:
             continue
+        spec = _JOIN_BOUND[table]
         alias_u = alias.upper()
-        bounded = any(
-            p.scope == sc
-            and p.alias == alias_u
-            and p.col in ("WAYBILL", "WAYDATE")
-            and p.kind in ("eq", "in", "between", "lo", "hi")
-            and not p.bad
-            and not p.in_or
-            and not p.negated
-            and p.clause in ("WHERE", "ON")
-            for p in preds
-        )
-        if bounded:
+        mine = [p for p in preds if p.scope == sc and p.alias == alias_u]
+        qualifying, reasons = _judge(table, spec, alias, mine, set())
+        if qualifying:
             continue
         others = sorted(
             {
@@ -1797,12 +1831,14 @@ def _view_join_cautions(occurrences, preds, group, is_sub, windowed_scopes):
                 if not c and t in WINDOWED and _scope_of(i, group, is_sub) == sc
             }
         )
-        out.append(
-            _VIEW_JOIN_CAUTION.format(
-                alias=alias, other=" / ".join(others) or "a windowed table"
-            )
+        detail = f" (found: {'; '.join(reasons)})" if reasons else ""
+        raise GuardError(
+            f"{table} (alias {alias}) is joined to {' / '.join(others)} without a key "
+            f"of its own{detail} — {spec['fix'].format(a=alias)}. Firebird would "
+            f"otherwise scan the {spec['rows']}-row relation for that join (plans "
+            "read 21 Oct 2026); the window on "
+            f"{' / '.join(others)} bounds only its own side."
         )
-    return out
 
 
 def check_open_query(sql: str, windows: list[str] | None = None) -> list[str]:
@@ -1965,12 +2001,11 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
         if isinstance(e, (socket.timeout, TimeoutError)) or (
             "timed out" in msg or "can not recv" in msg
         ):
-            cautions = " ".join(w for w in windows if w.startswith("CAUTION"))
             return _refused(
                 f"the query exceeded the {TIMEOUT_S}s time cap (or the "
                 "connection dropped mid-query) and was abandoned — narrow it "
                 "(add WHERE bounds, or aggregate in SQL rather than fetching "
-                "rows)" + (f". {cautions}" if cautions else "")
+                "rows)"
             )
         return _refused(
             f"Firebird refused the query: {e}",
@@ -2014,7 +2049,7 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
         "Open-path answer: a raw read, not a verified report figure.",
     ]
     for w in windows:
-        notes.append(w if w.startswith("CAUTION") else f"Window applied — {w}.")
+        notes.append(f"Window applied — {w}.")
     if withheld:
         notes.append(
             f"Withheld columns (not in this result): {', '.join(withheld)} — "

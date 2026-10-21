@@ -84,3 +84,15 @@ firebirdsql.err.OperationalError: Can not recv() packets
   guard notes for the unbounded join: ['ROUTING (r): keyed by WAYBILL IN (2 literals)', "CAUTION — VIEW_WBANALYSE (w) is joined to ROUTING in this query without a literal WAYBILL key or WAYDATE range of its own. Firebird then drives the join from the 3.1M-row view with a full scan (plans read 21 Oct 2026: only a single '=' literal on the ROUTING side propagates to the view; an IN-list, a MANIFEST key or a date window does not), which runs past the 15 s cap and keeps running server-side. Add w.WAYBILL = / IN (the same literals) or a w.WAYDATE range."]
   bounded join: ok=True rows=4 db=66 ms notes=['Open-path answer: a raw read, not a verified report figure.', 'Window applied — ROUTING (r): keyed by WAYBILL IN (2 literal']
   1-day window note: ['Window applied — ROUTING: AGENTDATE window 2026-10-19..2026-10-19 (1 day).'] db=62 ms
+
+== join-bound live checks (Akha's call: refuse), run 2026-10-21 11:09:40 ==
+indexes on AGENTDRIVER / MANIFEST (RDB$):
+   AGENTDRIVER: AGD_AGENT (AGENT); AGD_FROMDATE (FROMDATE); AGD_ROUTEDRIVER (ROUTE, AGENTDRIVER); RDB$PRIMARY122 (AGENTDRIVER)
+   MANIFEST: MA_AGENTDATE (AGENT, AGENTDATE); MA_AGENTMAWB (AGENT, MAWBNO); MA_AGENTREFERENCE (AGENT, REFERENCE); MA_BRANCHAGENTDATE (BRANCH, MTYPE, AGENT, AGENTDATE); MA_DATE (BRANCH, MTYPE, AGENTDATE, MAWBNO); MA_DESTORIGDATE (DESTHUB, ORIGHUB, AGENTDATE); MA_DTORDEAG (AGENTDATE, ORIGHUB, DESTHUB, AGENT, CUSTOMSGROUP); MA_EXPORT (EXPORT); MA_MANIFEST (MANIFEST); MA_MAWBNO (MAWBNO); MA_ORIGDESTDATE (ORIGHUB, DESTHUB, AGENTDATE); MA_PAYGROUP (PAYGROUP); MA_REFERENCE (REFERENCE); RDB$PRIMARY44 (BRANCH, MTYPE, MANIFEST)
+  REFUSED REFUSE the live shape (view unkeyed)                           (0 ms) VIEW_WBANALYSE (alias w) is joined to ROUTING without a key of its own (found: w.WAYBILL = … is r.WAYBILL (a column or function), not a literal) — repeat the waybill filt
+  OK      ACCEPT key repeated on the view alias                            4 rows     61 ms  first=['102155340', 1, 'STAEDTLER (SA) (PTY) LTD']
+  OK      ACCEPT AGENTDATE 7 d + WAYDATE 7 d on the view (trip revenue shape)   5 rows   1728 ms  first=[None, 120, 438563.7100000002]
+  OK      ACCEPT MANIFEST trip joined to MANIFEST keyed on both            1 rows     57 ms  first=[30105, 124, 124]
+  REFUSED ACCEPT AGENTDRIVER joined on AGENT, keyed on both              (1 ms) AGENTDRIVER (alias d) is joined to ROUTING without a key of its own (found: d.AGENT = … is r.AGENT (a column or function), not a literal; d.AGENT IN (…) holds a subquery 
+  OK      ACCEPT AGENTDRIVER keyed by a literal AGENT                      1 rows     88 ms  first=[0]
+  REFUSED REFUSE MANIFEST joined without its own key                     (0 ms) MANIFEST (alias m) is joined to ROUTING without a key of its own (found: m.MANIFEST = … is r.MANIFEST (a column or function), not a literal) — repeat the manifest filter 

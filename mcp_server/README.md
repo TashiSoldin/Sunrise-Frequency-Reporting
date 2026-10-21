@@ -172,11 +172,22 @@ not cover, answered from the raw data through a fence:
   b − a + 1 days, `>= a AND < b` is b − a. Every occurrence needs its own
   predicate: a window inside a CTE does not cover an outer unwindowed read,
   a self-join needs both sides, and a join of the two windowed tables needs
-  each keyed or windowed. The refusal states the rule in one sentence and
-  names what was missing (no predicate, a subquery or `CURRENT_DATE` range,
-  an OR, a filter-only column, an over-long IN-list, reversed or one-sided
-  bounds, the wrong alias); an accepted query carries a `Window applied —`
-  note. The widths come from live plans and timings, every PLAN line
+  each keyed or windowed. **Joins to the big relations** (`_JOIN_BOUND`,
+  Akha's call on the 21 Oct finding): when a windowed table is joined, by
+  `JOIN` or by comma, to `VIEW_WBANALYSE`, `MANIFEST` or `AGENTDRIVER`, that
+  relation's own alias must carry its key as literals too — `WAYBILL` on the
+  view (or a `WAYDATE` range of at most 31 days, the daily extraction's
+  indexed path), `MANIFEST` on MANIFEST, `AGENT` on AGENTDRIVER (it has no
+  MANIFEST column) — because the plans read 21 Oct show Firebird driving such
+  a join from the big side with a full scan unless its own column is bounded
+  (only a single `=` on the ROUTING side propagates, and the fence must not
+  depend on the optimizer); the refusal says what to repeat. On their own,
+  without a windowed table in the query, those three relations are unchanged
+  from Day 5. The refusal states the rule in one sentence and names what was
+  missing (no predicate, a subquery or `CURRENT_DATE` range, an OR, a
+  filter-only column, an over-long IN-list, reversed or one-sided bounds, the
+  wrong alias, the big relation's missing key); an accepted query carries a
+  `Window applied —` note. The widths come from live plans and timings, every PLAN line
   recorded in `research/db_query_interface/routing_eventscans_plans_2026-10-21.md`
   (ROUTING 31 days = 48,680 rows in 168 ms cold, the unbounded count 7.9 s;
   the view 1/3/7 days = 1.2/3.5/6.9 s warm). The 15 s cap cannot stop
