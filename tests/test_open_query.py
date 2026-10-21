@@ -191,7 +191,12 @@ class TestDeniedColumnsShape:
         # Read, not regexed: after-hours numbers, the IC login, the invoice PDFs.
         assert {"AFTHOURSNO", "ICUSER"} <= DENIED_COLUMNS["CUSTOMER"]
         assert "AFTERHOURS" in DENIED_COLUMNS["AGENT"]
-        assert {"PDFCOPY", "PDFORIG"} <= DENIED_COLUMNS["INVOICE"]
+        assert {"PDFCOPY", "PDFORIG", "INVHASH"} <= DENIED_COLUMNS["INVOICE"]
+        # Fable re-review N1: the HASH|KEY|SECRET|TOKEN sweep — only these
+        # three across the 30 tables, all withheld.
+        assert {"HASHED", "SECRETKEY"} <= DENIED_COLUMNS["CONTACT"]
+        with pytest.raises(GuardError, match="INVHASH"):
+            check_open_query("SELECT INVHASH FROM INVOICE")
         assert {"SECRETKEY", "HASHED", "MFA"} <= DENIED_COLUMNS["CONTACT"]
 
     def test_branch_infrastructure_columns_are_withheld(self):
@@ -376,6 +381,18 @@ class TestStarProjectionRefused:
         msg = str(e.value)
         assert "describe_schema" in msg
         assert "CONTACT" in msg or "CUSTOMER" in msg
+
+    def test_the_message_says_to_write_select_1_in_exists_and_in(self):
+        # Fable re-review N2: EXISTS (SELECT * FROM <withheld>) is refused
+        # (conservative — the star projects nothing there); the message says
+        # how to write it instead.
+        with pytest.raises(
+            GuardError, match=r"EXISTS and IN subqueries write SELECT 1"
+        ):
+            check_open_query(
+                "SELECT ACCNUM FROM CUSTOMER c WHERE EXISTS "
+                "(SELECT * FROM CONTACT k WHERE k.ACCNUM = c.ACCNUM)"
+            )
 
     def test_the_message_names_only_the_tables_that_carry_withheld_columns(self):
         with pytest.raises(GuardError) as e:

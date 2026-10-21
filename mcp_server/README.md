@@ -164,7 +164,8 @@ not cover, answered from the raw data through a fence:
   F1, 20 Oct 2026: `SELECT * FROM (SELECT * FROM CONTACT) t (A1, …)` and a
   UNION named by a `WHERE 1=0` first branch defeated name-based dropping;
   `COUNT(*)` and arithmetic `a * b` are untouched, tables with an empty deny
-  set keep their star); and, behind both, a denied column that somehow
+  set keep their star; in `EXISTS` and `IN` subqueries write `SELECT 1`,
+  not `SELECT *`); and, behind both, a denied column that somehow
   arrives in a result is dropped by cursor-description name with a note —
   defence in depth, no longer the fence. Matching is by bare name across
   every table in the statement; a coincidental same-named column on another

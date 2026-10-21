@@ -225,7 +225,9 @@ ALLOWLIST: dict[str, str] = {
 # --- column deny list (QT-000007 line 2, 20 Oct 2026) ---------------------------
 # Relation -> column names never served on the open path. Built from the
 # 6 Aug 2026 column survey (schema_columns_2026-08-06.csv) by name match
-# (PASS|PWD|BANK|ACCNO|TEL|PHONE|CELL|FAX|EMAIL|MOBILE) as the floor, then
+# (PASS|PWD|BANK|ACCNO|TEL|PHONE|CELL|FAX|EMAIL|MOBILE, and since the 20 Oct
+# re-review HASH|KEY|SECRET|TOKEN — that sweep found only CONTACT.HASHED,
+# CONTACT.SECRETKEY and INVOICE.INVHASH across the 30 tables) as the floor, then
 # read column by column — the edge cases below were decided from live values
 # on 20 Oct 2026, never from the name alone. Enforced three ways: a denied
 # name appearing as an identifier ANYWHERE in the SQL refuses the query (a
@@ -337,6 +339,13 @@ DENIED_COLUMNS: dict[str, frozenset[str]] = {
             # queryable data, and 500 of them is not an answer.
             "PDFCOPY",
             "PDFORIG",
+            # INVHASH (VARCHAR(64), Fable re-review N1): a per-invoice
+            # SHA-256 — 3,821 of 3,968 invoices since 1 Sep 2026 populated,
+            # all distinct, all 64 chars. Not a credential and not reversible
+            # to one; withheld because nothing queries it and the deny list is
+            # where the next scan looks (HASH|KEY|SECRET|TOKEN is now part of
+            # the floor pattern).
+            "INVHASH",
         }
     ),
     # RECEIPT.BANK: SMALLINT 1–8 (live: NULL 50,925 · 3 26,635 · 7 1,355 …)
@@ -645,7 +654,8 @@ def _check_star_projection(cleaned: str, tables: list[str]) -> None:
         f"with withheld columns ({', '.join(guarded)}) — a star would carry "
         "them into the result under whatever names the query gives them. "
         "List the columns explicitly; describe_schema('"
-        f"{guarded[0]}') lists the ones served. COUNT(*) is fine. "
+        f"{guarded[0]}') lists the ones served. COUNT(*) is fine. In EXISTS "
+        "and IN subqueries write SELECT 1, not SELECT *. "
         f"{_WITHHELD_WHY}."
     )
 
