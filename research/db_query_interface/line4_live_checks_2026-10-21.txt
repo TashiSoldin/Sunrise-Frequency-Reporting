@@ -96,3 +96,26 @@ indexes on AGENTDRIVER / MANIFEST (RDB$):
   REFUSED ACCEPT AGENTDRIVER joined on AGENT, keyed on both              (1 ms) AGENTDRIVER (alias d) is joined to ROUTING without a key of its own (found: d.AGENT = … is r.AGENT (a column or function), not a literal; d.AGENT IN (…) holds a subquery 
   OK      ACCEPT AGENTDRIVER keyed by a literal AGENT                      1 rows     88 ms  first=[0]
   REFUSED REFUSE MANIFEST joined without its own key                     (0 ms) MANIFEST (alias m) is joined to ROUTING without a key of its own (found: m.MANIFEST = … is r.MANIFEST (a column or function), not a literal) — repeat the manifest filter 
+
+== whitelist rewrite — live checks of ACCEPTED forms only (worktree, run_open_query), run 2026-10-21 13:03:07 ==
+  OK      R WAYBILL =                                      2 rows     38 ms  Window applied — ROUTING: keyed by WAYBILL (1 literal).
+  OK      R WAYBILL IN (3)                                 7 rows     37 ms  Window applied — ROUTING (r): keyed by WAYBILL IN (3 literals).
+  OK      R MANIFEST + MBRANCH + MTYPE                     1 rows     17 ms  Window applied — ROUTING (r): keyed by MANIFEST (1 literal).
+  OK      R MANIFEST alone (hint)                          1 rows     38 ms  Window applied — ROUTING: keyed by MANIFEST (1 literal); manifest numb
+  OK      R AGENTDATE BETWEEN 31 d by MTYPE                5 rows     68 ms  Window applied — ROUTING: AGENTDATE window 2026-09-01..2026-10-01 (31 
+  OK      R AGENTDATE >= / < 7 d                           1 rows     39 ms  Window applied — ROUTING (r): AGENTDATE window 2026-10-05..2026-10-11 
+  OK      R plain parens around a bare key                 1 rows     33 ms  Window applied — ROUTING (r): keyed by WAYBILL (1 literal).
+  OK      R LEFT JOIN HOLIDAY, key in WHERE                1 rows     38 ms  Window applied — ROUTING (r): keyed by WAYBILL (1 literal).
+  OK      R UNION both branches keyed                      2 rows     58 ms  Window applied — ROUTING (r): keyed by WAYBILL (1 literal).; Window applied — ROUTING (r): AGENTDATE window 2026-10-19..2026-10-19 
+  OK      R money columns (honest boundary)                1 rows     31 ms  Window applied — ROUTING: AGENTDATE window 2026-10-05..2026-10-11 (7 d; HONEST BOUNDARY: this is a correct read of the RAW data — it does not 
+  OK      V WAYBILL = ordered                             16 rows     49 ms  Window applied — VIEW_EVENTSCANS: keyed by WAYBILL (1 literal).
+  OK      V TRACKNO =                                      8 rows     29 ms  Window applied — VIEW_EVENTSCANS (v): keyed by TRACKNO (1 literal).
+  OK      V MANIFEST = count                               1 rows     69 ms  Window applied — VIEW_EVENTSCANS: keyed by MANIFEST (1 literal).
+  OK      V EVENTDATE 1 d + HUB by NAME                   14 rows    744 ms  Window applied — VIEW_EVENTSCANS: EVENTDATE window 2026-10-19..2026-10
+  OK      V GROUP BY NAME over 3 d                        31 rows   4520 ms  Window applied — VIEW_EVENTSCANS: EVENTDATE window 2026-10-13..2026-10
+  OK      JOIN view keyed on its alias                     4 rows     44 ms  Window applied — ROUTING (r): keyed by WAYBILL IN (2 literals).
+  OK      JOIN AGENTDATE 7 d + WAYDATE 11 d (trip revenue)   5 rows   1543 ms  Window applied — ROUTING (r): AGENTDATE window 2026-10-05..2026-10-11 ; HONEST BOUNDARY: this is a correct read of the RAW data — it does not 
+  OK      JOIN MANIFEST keyed on both                      1 rows     34 ms  Window applied — ROUTING (r): keyed by MANIFEST (1 literal).
+  OK      JOIN AGENTDRIVER by literal AGENT                1 rows     31 ms  Window applied — ROUTING (r): AGENTDATE window 2026-10-05..2026-10-11 
+  OK      H1 shape with the view WAYDATE-bounded (CTE)     1 rows   1471 ms  Window applied — ROUTING: AGENTDATE window 2026-10-05..2026-10-11 (7 d
+  OK      R JOIN V both keyed                             32 rows     25 ms  Window applied — ROUTING (r): keyed by WAYBILL (1 literal).; Window applied — VIEW_EVENTSCANS (v): keyed by WAYBILL (1 literal).

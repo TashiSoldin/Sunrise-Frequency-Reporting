@@ -511,6 +511,11 @@ _REVENUE_TABLES = {"RECEIPT", "INVOICE", "VIEW_SURCHARGES"}
 _REVENUE_COLUMNS = re.compile(
     r"\b(SUBTOTAL|TOTAL|VAT|INVNUM|INVOICEDATE|REVENUE|CHARGEAMT)\b", re.IGNORECASE
 )
+# ROUTING carries per-leg money columns too (review L2, 21 Oct 2026); its own
+# justification says to take revenue from the view, so the caveat rides along.
+_ROUTING_MONEY = re.compile(
+    r"\b(SUBTOTAL|VAT|TOTAL|INVAMOUNT|TOTPAID|VATPAID)\b", re.IGNORECASE
+)
 
 HONEST_BOUNDARY = (
     "HONEST BOUNDARY: this is a correct read of the RAW data — it does not "
@@ -1065,18 +1070,27 @@ def _check_star_projection(cleaned: str, tables: list[str]) -> None:
 #                         on their own each plans a NATURAL scan of TRACK (14M) and
 #                         WAYBILL (3.1M) with an EVENT probe per row (not executed).
 #
-# Predicate rules: literal values only (no subquery, parameter or CURRENT_DATE
-# arithmetic — their width cannot be computed here); on the windowed table's
-# OWN alias (ROUTING.WAYBILL = x does not window VIEW_EVENTSCANS in a join, and
-# a bare column in a multi-table query is refused as unqualified); in WHERE or
-# a JOIN ON clause (HAVING and the select list run after the scan); not negated;
-# not inside an OR (an OR widens the read — alternatives go in IN (...)). A
-# range is inclusive: BETWEEN a AND b = (b - a) + 1 days; >= a AND < b = b - a.
-# Every OCCURRENCE of a windowed table needs its own key or window — a window
-# inside a CTE does not cover an outer unwindowed read, and a self-join needs
-# both sides. The check lives after the allowlist, identifier and star gates
-# and is driven by this dict (the suite proves emptying it lets an unwindowed
-# statement through — Fable F3's lesson).
+# Predicate rules — a WHITELIST (rewritten after the Fable review of 21 Oct
+# 2026, B1–B4 / H1 / M1 / M2): the statement is split into SELECT blocks
+# (outer query, each UNION branch, each CTE body, derived table and subquery);
+# a block that reads a windowed table is accepted only if that table's alias
+# carries, as a DIRECT top-level AND conjunct of the block's WHERE or of the
+# ON of an INNER / comma join (never an outer join's ON — B2; never HAVING or
+# the select list), a bare predicate of exactly one of these forms:
+#   alias.KEY = 'literal'            alias.KEY IN ('literal', …)   (limit as signed)
+#   alias.DATE BETWEEN lit AND lit   alias.DATE >= lit AND alias.DATE <= lit
+# (DATE 'x' / TIMESTAMP 'x' prefixes read; plain grouping parens around one
+# such predicate are fine). Nothing wrapped around or inside it — no CASE,
+# IIF, COALESCE, IS FALSE/TRUE, = FALSE, NOT, function, arithmetic or OR
+# (B3: a comparison that restricts nothing counted as the key). Literals:
+# string keys are quoted, non-empty strings (M1: an unquoted number makes
+# Firebird convert the column, not the literal, and scan; M2: '' is a shared
+# junk TRACKNO); MANIFEST is a positive integer (B4: MANIFEST = 0 is the
+# no-manifest sentinel on ~41% of EVENT). A bare column (no alias) is accepted
+# only in a single-table block. Ranges are inclusive: BETWEEN a AND b =
+# (b - a) + 1 days; >= a AND < b = b - a. The check lives after the allowlist,
+# identifier and star gates and is driven by this dict (the suite proves
+# emptying it lets an unwindowed statement through — Fable F3's lesson).
 WINDOWED: dict[str, dict] = {
     "ROUTING": {
         "keys": {"WAYBILL": 100, "MANIFEST": 20},  # key column -> max IN-list literals
@@ -1093,14 +1107,17 @@ WINDOWED: dict[str, dict] = {
             )
         },
         "rule": (
-            "every ROUTING query must carry a key (WAYBILL = '…' or IN (up to 100 "
-            "literals); MANIFEST = n or IN (up to 20)) or a window (AGENTDATE "
-            "between two literal dates, at most 31 days) on the ROUTING alias, in "
-            "WHERE or JOIN ON and outside any OR; BOOKDATE, AGENT, hub, MTYPE and "
-            "STATUS are filters only; joined to VIEW_WBANALYSE, MANIFEST or "
-            "AGENTDRIVER, that relation's own alias must carry its key too "
-            "(WAYBILL / MANIFEST / AGENT = or IN, or a WAYDATE range of at most "
-            "31 days on the view) (QT-000007 line 4, measured 21 Oct 2026)"
+            "every SELECT that reads ROUTING must carry, as a direct AND conjunct of "
+            "its WHERE or of an inner join's ON, a bare key (WAYBILL = 'quoted "
+            "literal' or IN (up to 100); MANIFEST = positive integer or IN (up to "
+            "20)) or a bare window (AGENTDATE BETWEEN two literal dates or >= and "
+            "<= literal dates, at most 31 days) on the ROUTING alias — nothing "
+            "wrapped around or inside it, no OR, no NOT, no outer-join ON; BOOKDATE, "
+            "AGENT, hub, MTYPE and STATUS are filters only; and wherever ROUTING is "
+            "read, every VIEW_WBANALYSE, MANIFEST or AGENTDRIVER in the statement "
+            "must carry its own key the same way (WAYBILL / MANIFEST / AGENT = or "
+            "IN, or a WAYDATE range of at most 31 days on the view) (QT-000007 "
+            "line 4, measured 21 Oct 2026)"
         ),
     },
     "VIEW_EVENTSCANS": {
@@ -1121,16 +1138,18 @@ WINDOWED: dict[str, dict] = {
             ),
         },
         "rule": (
-            "every VIEW_EVENTSCANS query must carry a key (WAYBILL or TRACKNO = '…' "
-            "or IN (up to 100 literals); MANIFEST = n or IN (up to 20)) or a window "
-            "(EVENTDATE between two literal dates, at most 3 days) on its alias, in "
-            "WHERE or JOIN ON and outside any OR; WAYDATE, ACCNUM, NAME, HUB, "
-            "USERNAME and AGENTNAME are filters only — the view is for waybill and "
-            "manifest lookups; a scans-by-type-over-a-date-range question is the "
-            "event-counts tool, quoted separately; joined to VIEW_WBANALYSE, "
-            "MANIFEST or AGENTDRIVER, that relation's own alias must carry its key "
-            "too (WAYBILL / MANIFEST / AGENT = or IN, or a WAYDATE range of at most "
-            "31 days on the view) (QT-000007 line 4, measured 21 Oct 2026)"
+            "every SELECT that reads VIEW_EVENTSCANS must carry, as a direct AND "
+            "conjunct of its WHERE or of an inner join's ON, a bare key (WAYBILL or "
+            "TRACKNO = 'quoted literal' or IN (up to 100); MANIFEST = positive "
+            "integer or IN (up to 20)) or a bare window (EVENTDATE BETWEEN two "
+            "literal dates or >= and <= literal dates, at most 3 days) on its alias "
+            "— nothing wrapped around or inside it, no OR, no NOT, no outer-join ON; "
+            "WAYDATE, ACCNUM, NAME, HUB, USERNAME and AGENTNAME are filters only — "
+            "the view is for waybill and manifest lookups; a scans-by-type-over-a-"
+            "date-range question is the event-counts tool, quoted separately; and "
+            "wherever the view is read, every VIEW_WBANALYSE, MANIFEST or "
+            "AGENTDRIVER in the statement must carry its own key the same way "
+            "(QT-000007 line 4, measured 21 Oct 2026)"
         ),
     },
 }
@@ -1149,68 +1168,25 @@ _W_TOKEN = re.compile(
     r"|\d+(?:\.\d+)?"
     r"|<=|>=|<>|!=|\|\||[=<>()*,.?+\-/]"
 )
-_CMP_OPS = {"=", "<", ">", "<=", ">="}
-_MIRROR = {"<": ">", ">": "<", "<=": ">=", ">=": "<=", "=": "="}
-_CLAUSE_KW = {
-    "SELECT",
-    "FROM",
+_SET_OPS = {"UNION", "EXCEPT", "INTERSECT"}
+_OUTER = {"LEFT", "RIGHT", "FULL"}
+_JOIN_KW = {"JOIN", "INNER", "CROSS", "NATURAL"} | _OUTER
+# Keywords that end a FROM list or a WHERE / ON clause at the block level.
+_CLAUSE_END = {
     "WHERE",
-    "ON",
     "GROUP",
     "HAVING",
     "ORDER",
-    "UNION",
-    "EXCEPT",
-    "INTERSECT",
     "ROWS",
     "FETCH",
     "OFFSET",
     "PLAN",
+    "FOR",
     "WITH",
-    "JOIN",
-    "INNER",
-    "LEFT",
-    "RIGHT",
-    "FULL",
-    "CROSS",
-}
-_NOT_A_COLUMN = (
-    _STOP
-    | _CLAUSE_KW
-    | {
-        "AND",
-        "OR",
-        "NOT",
-        "IN",
-        "BETWEEN",
-        "LIKE",
-        "IS",
-        "NULL",
-        "CASE",
-        "WHEN",
-        "THEN",
-        "ELSE",
-        "END",
-        "DATE",
-        "TIMESTAMP",
-        "TIME",
-        "CAST",
-        "BY",
-        "ASC",
-        "DESC",
-        "STARTING",
-        "CONTAINING",
-        "SIMILAR",
-        "ESCAPE",
-        "EXISTS",
-        "ANY",
-        "SOME",
-        "ALL",
-        "CURRENT_DATE",
-        "CURRENT_TIMESTAMP",
-        "CURRENT_TIME",
-    }
-)
+} | _SET_OPS
+_DATE_PREFIX = {"DATE", "TIMESTAMP"}
+_LO_OPS = {">=", ">"}
+_HI_OPS = {"<=", "<"}
 
 
 def _blank_comments(sql: str) -> str:
@@ -1260,7 +1236,7 @@ def _w_tokens(sql: str) -> list[tuple[str, str]]:
 
 def _paren_structure(toks):
     """group[i] = index of the innermost '(' enclosing token i (-1 at top);
-    match[open] = close; is_sub[open] = the paren holds a SELECT."""
+    match[open] = close; is_sub[open] = the paren opens a SELECT."""
     group = [-1] * len(toks)
     match: dict[int, int] = {}
     stack: list[int] = []
@@ -1284,124 +1260,13 @@ def _paren_structure(toks):
 
 
 def _scope_of(i, group, is_sub):
-    """The query block a token belongs to: the innermost enclosing paren that
-    holds a SELECT, or -1 for the outer statement. Grouping parens are skipped."""
+    """The query block paren a token belongs to: the innermost enclosing
+    paren that opens a SELECT, or -1 for the outer statement. Grouping
+    parens are skipped."""
     g = group[i]
     while g != -1 and not is_sub.get(g, False):
         g = group[g]
     return g
-
-
-def _table_occurrences(toks, ctes):
-    """Every name in table position with its alias (the name itself when none
-    is given) and token index. Same walk as _referenced_tables; CTE names are
-    returned flagged so scope counting can see them but the window check skips
-    them."""
-    occ = []
-    i, n = 0, len(toks)
-    while i < n:
-        if toks[i][1] != "ID" or toks[i][0].upper() not in ("FROM", "JOIN"):
-            i += 1
-            continue
-        i += 1
-        expect_name = True
-        while i < n:
-            t, k = toks[i]
-            u = t.upper()
-            if expect_name:
-                if k != "ID" or u in _STOP:
-                    break
-                name_idx = i
-                alias = t
-                i += 1
-                if i < n and toks[i][1] == "ID" and toks[i][0].upper() == "AS":
-                    if i + 1 < n and toks[i + 1][1] == "ID":
-                        alias = toks[i + 1][0]
-                        i += 2
-                elif i < n and toks[i][1] == "ID" and toks[i][0].upper() not in _STOP:
-                    alias = toks[i][0]
-                    i += 1
-                occ.append((u, alias, name_idx, u in ctes))
-                expect_name = False
-            elif t == "," and k == "P":
-                expect_name = True
-                i += 1
-            else:
-                break
-    return occ
-
-
-def _value_at(toks, j, group, match, is_sub):
-    """Classify the value starting at token j: ('lit', text, end) for a string
-    (also DATE 'x' / TIMESTAMP 'x' / CAST('x' AS …)), ('num', text, end),
-    or ('bad', reason, end). end = index of the last token of the value."""
-    n = len(toks)
-    if j >= n:
-        return ("bad", "nothing after the operator", j)
-    t, k = toks[j]
-    u = t.upper()
-    kind, text, end = None, None, j
-    if k == "LIT":
-        kind, text = "lit", t
-    elif k == "NUM":
-        kind, text = "num", t
-    elif t == "-" and j + 1 < n and toks[j + 1][1] == "NUM":
-        kind, text, end = "num", "-" + toks[j + 1][0], j + 1
-    elif t == "?":
-        return ("bad", "a parameter (?) — write the literal value", j)
-    elif (
-        k == "ID"
-        and u in ("DATE", "TIMESTAMP", "TIME")
-        and j + 1 < n
-        and toks[j + 1][1] == "LIT"
-    ):
-        kind, text, end = "lit", toks[j + 1][0], j + 1
-    elif k == "ID" and u == "CAST" and j + 1 < n and toks[j + 1][0] == "(":
-        close = match.get(j + 1, n)
-        if j + 2 < n and toks[j + 2][1] == "LIT":
-            kind, text, end = "lit", toks[j + 2][0], close
-        else:
-            return ("bad", "a CAST of something other than a literal", close)
-    elif t == "(" and k == "P":
-        close = match.get(j, n)
-        if is_sub.get(j, False):
-            return ("bad", "a subquery — write literal values", close)
-        return ("bad", "an expression in parentheses, not a literal", close)
-    elif k == "ID":
-        if u.startswith("CURRENT_"):
-            return ("bad", f"{u} arithmetic — write literal dates 'YYYY-MM-DD'", j)
-        name = t
-        if j + 2 < n and toks[j + 1][0] == "." and toks[j + 2][1] == "ID":
-            name = f"{t}.{toks[j + 2][0]}"
-        return ("bad", f"{name} (a column or function), not a literal", j)
-    else:
-        return ("bad", "not a literal", j)
-    # a literal followed by arithmetic is an expression
-    if (
-        end + 1 < n
-        and toks[end + 1][0] in ("+", "-", "*", "/", "||")
-        and toks[end + 1][1] == "P"
-    ):
-        return ("bad", "arithmetic on a literal — write the final value", end)
-    return (kind, text, end)
-
-
-def _in_list_at(toks, s, group, match, is_sub):
-    """Items of an IN ( … ) list opening at token s. Returns (count, reason)."""
-    close = match.get(s, len(toks))
-    if is_sub.get(s, False):
-        return 0, "a subquery — write literal values"
-    items = 0
-    j = s + 1
-    while j < close:
-        kind, text, end = _value_at(toks, j, group, match, is_sub)
-        if kind == "bad":
-            return 0, text
-        items += 1
-        j = end + 1
-        if j < close and toks[j][0] == ",":
-            j += 1
-    return items, None
 
 
 def _parse_date(text):
@@ -1412,260 +1277,562 @@ def _parse_date(text):
         return None
 
 
-class _Pred:
-    __slots__ = (
-        "alias",
-        "bad",
-        "clause",
-        "col",
-        "count",
-        "in_or",
-        "kind",
-        "negated",
-        "op",
-        "scope",
-        "start",
-        "values",
-    )
-
-    def __init__(self, **kw):
-        for k in self.__slots__:
-            setattr(self, k, kw.get(k))
-
-
-def _predicates(toks, group, match, is_sub, columns_of_interest):
-    """Every comparison on a column of interest: who it is on (alias or bare),
-    what shape (eq / in / between / lo / hi / other), the literal values or
-    why they are not literals, and the structural facts that disqualify it
-    (clause, inside an OR, negated)."""
-    n = len(toks)
-    preds = []
-    i = 0
-    while i < n:
-        t, k = toks[i]
-        u = t.upper()
-        if k != "ID" or u in _NOT_A_COLUMN or u not in columns_of_interest:
-            i += 1
-            continue
-        nxt = toks[i + 1][0] if i + 1 < n else ""
-        if nxt in (".", "("):  # an alias, or a function call
-            i += 1
-            continue
-        alias, start = None, i
-        if i >= 2 and toks[i - 1][0] == "." and toks[i - 2][1] == "ID":
-            alias, start = toks[i - 2][0].upper(), i - 2
-        elif i >= 1 and toks[i - 1][0] == ".":
-            i += 1
-            continue
-        p = _Pred(
-            start=start,
-            alias=alias,
-            col=u,
-            kind="other",
-            op=None,
-            values=[],
-            count=0,
-            bad=None,
-        )
-        j = i + 1
-        negated = i >= 1 and toks[i - 1][1] == "ID" and toks[i - 1][0].upper() == "NOT"
-        if (
-            start >= 1
-            and toks[start - 1][1] == "ID"
-            and toks[start - 1][0].upper() == "NOT"
-        ):
-            negated = True
-        if j < n and toks[j][1] == "ID" and toks[j][0].upper() == "NOT":
-            negated = True
-            j += 1
-        op = toks[j][0].upper() if j < n else ""
-        if op in _CMP_OPS:
-            kind, text, _end = _value_at(toks, j + 1, group, match, is_sub)
-            p.op = op
-            if kind == "bad":
-                p.bad = text
-            else:
-                p.values = [text]
-            p.kind = {"=": "eq", "<": "hi", "<=": "hi", ">": "lo", ">=": "lo"}[op]
-        elif op == "IN" and j + 1 < n and toks[j + 1][0] == "(":
-            p.kind, p.op = "in", "IN"
-            p.count, p.bad = _in_list_at(toks, j + 1, group, match, is_sub)
-        elif op == "BETWEEN":
-            p.kind, p.op = "between", "BETWEEN"
-            k1, t1, e1 = _value_at(toks, j + 1, group, match, is_sub)
-            if k1 == "bad":
-                p.bad = t1
-            elif e1 + 1 < n and toks[e1 + 1][0].upper() == "AND":
-                k2, t2, _e2 = _value_at(toks, e1 + 2, group, match, is_sub)
-                if k2 == "bad":
-                    p.bad = t2
-                else:
-                    p.values = [t1, t2]
-            else:
-                p.bad = "BETWEEN without AND"
-        elif op in ("<>", "!=", "LIKE", "STARTING", "CONTAINING", "SIMILAR", "IS"):
-            p.kind, p.op = "other", op
-        elif (
-            start >= 2
-            and toks[start - 1][0] in _CMP_OPS
-            and toks[start - 1][1] == "P"
-            and toks[start - 2][1] in ("LIT", "NUM")
-        ):
-            # mirrored: 'x' = alias.COL
-            mop = _MIRROR[toks[start - 1][0]]
-            p.op = mop
-            p.kind = {"=": "eq", "<": "hi", "<=": "hi", ">": "lo", ">=": "lo"}[mop]
-            p.values = [toks[start - 2][0]]
-        else:
-            i += 1
-            continue  # not a comparison (select list, GROUP BY, ORDER BY …)
-        p.negated = negated
-        p.scope = _scope_of(start, group, is_sub)
-        p.clause, p.in_or, neg2 = _structure_of(
-            toks, start, group, match, is_sub, p.scope
-        )
-        p.negated = p.negated or neg2
-        preds.append(p)
-        i += 1
-    return preds
-
-
-def _structure_of(toks, s, group, match, is_sub, scope):
-    """Walk up from a predicate: which clause of its query block it is in,
-    whether any enclosing level (grouping parens up to the clause) carries an
-    OR, and whether a NOT fronts an enclosing paren group."""
-    in_or = False
-    negated = False
-    lvl = group[s]
-    while lvl != -1 and not is_sub.get(lvl, False):
-        close = match.get(lvl, len(toks))
-        for j in range(lvl + 1, close):
-            if group[j] == lvl and toks[j][1] == "ID" and toks[j][0].upper() == "OR":
-                in_or = True
-        if lvl >= 1 and toks[lvl - 1][1] == "ID" and toks[lvl - 1][0].upper() == "NOT":
-            negated = True
-        lvl = group[lvl]
-    # clause region at the scope level
-    lo = scope + 1 if scope != -1 else 0
-    hi = match.get(scope, len(toks)) if scope != -1 else len(toks)
-    clause = "SELECT"
-    j = s - 1
-    while j >= lo:
-        if (
-            group[j] == scope
-            and toks[j][1] == "ID"
-            and toks[j][0].upper() in _CLAUSE_KW
-        ):
-            clause = toks[j][0].upper()
-            break
-        j -= 1
-    region_start = j + 1 if j >= lo else lo
-    j = s + 1
-    while j < hi:
-        if (
-            group[j] == scope
-            and toks[j][1] == "ID"
-            and toks[j][0].upper() in _CLAUSE_KW
-        ):
-            break
-        j += 1
-    region_end = j
-    for j in range(region_start, region_end):
-        if group[j] == scope and toks[j][1] == "ID" and toks[j][0].upper() == "OR":
-            in_or = True
-    return clause, in_or, negated
-
-
 def _days(n: int) -> str:
     return "1 day" if n == 1 else f"{n} days"
 
 
-def _judge(table, spec, alias, mine, pins_seen):
-    """Qualifying descriptions and disqualification reasons for one occurrence."""
+# --- SELECT blocks ----------------------------------------------------------------
+# The statement is split into SELECT blocks: every SELECT — the outer query,
+# each UNION/EXCEPT/INTERSECT branch, each CTE body, each derived table, each
+# scalar / IN / EXISTS subquery — is its own block with its own FROM list and
+# its own WHERE. Fable review B1 (21 Oct 2026): UNION branches shared one
+# scope, so a key on one alias covered every branch and the second branch
+# planned a NATURAL scan.
+
+
+class _Ref:
+    __slots__ = ("alias", "derived", "is_cte", "kind", "name")
+
+    def __init__(self, name, alias, kind, is_cte=False, derived=False):
+        self.name, self.alias, self.kind = name, alias, kind
+        self.is_cte, self.derived = is_cte, derived
+
+
+class _Block:
+    __slots__ = ("end", "g", "n", "ons", "refs", "start", "unsupported", "where")
+
+    def __init__(self, n, g, start, end):
+        self.n, self.g, self.start, self.end = n, g, start, end
+        self.refs: list[_Ref] = []
+        self.where: list[list[int]] = []  # conjuncts: lists of token indices
+        self.ons: list[tuple[str, list[list[int]]]] = []  # (join kind, conjuncts)
+        self.unsupported: str | None = None
+
+
+def _blocks(toks, group, match, is_sub):
+    out = []
+    n = len(toks)
+    for s, (t, k) in enumerate(toks):
+        if k != "ID" or t.upper() != "SELECT":
+            continue
+        g = group[s]
+        limit = match.get(g, n) if g != -1 else n
+        e = s + 1
+        while e < limit:
+            if group[e] == g and toks[e][1] == "ID" and toks[e][0].upper() in _SET_OPS:
+                break
+            e += 1
+        out.append(_Block(len(out) + 1, g, s, e))
+    return out
+
+
+def _level_tokens(block, toks, group, is_sub):
+    """Indices of the block's own tokens: at the block's paren level, outside
+    any nested paren (nested parens appear as their '(' only)."""
+    g = block.g
+    idx = []
+    i = block.start
+    while i < block.end:
+        if group[i] == g:
+            idx.append(i)
+        i += 1
+    return idx
+
+
+def _split_conjuncts(level_idx, toks, group, match):
+    """Split a clause's level tokens on AND into conjuncts, keeping each
+    conjunct as the full token range (nested parens included) it spans. The
+    AND of a BETWEEN is part of its conjunct."""
+    conjs: list[list[int]] = []
+    cur: list[int] = []
+    between = False
+    for i in level_idx:
+        t, k = toks[i]
+        u = t.upper() if k == "ID" else t
+        if k == "ID" and u == "AND" and not between:
+            if cur:
+                conjs.append(cur)
+            cur = []
+            continue
+        if k == "ID" and u == "BETWEEN":
+            between = True
+        elif k == "ID" and u == "AND" and between:
+            between = False
+        cur.append(i)
+    if cur:
+        conjs.append(cur)
+    # expand each conjunct to the full contiguous range it covers
+    full = []
+    for c in conjs:
+        a, b = c[0], c[-1]
+        if toks[b][0] == "(" and toks[b][1] == "P":
+            b = match.get(b, b)
+        full.append(list(range(a, b + 1)))
+    return full
+
+
+def _clause_region(level_idx, start_pos, toks, stop_on_join=False):
+    """Level tokens from start_pos (exclusive) up to the next clause-ending
+    keyword (and, for ON clauses, the next join keyword)."""
+    region = []
+    for i in level_idx:
+        if i <= start_pos:
+            continue
+        t, k = toks[i]
+        if k == "ID":
+            u = t.upper()
+            if u in _CLAUSE_END or (stop_on_join and u in _JOIN_KW):
+                break
+        region.append(i)
+    return region
+
+
+def _parse_block(block, toks, group, match, is_sub, ctes):
+    """Fill refs / where / ons for one block from its level tokens."""
+    level = _level_tokens(block, toks, group, is_sub)
+    pos = {i: q for q, i in enumerate(level)}
+    from_i = next(
+        (i for i in level if toks[i][1] == "ID" and toks[i][0].upper() == "FROM"), None
+    )
+    if from_i is None:
+        return
+    n_level = len(level)
+
+    def parse_ref(q, kind):
+        """One table item at level position q -> (ref, q_after) or (None, reason)."""
+        if q >= n_level:
+            return None, "a FROM list that ends early"
+        i = level[q]
+        t, k = toks[i]
+        u = t.upper() if k == "ID" else t
+        if t == "(" and k == "P":
+            close = match.get(i, len(toks))
+            if not is_sub.get(i, False):
+                return None, "a parenthesised join or an unrecognised FROM item"
+            ref = _Ref(None, None, kind, derived=True)
+            q += 1
+            while q < n_level and level[q] <= close:
+                q += 1
+        elif k == "ID" and u not in _STOP and u not in _JOIN_KW:
+            ref = _Ref(u, u, kind, is_cte=u in ctes)
+            q += 1
+            if q < n_level and toks[level[q]][0] == "(" and toks[level[q]][1] == "P":
+                return None, f"{u}(...) in FROM (a procedure call)"
+        else:
+            return None, "an unrecognised FROM item"
+        if q < n_level:
+            tj, kj = toks[level[q]]
+            uj = tj.upper() if kj == "ID" else tj
+            if kj == "ID" and uj == "AS":
+                if q + 1 < n_level and toks[level[q + 1]][1] == "ID":
+                    ref.alias = toks[level[q + 1]][0].upper()
+                    q += 2
+            elif kj == "ID" and uj not in _STOP and uj not in _JOIN_KW and uj != "ON":
+                ref.alias = uj
+                q += 1
+        return ref, q
+
+    q = pos[from_i] + 1
+    first = True
+    while q < n_level:
+        i = level[q]
+        t, k = toks[i]
+        u = t.upper() if k == "ID" else t
+        if first:
+            first = False
+            ref, q2 = parse_ref(q, "from")
+            if ref is None:
+                block.unsupported = q2
+                return
+            block.refs.append(ref)
+            q = q2
+        elif t == "," and k == "P":
+            ref, q2 = parse_ref(q + 1, "comma")
+            if ref is None:
+                block.unsupported = q2
+                return
+            block.refs.append(ref)
+            q = q2
+        elif k == "ID" and u in _JOIN_KW:
+            words = []
+            while (
+                q < n_level
+                and toks[level[q]][1] == "ID"
+                and toks[level[q]][0].upper() in (_JOIN_KW | {"OUTER"})
+            ):
+                words.append(toks[level[q]][0].upper())
+                q += 1
+            if "JOIN" not in words or "NATURAL" in words:
+                block.unsupported = "a NATURAL join or a join without JOIN"
+                return
+            outer = [w for w in words if w in _OUTER]
+            kind = (
+                outer[0].lower()
+                if outer
+                else ("cross" if "CROSS" in words else "inner")
+            )
+            ref, q2 = parse_ref(q, kind)
+            if ref is None:
+                block.unsupported = q2
+                return
+            block.refs.append(ref)
+            q = q2
+            if (
+                q < n_level
+                and toks[level[q]][1] == "ID"
+                and toks[level[q]][0].upper() == "ON"
+            ):
+                region = _clause_region(level, level[q], toks, stop_on_join=True)
+                block.ons.append((kind, _split_conjuncts(region, toks, group, match)))
+                q += 1 + len(region)
+            elif (
+                q < n_level
+                and toks[level[q]][1] == "ID"
+                and toks[level[q]][0].upper() == "USING"
+            ):
+                block.unsupported = "a USING join"
+                return
+            elif kind != "cross":
+                block.unsupported = "a JOIN without ON"
+                return
+        else:
+            break
+    where_i = next(
+        (i for i in level if toks[i][1] == "ID" and toks[i][0].upper() == "WHERE"), None
+    )
+    if where_i is not None:
+        region = _clause_region(level, where_i, toks)
+        block.where = _flatten(
+            _split_conjuncts(region, toks, group, match), toks, group, match, is_sub
+        )
+    block.ons = [
+        (kind, _flatten(cs, toks, group, match, is_sub)) for kind, cs in block.ons
+    ]
+
+
+def _flatten(conjs, toks, group, match, is_sub):
+    """Plain grouping parentheses around AND-ed predicates are just grouping:
+    `(a AND b) AND c` -> a, b, c. A paren group holding an OR stays whole."""
+    out = []
+    for c in conjs:
+        if (
+            c
+            and toks[c[0]][0] == "("
+            and toks[c[0]][1] == "P"
+            and match.get(c[0]) == c[-1]
+            and not is_sub.get(c[0])
+        ):
+            inner_level = [i for i in c[1:-1] if group[i] == c[0]]
+            inner = _split_conjuncts(inner_level, toks, group, match)
+            if len(inner) > 1 or (len(inner) == 1 and inner[0] != c[1:-1]):
+                out.extend(_flatten(inner, toks, group, match, is_sub))
+                continue
+        out.append(c)
+    return out
+
+
+# --- the whitelist judge ------------------------------------------------------------
+
+
+def _ref_at(toks, c, j):
+    """alias.COL or COL at conjunct offset j -> (alias|None, COL, next offset)."""
+    if (
+        j + 2 < len(c)
+        and toks[c[j]][1] == "ID"
+        and toks[c[j + 1]][0] == "."
+        and toks[c[j + 2]][1] == "ID"
+    ):
+        return toks[c[j]][0].upper(), toks[c[j + 2]][0].upper(), j + 3
+    if j < len(c) and toks[c[j]][1] == "ID":
+        return None, toks[c[j]][0].upper(), j + 1
+    return None, None, j
+
+
+def _lit_at(toks, c, j):
+    """A bare literal at offset j: ('str', text) / ('num', text) / ('date', text)
+    with the next offset, or (None, None, j). DATE 'x' / TIMESTAMP 'x' count
+    as 'date'-prefixed strings."""
+    if j >= len(c):
+        return None, None, j
+    t, k = toks[c[j]]
+    if k == "LIT":
+        return "str", t, j + 1
+    if k == "NUM":
+        return "num", t, j + 1
+    if (
+        k == "ID"
+        and t.upper() in _DATE_PREFIX
+        and j + 1 < len(c)
+        and toks[c[j + 1]][1] == "LIT"
+    ):
+        return "date", toks[c[j + 1]][0], j + 2
+    return None, None, j
+
+
+def _bare_shape(toks, c, group, match, is_sub):
+    """Match a conjunct (token index list) against the exact whitelist and
+    return (alias, col, kind, values) or None. kinds: eq / in / between / lo / hi.
+    values: [(littype, text), ...]. A conjunct that is one plain paren group
+    around a single bare predicate matches through it."""
+    if not c:
+        return None
+    # ( bare ) — plain grouping parentheses, nothing else in the conjunct
+    if (
+        toks[c[0]][0] == "("
+        and toks[c[0]][1] == "P"
+        and match.get(c[0]) == c[-1]
+        and not is_sub.get(c[0])
+    ):
+        inner_level = [i for i in c[1:-1] if group[i] == c[0]]
+        inner = _split_conjuncts(inner_level, toks, group, match)
+        if len(inner) == 1:
+            return _bare_shape(toks, inner[0], group, match, is_sub)
+        return None
+    alias, col, j = _ref_at(toks, c, 0)
+    if col is None or j >= len(c):
+        return None
+    op = toks[c[j]]
+    u = op[0].upper()
+    if op[1] == "P" and u == "=":
+        lt, lv, j2 = _lit_at(toks, c, j + 1)
+        if lt and j2 == len(c):
+            return alias, col, "eq", [(lt, lv)]
+        return None
+    if op[1] == "P" and (u in _LO_OPS or u in _HI_OPS):
+        lt, lv, j2 = _lit_at(toks, c, j + 1)
+        if lt and j2 == len(c):
+            return alias, col, ("lo" if u in _LO_OPS else "hi"), [(lt, lv, u)]
+        return None
+    if op[1] == "ID" and u == "BETWEEN":
+        lt1, lv1, j2 = _lit_at(toks, c, j + 1)
+        if not lt1 or j2 >= len(c) or toks[c[j2]][0].upper() != "AND":
+            return None
+        lt2, lv2, j3 = _lit_at(toks, c, j2 + 1)
+        if lt2 and j3 == len(c):
+            return alias, col, "between", [(lt1, lv1), (lt2, lv2)]
+        return None
+    if op[1] == "ID" and u == "IN":
+        if j + 1 >= len(c):
+            return None
+        o = c[j + 1]
+        if (
+            toks[o][0] != "("
+            or toks[o][1] != "P"
+            or is_sub.get(o)
+            or match.get(o) != c[-1]
+        ):
+            return None
+        items = []
+        expect_item = True
+        for i in c[j + 2 : -1]:
+            t, k = toks[i]
+            if group[i] != o:
+                return None  # something nested inside the list
+            if expect_item:
+                if k == "LIT":
+                    items.append(("str", t))
+                elif k == "NUM":
+                    items.append(("num", t))
+                else:
+                    return None
+                expect_item = False
+            else:
+                if t != "," or k != "P":
+                    return None
+                expect_item = True
+        if expect_item or not items:
+            return None
+        return alias, col, "in", items
+    return None
+
+
+def _why_not(toks, c, group, match, is_sub, ref_label):
+    """One plain reason why a conjunct that mentions the alias is not a bound."""
+    text = [toks[i] for i in c]
+    ids = {t.upper() for t, k in text if k == "ID"}
+    ops = {t for t, k in text if k == "P"}
+    if any(is_sub.get(i) for i in c if toks[i][0] == "("):
+        return f"{ref_label} is compared through a subquery — write literal values"
+    if "?" in ops:
+        return f"{ref_label} is compared to a parameter (?) — write the literal value"
+    if any(x.startswith("CURRENT_") for x in ids):
+        return f"{ref_label} is compared with CURRENT_DATE arithmetic — write literal dates 'YYYY-MM-DD'"
+    if "OR" in ids:
+        return f"{ref_label} sits inside an OR — an OR widens the read; put alternatives in IN (…)"
+    if "NOT" in ids:
+        return f"{ref_label} is negated (NOT) — a negation does not bound the read"
+    if "LIKE" in ids or "STARTING" in ids or "CONTAINING" in ids or "SIMILAR" in ids:
+        return f"{ref_label} LIKE / STARTING WITH … is not a key — use = or IN (…)"
+    if "<>" in ops or "!=" in ops:
+        return f"{ref_label} <> … is not a key — use = or IN (…)"
+    if (
+        "IS" in ids
+        or "CASE" in ids
+        or "IIF" in ids
+        or "COALESCE" in ids
+        or "FALSE" in ids
+        or "TRUE" in ids
+    ):
+        return (
+            f"{ref_label} is wrapped (CASE / IIF / COALESCE / IS / = FALSE) — a wrapped comparison "
+            "restricts nothing; write the bare predicate as its own AND conjunct"
+        )
+    if "ANY" in ids or "SOME" in ids or "ALL" in ids:
+        return f"{ref_label} = ANY / SOME / ALL is not a key — use = or IN (…)"
+    return (
+        f"{ref_label} appears in a conjunct that is not a bare key or window predicate "
+        "(a function call, arithmetic, concatenation or an unsupported form) — write "
+        f"{ref_label} = 'literal', IN (…), BETWEEN two literal dates, or >= and <= literal dates"
+    )
+
+
+def _mentions(toks, c, alias, col):
+    """Does the conjunct contain alias.col (or bare col when alias is None)?"""
+    for j in range(len(c)):
+        a, cc, _ = _ref_at(toks, c, j)
+        if cc == col and (a == alias or (alias is None and a is None)):
+            if j >= 1 and toks[c[j - 1]][0] == ".":
+                continue
+            return True
+    return False
+
+
+def _judge(table, spec, alias, conjs, outer_conjs, single):
+    """Whitelist judgement for one table reference: qualifying descriptions
+    and the reasons for near-misses. `conjs` are the direct AND conjuncts of
+    the block's WHERE and inner-join ONs; `outer_conjs` those of outer-join
+    ONs (never bounds — reported). `single` = the block has one table ref,
+    so a bare column may be attributed to it."""
     label = f"{alias}." if alias.upper() != table else ""
+    alias_u = alias.upper()
     qualifying: list[str] = []
     reasons: list[str] = []
-    lows: list[tuple[_dt.date, str]] = []
-    highs: list[tuple[_dt.date, str]] = []
-    for p in mine:
-        ref = f"{label}{p.col}"
-        if p.clause not in ("WHERE", "ON"):
-            reasons.append(
-                f"{ref} is in the {p.clause} clause — only a WHERE or JOIN ON predicate bounds the read"
-            )
-            continue
-        if p.negated:
-            reasons.append(
-                f"{ref} is negated (NOT) — a negation does not bound the read"
-            )
-            continue
-        if p.in_or:
-            reasons.append(
-                f"{ref} sits inside an OR — an OR widens the read; put alternatives in IN (…)"
-            )
-            continue
-        if p.col in spec["keys"]:
-            limit = spec["keys"][p.col]
-            if p.kind == "eq":
-                if p.bad:
-                    reasons.append(f"{ref} = … is {p.bad}")
-                else:
-                    qualifying.append(f"keyed by {p.col} (1 literal)")
-            elif p.kind == "in":
-                if p.bad:
-                    reasons.append(f"{ref} IN (…) holds {p.bad}")
-                elif p.count > limit:
+    lows: list[_dt.date] = []
+    highs: list[_dt.date] = []
+    pins_seen: set[str] = set()
+    interest = (
+        set(spec["keys"])
+        | ({spec["date"]} if spec["date"] else set())
+        | set(spec["filters_only"])
+        | set(spec["pins"])
+    )
+    toks, group, match, is_sub = spec["_ctx"]
+
+    def mine(shape):
+        a = shape[0]
+        return a == alias_u or (a is None and single)
+
+    for c in conjs:
+        shape = _bare_shape(toks, c, group, match, is_sub)
+        if shape is not None and mine(shape):
+            _a, col, kind, values = shape
+            ref = f"{label}{col}"
+            if col in spec["pins"]:
+                pins_seen.add(col)
+            if col in spec["keys"]:
+                limit = spec["keys"][col]
+                vals = values if kind == "in" else (values if kind == "eq" else None)
+                if vals is None:
                     reasons.append(
-                        f"{ref} IN (…) has {p.count} literals — the limit is {limit}"
-                    )
-                else:
-                    qualifying.append(f"keyed by {p.col} IN ({p.count} literals)")
-            else:
-                reasons.append(f"{ref} {p.op} … is not a key — use = or IN (…)")
-        elif p.col == spec["date"]:
-            if p.kind in ("eq", "between"):
-                if p.bad:
-                    reasons.append(f"the {ref} range is {p.bad}")
-                    continue
-                dates = [_parse_date(v) for v in p.values]
-                if any(d is None for d in dates):
-                    reasons.append(
-                        f"{ref} compares to a date that is not 'YYYY-MM-DD' — write dates as 'YYYY-MM-DD'"
+                        f"{ref} {('>=' if kind == 'lo' else '<=')} … is not a key — use = or IN (…)"
                     )
                     continue
-                lo_d, hi_d = dates[0], dates[-1]
-                width = (hi_d - lo_d).days + 1
-                if width <= 0:
-                    reasons.append(f"the {ref} bounds are reversed ({lo_d}..{hi_d})")
-                elif width > spec["max_days"]:
+                bad = _key_literal_problem(col, vals, ref)
+                if bad:
+                    reasons.append(bad)
+                elif kind == "in" and len(vals) > limit:
                     reasons.append(
-                        f"the {ref} range is {width} days ({lo_d}..{hi_d}) — the limit is {spec['max_days']} days"
+                        f"{ref} IN (…) has {len(vals)} literals — the limit is {limit}"
                     )
+                elif kind == "in":
+                    qualifying.append(f"keyed by {col} IN ({len(vals)} literals)")
                 else:
-                    qualifying.append(f"{p.col} window {lo_d}..{hi_d} ({_days(width)})")
-            elif p.kind in ("lo", "hi"):
-                if p.bad:
-                    reasons.append(f"the {ref} bound is {p.bad}")
-                    continue
-                d = _parse_date(p.values[0])
-                if d is None:
-                    reasons.append(
-                        f"{ref} compares to a date that is not 'YYYY-MM-DD' — write dates as 'YYYY-MM-DD'"
-                    )
-                    continue
-                if p.kind == "lo":
-                    lows.append((d + _dt.timedelta(days=1) if p.op == ">" else d, ref))
+                    qualifying.append(f"keyed by {col} (1 literal)")
+            elif spec["date"] and col == spec["date"]:
+                if kind in ("eq", "between"):
+                    dates = [
+                        _parse_date(v[1]) if v[0] in ("str", "date") else None
+                        for v in values
+                    ]
+                    if any(d is None for d in dates):
+                        reasons.append(
+                            f"{ref} compares to a date that is not 'YYYY-MM-DD' — write dates as 'YYYY-MM-DD'"
+                        )
+                        continue
+                    lo_d, hi_d = dates[0], dates[-1]
+                    width = (hi_d - lo_d).days + 1
+                    if width <= 0:
+                        reasons.append(
+                            f"the {ref} bounds are reversed ({lo_d}..{hi_d})"
+                        )
+                    elif width > spec["max_days"]:
+                        reasons.append(
+                            f"the {ref} range is {width} days ({lo_d}..{hi_d}) — the limit is {spec['max_days']} days"
+                        )
+                    else:
+                        qualifying.append(
+                            f"{col} window {lo_d}..{hi_d} ({_days(width)})"
+                        )
                 else:
-                    highs.append((d - _dt.timedelta(days=1) if p.op == "<" else d, ref))
-            else:
+                    lt, lv, op = values[0]
+                    d = _parse_date(lv) if lt in ("str", "date") else None
+                    if d is None:
+                        reasons.append(
+                            f"{ref} compares to a date that is not 'YYYY-MM-DD' — write dates as 'YYYY-MM-DD'"
+                        )
+                        continue
+                    if kind == "lo":
+                        lows.append(d + _dt.timedelta(days=1) if op == ">" else d)
+                    else:
+                        highs.append(d - _dt.timedelta(days=1) if op == "<" else d)
+            elif col in spec["filters_only"]:
+                why = spec["filter_why"].get(col)
                 reasons.append(
-                    f"{ref} {p.op} … is not a date range — use BETWEEN or >= … AND <= …"
+                    f"{col} is a filter, not a key or window on {table}"
+                    + (f" — {why}" if why else "")
                 )
-        elif p.col in spec["filters_only"]:
-            why = spec["filter_why"].get(p.col)
+            continue
+        # not a bare shape on this alias — is the alias's key/date/filter mentioned?
+        ordered = sorted(
+            set(spec["keys"]) | ({spec["date"]} if spec["date"] else set())
+        ) + sorted(spec["filters_only"])
+        for col in ordered:
+            if _mentions(toks, c, alias_u, col) or (
+                single and _mentions(toks, c, None, col)
+            ):
+                if col in spec["filters_only"]:
+                    if shape is not None:
+                        continue
+                    why = spec["filter_why"].get(col)
+                    reasons.append(
+                        f"{col} is a filter, not a key or window on {table}"
+                        + (f" — {why}" if why else "")
+                    )
+                else:
+                    reasons.append(
+                        _why_not(toks, c, group, match, is_sub, f"{label}{col}")
+                    )
+                break
+        if (
+            not single
+            and shape is not None
+            and shape[0] is None
+            and shape[1] in interest
+        ):
             reasons.append(
-                f"{p.col} is a filter, not a key or window on {table}"
-                + (f" — {why}" if why else "")
+                f"{shape[1]} is unqualified in a multi-table block — qualify it ({alias}.{shape[1]}) "
+                f"so the key or window is on {table}"
+            )
+    for kind_name, c in outer_conjs:
+        shape = _bare_shape(toks, c, group, match, is_sub)
+        if (
+            shape is not None
+            and mine(shape)
+            and (shape[1] in spec["keys"] or shape[1] == spec["date"])
+        ):
+            reasons.append(
+                f"{label}{shape[1]} sits in the ON of a {kind_name.upper()} JOIN — an outer join's ON "
+                f"does not filter {table}; move it to WHERE"
             )
     if lows or highs:
         ref = f"{label}{spec['date']}"
@@ -1674,8 +1841,7 @@ def _judge(table, spec, alias, mine, pins_seen):
                 f"only one bound on {ref} — give both ends (>= and <= literal dates)"
             )
         else:
-            lo_d = max(d for d, _ in lows)
-            hi_d = min(d for d, _ in highs)
+            lo_d, hi_d = max(lows), min(highs)
             width = (hi_d - lo_d).days + 1
             if width <= 0:
                 reasons.append(f"the {ref} bounds are reversed ({lo_d}..{hi_d})")
@@ -1693,80 +1859,42 @@ def _judge(table, spec, alias, mine, pins_seen):
     return qualifying, reasons
 
 
-def _check_windowed(sql: str, tables: list[str], windows: list[str] | None) -> None:
-    """For every occurrence of a windowed table, require a qualifying key or
-    window predicate on its own alias; describe what was applied (into
-    `windows`) or refuse naming what was missing."""
-    specs = {t: WINDOWED[t] for t in tables if t in WINDOWED}
-    if not specs:
-        return
-    toks = _w_tokens(sql)
-    group, match, is_sub = _paren_structure(toks)
-    ctes = {
-        m.group(1).upper()
-        for m in _CTE_NAME.finditer(_strip_literals_and_comments(sql))
-    }
-    occurrences = _table_occurrences(toks, ctes)
-    scope_count: dict[int, int] = {}
-    for _t, _a, idx, _is_cte in occurrences:  # every table, CTE refs included
-        sc = _scope_of(idx, group, is_sub)
-        scope_count[sc] = scope_count.get(sc, 0) + 1
-    interest: set[str] = set()
-    for jb in _JOIN_BOUND.values():  # the joined relations' own keys
-        interest |= set(jb["keys"]) | ({jb["date"]} if jb["date"] else set())
-    for spec in specs.values():
-        interest |= (
-            set(spec["keys"])
-            | {spec["date"]}
-            | set(spec["filters_only"])
-            | set(spec["pins"])
-        )
-    preds = _predicates(toks, group, match, is_sub, interest)
-    windowed_scopes: set[int] = set()
-    for table, alias, idx, is_cte in occurrences:
-        if is_cte or table not in specs:
-            continue
-        spec = specs[table]
-        sc = _scope_of(idx, group, is_sub)
-        single = scope_count.get(sc, 0) == 1
-        alias_u = alias.upper()  # Firebird identifiers are case-insensitive unquoted
-        mine = [
-            p
-            for p in preds
-            if p.scope == sc and (p.alias == alias_u or (p.alias is None and single))
-        ]
-        unqualified = sorted(
-            {p.col for p in preds if p.scope == sc and p.alias is None and not single}
-        )
-        pins_seen = {p.col for p in mine if p.col in spec["pins"]}
-        qualifying, reasons = _judge(table, spec, alias, mine, pins_seen)
-        label = f"{table} (alias {alias})" if alias_u != table else table
-        if qualifying:
-            windowed_scopes.add(sc)
-            if windows is not None:
-                short = f"{table} ({alias})" if alias_u != table else table
-                windows.append(f"{short}: " + "; ".join(qualifying))
-            continue
-        for col in unqualified:
-            reasons.append(
-                f"{col} is unqualified in a multi-table query — qualify it "
-                f"({alias}.{col}) so the key or window is on {table}"
+def _key_literal_problem(col, vals, ref):
+    """Key literal rules (review M1, M2, B4): string keys are quoted non-empty
+    strings; MANIFEST is a positive integer; AGENT likewise."""
+    if col in ("WAYBILL", "TRACKNO"):
+        for lt, lv in vals:
+            if lt != "str":
+                return (
+                    f"{ref} = {lv} is an unquoted number — Firebird then converts the column, not the "
+                    f"literal, and the index cannot drive it; write {ref} = '{lv}'"
+                )
+            if not lv.strip():
+                return f"{ref} = '' (blank) is a shared junk key, not a waybill or tracking number"
+        return None
+    for lt, lv in vals:
+        if lt != "num" or not lv.isdigit():
+            return f"{ref} must be a positive integer literal (got {lv!r})"
+        if int(lv) <= 0:
+            return (
+                f"{ref} = {lv} is the no-manifest sentinel, not a key — about 41% of EVENT rows and "
+                "6.6% of ROUTING rows carry MANIFEST = 0 (measured 21 Oct 2026); a manifest number "
+                "must be a positive integer"
             )
-        detail = f" — found: {'; '.join(reasons)}" if reasons else ""
-        raise GuardError(f"no key or window on {label}{detail}. Rule: {spec['rule']}.")
-    _check_join_bounds(occurrences, preds, group, is_sub, windowed_scopes)
+    return None
 
 
-# Akha's call on the 21 Oct join finding: refuse, do not caution. A windowed
-# table joined (JOIN or comma list) to one of these large relations needs the
-# large relation's OWN literal key — the plans read 21 Oct 2026 show Firebird
-# driving such a join from the big side with a NATURAL scan unless its own
-# column is bounded (only a single '=' on the ROUTING side propagates, and
-# the fence must not depend on the optimizer). VIEW_WBANALYSE may instead
+# --- join-bound relations -------------------------------------------------------
+# Akha's call on the 21 Oct join finding, widened by review H1: if ANY block
+# reads a windowed table, EVERY block that reads one of these relations must
+# key that relation's alias by the same bare-conjunct rule — the plans read
+# 21 Oct 2026 drive such a join from the big side with a NATURAL scan unless
+# its own column is bounded (only a single '=' on the ROUTING side propagates,
+# and the fence must not depend on the optimizer). VIEW_WBANALYSE may instead
 # carry a WAYDATE range (WA_WAYDATE, the daily extraction's path). AGENTDRIVER
 # has no MANIFEST column (AGENTDRIVER, AGENT, DRIVER, FROMDATE, FROMTIME,
-# USERCODE, LOADLVL, ROUTE), so its key is AGENT. On their own, without a
-# windowed table in the query, these relations stay as they were on Day 5.
+# USERCODE, LOADLVL, ROUTE), so its key is AGENT. Without a windowed table in
+# the statement these relations stay as they were on Day 5.
 _JOIN_BOUND: dict[str, dict] = {
     "VIEW_WBANALYSE": {
         "keys": {"WAYBILL": 100},
@@ -1807,38 +1935,128 @@ _JOIN_BOUND: dict[str, dict] = {
     },
 }
 
+_CONJUNCT_RULE = (
+    "a key or window must be a direct AND conjunct of that SELECT block's WHERE "
+    "(or of the ON of an INNER / comma join; never an outer join's ON, never "
+    "HAVING or the select list), bare — nothing around or inside it"
+)
 
-def _check_join_bounds(occurrences, preds, group, is_sub, windowed_scopes):
-    """In any query block where a windowed table qualified, every occurrence
-    of a _JOIN_BOUND relation must carry its own literal key (or, for the
-    view, a WAYDATE range) under the same structural rules; refuse otherwise."""
-    for table, alias, idx, is_cte in occurrences:
-        if is_cte or table not in _JOIN_BOUND:
-            continue
-        sc = _scope_of(idx, group, is_sub)
-        if sc not in windowed_scopes:
-            continue
-        spec = _JOIN_BOUND[table]
-        alias_u = alias.upper()
-        mine = [p for p in preds if p.scope == sc and p.alias == alias_u]
-        qualifying, reasons = _judge(table, spec, alias, mine, set())
-        if qualifying:
-            continue
-        others = sorted(
-            {
-                t
-                for t, a, i, c in occurrences
-                if not c and t in WINDOWED and _scope_of(i, group, is_sub) == sc
-            }
-        )
-        detail = f" (found: {'; '.join(reasons)})" if reasons else ""
-        raise GuardError(
-            f"{table} (alias {alias}) is joined to {' / '.join(others)} without a key "
-            f"of its own{detail} — {spec['fix'].format(a=alias)}. Firebird would "
-            f"otherwise scan the {spec['rows']}-row relation for that join (plans "
-            "read 21 Oct 2026); the window on "
-            f"{' / '.join(others)} bounds only its own side."
-        )
+
+def _check_windowed(sql: str, tables: list[str], windows: list[str] | None) -> None:
+    """Whitelist: every SELECT block that reads a windowed table must key or
+    window that table's alias with an exact bare conjunct; and if any block
+    reads a windowed table, every block reading a _JOIN_BOUND relation must
+    key it the same way. Describe what was applied (into `windows`) or refuse
+    naming the block, the alias and what was missing."""
+    specs = {t: WINDOWED[t] for t in tables if t in WINDOWED}
+    if not specs:
+        return
+    toks = _w_tokens(sql)
+    group, match, is_sub = _paren_structure(toks)
+    ctes = {
+        m.group(1).upper()
+        for m in _CTE_NAME.finditer(_strip_literals_and_comments(sql))
+    }
+    blocks = _blocks(toks, group, match, is_sub)
+    for b in blocks:
+        _parse_block(b, toks, group, match, is_sub, ctes)
+    ctx = (toks, group, match, is_sub)
+    many = len(blocks) > 1
+
+    def where_label(b):
+        return f" in SELECT block {b.n} of {len(blocks)}" if many else ""
+
+    def conjunct_sets(b):
+        conjs = list(b.where)
+        outer = []
+        for kind, cs in b.ons:
+            if kind in ("inner", "comma", "cross"):
+                conjs.extend(cs)
+            else:
+                outer.extend((kind, c) for c in cs)
+        return conjs, outer
+
+    any_windowed = False
+    for b in blocks:
+        for ref in b.refs:
+            if ref.is_cte or ref.derived or ref.name not in specs:
+                continue
+            any_windowed = True
+            if b.unsupported:
+                raise GuardError(
+                    f"{ref.name}{where_label(b)} is read through {b.unsupported}, which the "
+                    f"window check does not parse — write a plain FROM / JOIN … ON list. "
+                    f"Rule: {specs[ref.name]['rule']}."
+                )
+            spec = dict(specs[ref.name], _ctx=ctx)
+            conjs, outer = conjunct_sets(b)
+            alias_text = _alias_text(toks, b, ref)
+            qualifying, reasons = _judge(
+                ref.name, spec, alias_text, conjs, outer, len(b.refs) == 1
+            )
+            label = (
+                f"{ref.name} (alias {alias_text})"
+                if ref.alias != ref.name
+                else ref.name
+            )
+            if qualifying:
+                if windows is not None:
+                    short = (
+                        f"{ref.name} ({_alias_text(toks, b, ref)})"
+                        if ref.alias != ref.name
+                        else ref.name
+                    )
+                    windows.append(f"{short}: " + "; ".join(qualifying))
+                continue
+            detail = f" — found: {'; '.join(reasons)}" if reasons else ""
+            raise GuardError(
+                f"no key or window on {label}{where_label(b)}{detail}. {_CONJUNCT_RULE}. "
+                f"Rule: {spec['rule']}."
+            )
+    if not any_windowed:
+        return
+    for b in blocks:
+        for ref in b.refs:
+            if ref.is_cte or ref.derived or ref.name not in _JOIN_BOUND:
+                continue
+            if b.unsupported:
+                raise GuardError(
+                    f"{ref.name}{where_label(b)} is read through {b.unsupported}, which the "
+                    "window check does not parse — write a plain FROM / JOIN … ON list."
+                )
+            spec = dict(_JOIN_BOUND[ref.name], _ctx=ctx)
+            conjs, outer = conjunct_sets(b)
+            a = _alias_text(toks, b, ref)
+            qualifying, reasons = _judge(
+                ref.name, spec, a, conjs, outer, len(b.refs) == 1
+            )
+            if qualifying:
+                continue
+            windowed_names = sorted(
+                {
+                    r.name
+                    for bb in blocks
+                    for r in bb.refs
+                    if not r.is_cte and not r.derived and r.name in specs
+                }
+            )
+            detail = f" (found: {'; '.join(reasons)})" if reasons else ""
+            raise GuardError(
+                f"{ref.name} (alias {a}){where_label(b)} is read in a statement that also reads "
+                f"{' / '.join(windowed_names)}, without a key of its own{detail} — "
+                f"{spec['fix'].format(a=a)}. Firebird would otherwise scan the {spec['rows']}-row "
+                "relation for that join (plans read 21 Oct 2026); the window on "
+                f"{' / '.join(windowed_names)} bounds only its own side."
+            )
+
+
+def _alias_text(toks, block, ref):
+    """The alias as the user wrote it (for messages); the name itself when none."""
+    for i in range(block.start, block.end):
+        t, k = toks[i]
+        if k == "ID" and t.upper() == ref.alias:
+            return t
+    return ref.alias
 
 
 def check_open_query(sql: str, windows: list[str] | None = None) -> list[str]:
@@ -2063,8 +2281,10 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
             "against the schema resource (date window, exact codes, CHAR "
             "padding) and say what was searched."
         )
-    if _REVENUE_TABLES & set(tables) or (
-        "VIEW_WBANALYSE" in tables and _REVENUE_COLUMNS.search(sql)
+    if (
+        _REVENUE_TABLES & set(tables)
+        or ("VIEW_WBANALYSE" in tables and _REVENUE_COLUMNS.search(sql))
+        or ("ROUTING" in tables and _ROUTING_MONEY.search(sql))
     ):
         notes.append(HONEST_BOUNDARY)
 

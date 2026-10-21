@@ -1050,7 +1050,7 @@ class TestWindowedAllowedForms:
             "SELECT COUNT(*) FROM ROUTING r WHERE r.AGENTDATE >= '2026-10-01' AND r.AGENTDATE <= '2026-10-07'",
             "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE >= DATE '2026-10-01' AND AGENTDATE < DATE '2026-10-08'",
             "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE = DATE '2026-10-19'",
-            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN TIMESTAMP '2026-10-01 00:00' AND CAST('2026-10-03' AS DATE)",
+            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN TIMESTAMP '2026-10-01 00:00' AND TIMESTAMP '2026-10-03 23:59'",
             "SELECT MTYPE, COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11' AND BOOKDATE IS NOT NULL GROUP BY 1",
             "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11' AND (MTYPE = 'M' OR MTYPE = 'R')",
             "select waybill from routing where waybill = 'x'",
@@ -1545,14 +1545,14 @@ class TestReviewLowLengthAndWholeStatementScan:
             )
         ok_m = (
             "SELECT WAYBILL FROM ROUTING WHERE MANIFEST IN ("
-            + ", ".join(str(i) for i in range(20))
+            + ", ".join(str(i) for i in range(1, 21))
             + ")"
         )
         assert check_open_query(ok_m) == ["ROUTING"]
         with pytest.raises(GuardError, match="21 literals"):
             check_open_query(
                 "SELECT WAYBILL FROM ROUTING WHERE MANIFEST IN ("
-                + ", ".join(str(i) for i in range(21))
+                + ", ".join(str(i) for i in range(1, 22))
                 + ")"
             )
         ok_v = f"SELECT WAYBILL FROM VIEW_EVENTSCANS WHERE WAYBILL IN ({_in_list(100)})"
@@ -1988,7 +1988,7 @@ class TestJoinBounds:
             "VIEW_WBANALYSE"
         ]
         assert check_open_query(
-            "SELECT COUNT(*) FROM MANIFEST m JOIN AGENTDRIVER d ON d.MANIFEST = m.MANIFEST"
+            "SELECT COUNT(*) FROM MANIFEST m JOIN AGENTDRIVER d ON d.AGENT = m.AGENT"
         ) == [
             "AGENTDRIVER",
             "MANIFEST",
@@ -2006,3 +2006,336 @@ class TestJoinBounds:
         windows = []
         check_open_query(self.LIVE + " AND w.WAYBILL IN ('A', 'B')", windows)
         assert not any("CAUTION" in w for w in windows)
+
+
+# --- Fable adversarial review of Chunk 3, 21 Oct 2026 — every shape verbatim ----
+
+
+class TestReviewB1UnionBranches:
+    """B1 BLOCKER: UNION branches shared one scope, so a key on one alias
+    covered every branch. Each SELECT — UNION branch, CTE body, derived
+    table, subquery — is now its own block with its own FROM and WHERE."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' UNION ALL SELECT COUNT(*) FROM ROUTING r",
+            "SELECT COUNT(*) FROM ROUTING WHERE ROUTING.WAYBILL = 'A' UNION ALL SELECT COUNT(*) FROM ROUTING",
+            "SELECT COUNT(*) FROM VIEW_EVENTSCANS v WHERE v.WAYBILL = 'A' UNION ALL SELECT COUNT(*) FROM VIEW_EVENTSCANS v",
+            (
+                "SELECT t.N FROM (SELECT COUNT(*) N FROM ROUTING r WHERE r.WAYBILL = 'A' "
+                "UNION ALL SELECT COUNT(*) FROM ROUTING r) t"
+            ),
+            "SELECT COUNT(*) FROM ROUTING r UNION ALL SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A'",
+        ],
+    )
+    def test_each_union_branch_needs_its_own_key(self, sql):
+        with pytest.raises(
+            GuardError,
+            match="no key or window on ROUTING|no key or window on VIEW_EVENTSCANS",
+        ):
+            check_open_query(sql)
+        assert run_open_query("b1", sql, run=never_runs)["refused"]
+
+    def test_both_branches_keyed_passes_with_two_notes(self):
+        windows = []
+        sql = (
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' "
+            "UNION ALL SELECT COUNT(*) FROM ROUTING r WHERE r.AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11'"
+        )
+        assert check_open_query(sql, windows) == ["ROUTING"]
+        assert len(windows) == 2
+
+
+class TestReviewB2OuterJoinOn:
+    """B2 BLOCKER: a key or window in the ON of an OUTER join does not filter
+    the preserved side. Only WHERE and the ON of an INNER / comma join count."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM ROUTING r LEFT JOIN HOLIDAY h ON h.HOLIDAY = r.AGENTDATE AND r.WAYBILL = 'A'",
+            (
+                "SELECT COUNT(*) FROM ROUTING r LEFT JOIN HOLIDAY h ON h.HOLIDAY = r.AGENTDATE "
+                "AND r.AGENTDATE BETWEEN '2026-10-01' AND '2026-10-07'"
+            ),
+            "SELECT COUNT(*) FROM HOLIDAY h RIGHT JOIN ROUTING r ON h.HOLIDAY = r.AGENTDATE AND r.WAYBILL = 'A'",
+            "SELECT COUNT(*) FROM ROUTING r FULL JOIN HOLIDAY h ON h.HOLIDAY = r.AGENTDATE AND r.WAYBILL = 'A'",
+            "SELECT COUNT(*) FROM VIEW_EVENTSCANS v LEFT JOIN HOLIDAY h ON h.HOLIDAY = v.EVENTDATE AND v.WAYBILL = 'A'",
+            (
+                "SELECT COUNT(*) FROM ROUTING r LEFT JOIN HOLIDAY h ON h.HOLIDAY = r.AGENTDATE "
+                "AND r.AGENTDATE <= '2026-10-07' WHERE r.AGENTDATE >= '2026-10-01'"
+            ),
+            "SELECT COUNT(*) FROM ROUTING r LEFT OUTER JOIN HOLIDAY h ON h.HOLIDAY = r.AGENTDATE AND r.WAYBILL = 'A'",
+        ],
+    )
+    def test_outer_join_on_predicates_do_not_count(self, sql):
+        with pytest.raises(GuardError, match="LEFT|RIGHT|FULL|both ends"):
+            check_open_query(sql)
+        assert run_open_query("b2", sql, run=never_runs)["refused"]
+
+    def test_the_same_key_in_where_passes(self):
+        sql = "SELECT COUNT(*) FROM ROUTING r LEFT JOIN HOLIDAY h ON h.HOLIDAY = r.AGENTDATE WHERE r.WAYBILL = 'A'"
+        assert check_open_query(sql) == ["HOLIDAY", "ROUTING"]
+
+    def test_inner_join_on_still_counts(self):
+        sql = "SELECT COUNT(*) FROM HOLIDAY h JOIN ROUTING r ON h.HOLIDAY = r.AGENTDATE AND r.WAYBILL = 'A'"
+        assert check_open_query(sql) == ["HOLIDAY", "ROUTING"]
+        sql = "SELECT COUNT(*) FROM HOLIDAY h INNER JOIN ROUTING r ON h.HOLIDAY = r.AGENTDATE AND r.WAYBILL = 'A'"
+        assert check_open_query(sql) == ["HOLIDAY", "ROUTING"]
+
+
+class TestReviewB3Wrappers:
+    """B3 BLOCKER: a comparison that restricts nothing counted as the key.
+    The key or window must be a bare predicate that is itself a direct AND
+    conjunct — nothing around or inside it."""
+
+    @pytest.mark.parametrize(
+        "where",
+        [
+            "CASE WHEN r.WAYBILL = 'A' THEN 1 ELSE 1 END = 1",
+            "IIF(r.WAYBILL = 'A', 1, 1) = 1",
+            "(r.WAYBILL = 'A') IS FALSE",
+            "(r.WAYBILL = 'A') IS NOT TRUE",
+            "(r.WAYBILL = 'A') = FALSE",
+            "COALESCE(r.WAYBILL = 'A', TRUE)",
+            "(r.AGENTDATE BETWEEN '2026-10-13' AND '2026-10-15') IS FALSE",
+            "NOT (r.WAYBILL = 'A')",
+            "UPPER(r.WAYBILL) = 'A'",
+            "r.WAYBILL = 'A' OR 1 = 1",
+            "(r.WAYBILL = 'A' OR r.LEG = 1)",
+            "r.WAYBILL || '' = 'A'",
+            "r.WAYBILL = 'A' + 0",
+        ],
+    )
+    def test_wrapped_routing_predicates_do_not_count(self, where):
+        sql = f"SELECT COUNT(*) FROM ROUTING r WHERE {where}"
+        with pytest.raises(GuardError, match="no key or window on ROUTING"):
+            check_open_query(sql)
+        assert run_open_query("b3", sql, run=never_runs)["refused"]
+
+    @pytest.mark.parametrize(
+        "where",
+        [
+            "(v.EVENTDATE BETWEEN '2026-10-13' AND '2026-10-15') IS FALSE",
+            "CASE WHEN v.WAYBILL = 'A' THEN 1 ELSE 1 END = 1",
+            "COALESCE(v.TRACKNO = 'A', TRUE)",
+        ],
+    )
+    def test_wrapped_view_predicates_do_not_count(self, where):
+        with pytest.raises(GuardError, match="no key or window on VIEW_EVENTSCANS"):
+            check_open_query(f"SELECT COUNT(*) FROM VIEW_EVENTSCANS v WHERE {where}")
+
+    def test_plain_parentheses_around_a_bare_predicate_are_fine(self):
+        assert check_open_query(
+            "SELECT COUNT(*) FROM ROUTING r WHERE (r.WAYBILL = 'A')"
+        ) == ["ROUTING"]
+        assert check_open_query(
+            "SELECT COUNT(*) FROM ROUTING r WHERE (r.AGENTDATE BETWEEN '2026-10-13' AND '2026-10-15' AND r.LEG = 2)"
+        ) == ["ROUTING"]
+
+
+class TestReviewB4ManifestSentinel:
+    """B4 BLOCKER: MANIFEST = 0 is the no-manifest sentinel on ~41% of EVENT
+    rows (20,427 of 49,803 on 19 Oct 2026) and 6.6% of ROUTING; it is indexed
+    but not selective. MANIFEST must be a positive integer literal."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM VIEW_EVENTSCANS WHERE MANIFEST = 0",
+            "SELECT COUNT(*) FROM VIEW_EVENTSCANS WHERE MANIFEST IN (0)",
+            "SELECT COUNT(*) FROM VIEW_EVENTSCANS WHERE MANIFEST IN (37733, 0)",
+            "SELECT COUNT(*) FROM ROUTING WHERE MANIFEST = 0",
+            "SELECT COUNT(*) FROM ROUTING WHERE MANIFEST = -5",
+            "SELECT COUNT(*) FROM ROUTING WHERE MANIFEST IN (-1, 37733)",
+            "SELECT COUNT(*) FROM ROUTING WHERE MANIFEST = '37733'",
+            "SELECT COUNT(*) FROM ROUTING WHERE MANIFEST = 37733.0",
+        ],
+    )
+    def test_zero_negative_quoted_or_fractional_manifest_is_not_a_key(self, sql):
+        with pytest.raises(GuardError, match="positive integer|sentinel"):
+            check_open_query(sql)
+        assert run_open_query("b4", sql, run=never_runs)["refused"]
+
+    def test_the_sentinel_message_says_why(self):
+        with pytest.raises(GuardError, match="sentinel"):
+            check_open_query("SELECT COUNT(*) FROM VIEW_EVENTSCANS WHERE MANIFEST = 0")
+
+
+class TestReviewH1JoinRuleAcrossBlocks:
+    """H1 HIGH: the join rule looked only inside the windowed table's own
+    block. Now, if ANY block reads a windowed table, EVERY block that reads
+    VIEW_WBANALYSE, MANIFEST or AGENTDRIVER must key that alias itself."""
+
+    WINDOW = "AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11'"
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            (
+                "WITH k AS (SELECT WAYBILL FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11') "
+                "SELECT w.CUSTNAME FROM VIEW_WBANALYSE w JOIN k ON k.WAYBILL = w.WAYBILL"
+            ),
+            (
+                "SELECT w.CUSTNAME FROM VIEW_WBANALYSE w JOIN (SELECT WAYBILL FROM ROUTING "
+                "WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11') k ON k.WAYBILL = w.WAYBILL"
+            ),
+            (
+                "SELECT COUNT(*) FROM VIEW_WBANALYSE w WHERE w.WAYBILL IN "
+                "(SELECT WAYBILL FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11')"
+            ),
+            (
+                "SELECT COUNT(*) FROM VIEW_WBANALYSE w WHERE EXISTS (SELECT 1 FROM ROUTING r "
+                "WHERE r.WAYBILL = w.WAYBILL AND r.AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11')"
+            ),
+            (
+                "SELECT COUNT(*), SUM(w.SUBTOTAL) FROM (SELECT DISTINCT WAYBILL FROM ROUTING WHERE MANIFEST = 37733 "
+                "AND MBRANCH = 0 AND MTYPE = 'M') t JOIN VIEW_WBANALYSE w ON w.WAYBILL = t.WAYBILL"
+            ),
+            (
+                "SELECT m.NOWB FROM MANIFEST m WHERE m.MANIFEST IN "
+                "(SELECT MANIFEST FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11')"
+            ),
+        ],
+    )
+    def test_windowed_table_anywhere_binds_the_big_relations_everywhere(self, sql):
+        with pytest.raises(
+            GuardError, match="repeat the waybill filter|repeat the manifest filter"
+        ):
+            check_open_query(sql)
+        assert run_open_query("h1", sql, run=never_runs)["refused"]
+
+    def test_the_same_with_the_view_keyed_in_its_own_block_passes(self):
+        sql = (
+            "WITH k AS (SELECT WAYBILL FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11') "
+            "SELECT w.CUSTNAME FROM VIEW_WBANALYSE w JOIN k ON k.WAYBILL = w.WAYBILL "
+            "WHERE w.WAYDATE BETWEEN '2026-10-01' AND '2026-10-11'"
+        )
+        assert check_open_query(sql) == ["ROUTING", "VIEW_WBANALYSE"]
+
+    def test_join_bound_is_load_bearing(self, monkeypatch):
+        import mcp_server.open_query as oq
+
+        sql = (
+            "SELECT COUNT(*) FROM VIEW_WBANALYSE w WHERE w.WAYBILL IN "
+            "(SELECT WAYBILL FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11')"
+        )
+        with pytest.raises(GuardError):
+            check_open_query(sql)
+        monkeypatch.setattr(oq, "_JOIN_BOUND", {})
+        assert check_open_query(sql) == ["ROUTING", "VIEW_WBANALYSE"]
+
+
+class TestReviewM1M2KeyLiterals:
+    """M1: an unquoted number as the waybill key makes Firebird convert the
+    column, not the literal — a NATURAL scan. M2: TRACKNO = '' is a shared
+    junk key (153 TRACK rows, 500+ EVENT rows). String keys must be quoted,
+    non-empty string literals."""
+
+    @pytest.mark.parametrize(
+        "sql, needle",
+        [
+            ("SELECT COUNT(*) FROM ROUTING WHERE WAYBILL = 102155314", "unquoted"),
+            (
+                "SELECT COUNT(*) FROM ROUTING WHERE WAYBILL IN (102155314, 102155340)",
+                "unquoted",
+            ),
+            (
+                "SELECT COUNT(*) FROM VIEW_EVENTSCANS WHERE WAYBILL = 102155314",
+                "unquoted",
+            ),
+            (
+                "SELECT COUNT(*) FROM VIEW_EVENTSCANS WHERE TRACKNO = 1021553140001",
+                "unquoted",
+            ),
+            ("SELECT COUNT(*) FROM VIEW_EVENTSCANS WHERE TRACKNO = ''", "blank"),
+            (
+                "SELECT COUNT(*) FROM VIEW_EVENTSCANS WHERE TRACKNO IN ('A', '')",
+                "blank",
+            ),
+            ("SELECT COUNT(*) FROM ROUTING WHERE WAYBILL = ''", "blank"),
+            ("SELECT COUNT(*) FROM ROUTING WHERE WAYBILL = '   '", "blank"),
+        ],
+    )
+    def test_numeric_or_blank_string_keys_are_refused(self, sql, needle):
+        with pytest.raises(GuardError, match=needle):
+            check_open_query(sql)
+        assert run_open_query("m1", sql, run=never_runs)["refused"]
+
+    def test_in_list_duplicates_count_toward_the_limit(self):
+        dup = ", ".join(["'A'"] * 101)
+        with pytest.raises(GuardError, match="101 literals"):
+            check_open_query(f"SELECT COUNT(*) FROM ROUTING WHERE WAYBILL IN ({dup})")
+
+
+class TestReviewL2RoutingHonestBoundary:
+    def test_routing_money_columns_carry_the_caveat(self):
+        out = run_open_query(
+            "trip revenue",
+            "SELECT SUM(TOTAL), SUM(VAT) FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-01' AND '2026-10-07'",
+            run=fake_run(["S1", "S2"], [(1.0, 0.15)]),
+        )
+        assert any(n.startswith("HONEST BOUNDARY") for n in out["notes"])
+
+    def test_routing_non_money_reads_do_not(self):
+        out = run_open_query(
+            "legs",
+            "SELECT LEG, COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-01' AND '2026-10-07' GROUP BY 1",
+            run=fake_run(["LEG", "N"], [(2, 10)]),
+        )
+        assert not any(n.startswith("HONEST BOUNDARY") for n in out["notes"])
+
+
+class TestWhitelistOnlyExactForms:
+    """The judge is a whitelist: exactly alias.KEY = 'lit' / IN (...) /
+    alias.DATE BETWEEN lit AND lit / alias.DATE >= lit AND alias.DATE <= lit,
+    as direct conjuncts. Mirrored and CAST forms are not in the list."""
+
+    @pytest.mark.parametrize(
+        "where",
+        [
+            "'A' = r.WAYBILL",
+            "r.AGENTDATE BETWEEN CAST('2026-10-13' AS DATE) AND CAST('2026-10-15' AS DATE)",
+            "r.WAYBILL = ANY ('A')",
+            "r.WAYBILL IN ('A', (SELECT FIRST 1 WAYBILL FROM VIEW_WBANALYSE))",
+            "r.WAYBILL IN (('A'))",
+        ],
+    )
+    def test_not_in_the_list(self, where):
+        with pytest.raises(GuardError):
+            check_open_query(f"SELECT COUNT(*) FROM ROUTING r WHERE {where}")
+
+    @pytest.mark.parametrize(
+        "where",
+        [
+            "r.WAYBILL = 'A'",
+            "r.WAYBILL IN ('A', 'B')",
+            "r.AGENTDATE BETWEEN DATE '2026-10-13' AND DATE '2026-10-15'",
+            "r.AGENTDATE BETWEEN TIMESTAMP '2026-10-13 00:00' AND TIMESTAMP '2026-10-15 23:59'",
+            "r.AGENTDATE >= '2026-10-13' AND r.AGENTDATE <= '2026-10-15'",
+            "r.AGENTDATE >= '2026-10-13' AND r.LEG = 2 AND r.AGENTDATE < '2026-10-16'",
+            "r.AGENTDATE = '2026-10-13'",
+        ],
+    )
+    def test_in_the_list(self, where):
+        assert check_open_query(f"SELECT COUNT(*) FROM ROUTING r WHERE {where}") == [
+            "ROUTING"
+        ]
+
+    def test_the_table_name_is_the_alias_when_none_is_given(self):
+        assert check_open_query(
+            "SELECT COUNT(*) FROM ROUTING WHERE ROUTING.WAYBILL = 'A'"
+        ) == ["ROUTING"]
+
+    def test_chained_joins_parse(self):
+        sql = (
+            "SELECT r.LEG FROM ROUTING r JOIN HUB h ON h.HUB = r.ORIGHUB JOIN BRANCH b ON b.BRANCH = r.MBRANCH "
+            "LEFT JOIN HOLIDAY ho ON ho.HOLIDAY = r.AGENTDATE WHERE r.WAYBILL = 'A'"
+        )
+        assert check_open_query(sql) == ["BRANCH", "HOLIDAY", "HUB", "ROUTING"]
+        sql2 = (
+            "SELECT r.LEG FROM HUB h JOIN ROUTING r ON h.HUB = r.ORIGHUB AND r.WAYBILL = 'A' "
+            "JOIN BRANCH b ON b.BRANCH = r.MBRANCH"
+        )
+        assert check_open_query(sql2) == ["BRANCH", "HUB", "ROUTING"]
