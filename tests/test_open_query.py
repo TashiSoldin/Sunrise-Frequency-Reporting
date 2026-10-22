@@ -288,9 +288,12 @@ class TestDeniedColumnsGate:
         assert check_open_query(
             "SELECT NAME FROM CONTACT WHERE NAME = 'WEBPASSWORD' OR NAME = 'EMAIL'"
         ) == ["CONTACT"]
-        assert check_open_query(
-            "SELECT NAME FROM CONTACT -- EMAIL\n WHERE NAME = 'x' /* PHONE */"
-        ) == ["CONTACT"]
+        # comments are refused outright since hot-fix 3 (22 Oct 2026); a denied
+        # name inside one never reaches the identifier gate either way
+        with pytest.raises(GuardError, match="comments are not accepted"):
+            check_open_query(
+                "SELECT NAME FROM CONTACT -- EMAIL\n WHERE NAME = 'x' /* PHONE */"
+            )
 
     def test_a_denied_name_on_an_unreferenced_table_is_not_in_play(self):
         # MANIFEST.NOTE is a column; NOTE is also a table — neither is denied.
@@ -978,13 +981,12 @@ class TestPlanClauseRefused:
         out = run_open_query("plan", sql, run=never_runs)
         assert out["refused"] and "PLAN" in out["reason"]
 
-    def test_plan_in_a_literal_or_comment_is_fine(self):
-        assert check_open_query(
-            "SELECT NAME FROM HOLIDAY WHERE NAME = 'PLAN' -- PLAN"
-        ) == ["HOLIDAY"]
-        assert check_open_query("SELECT NAME FROM HOLIDAY /* PLAN (x) */") == [
+    def test_plan_in_a_literal_is_fine_and_in_a_comment_the_comment_refuses(self):
+        assert check_open_query("SELECT NAME FROM HOLIDAY WHERE NAME = 'PLAN'") == [
             "HOLIDAY"
         ]
+        with pytest.raises(GuardError, match="comments are not accepted"):
+            check_open_query("SELECT NAME FROM HOLIDAY /* PLAN (x) */")
 
 
 # --- hot-fix 22 Oct 2026: WITH-first subqueries (T2) and introduced literals (T3)
@@ -1016,17 +1018,17 @@ class TestWithOnlyAtTheTop:
             "WITH big AS (SELECT ACCNUM FROM CUSTOMER) SELECT ACCNUM FROM big"
         ) == ["CUSTOMER"]
         assert check_open_query(
-            "  -- a comment first\n  WITH a AS (SELECT HUB FROM HUB), b AS (SELECT NAME FROM HOLIDAY) "
+            "  \n  WITH a AS (SELECT HUB FROM HUB), b AS (SELECT NAME FROM HOLIDAY) "
             "SELECT a.HUB FROM a, b"
         ) == ["HOLIDAY", "HUB"]
         assert check_open_query(
-            "/* leading */ with recursive r as (select 1 as n from holiday) select n from r"
+            "   with recursive r as (select 1 as n from holiday) select n from r"
         ) == ["HOLIDAY"]
 
-    def test_with_in_a_literal_or_comment_is_fine(self):
-        assert check_open_query(
-            "SELECT NAME FROM HOLIDAY WHERE NAME = 'WITH' -- WITH"
-        ) == ["HOLIDAY"]
+    def test_with_in_a_literal_is_fine(self):
+        assert check_open_query("SELECT NAME FROM HOLIDAY WHERE NAME = 'WITH'") == [
+            "HOLIDAY"
+        ]
 
     def test_the_scanner_sees_inside_a_with_subquery_too(self):
         # defence in depth: even if the WITH rule were off, the scanner now
@@ -1072,8 +1074,7 @@ class TestIntroducedLiteralsRefused:
             "SELECT NAME FROM HOLIDAY WHERE NAME = 'it''s' OR NAME = 'a''b'",
             "SELECT NAME FROM HOLIDAY WHERE HOLIDAY = DATE '2026-10-01'",
             "SELECT NAME FROM HOLIDAY WHERE HOLIDAY = TIMESTAMP '2026-10-01 00:00'",
-            "SELECT NAME FROM HOLIDAY WHERE NAME = 'q''{x}' -- q'{ in a comment",
-            "SELECT NAME FROM HOLIDAY /* x'41' */ WHERE NAME = 'x'",
+            "SELECT NAME FROM HOLIDAY WHERE NAME = 'q''{x}'",
             "SELECT NAME AS q FROM HOLIDAY WHERE NAME = 'A'",
         ],
     )
@@ -1128,3 +1129,154 @@ class TestStartingWithIsNotACte:
         with pytest.raises(GuardError):
             check_open_query(sql)
         assert run_open_query("t2b", sql, run=never_runs)["refused"]
+
+
+# --- hot-fix 3, 22 Oct 2026: character whitelist, comments refused, STARTING WITH one token
+CR = "\r"
+
+
+class TestCharacterWhitelist:
+    """Q1 (fourth review, live on main): a bare carriage return ends a --
+    comment for Firebird but not for the guard's strippers, so everything
+    after it was invisible to every gate. The raw SQL must be printable
+    ASCII plus LF and TAB; anything else refuses, naming the code point."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT NAME FROM HOLIDAY WHERE 1 = 1 --"
+            + CR
+            + " UNION ALL SELECT WEBPASSWORD FROM CONTACT",
+            "SELECT COUNT(*) FROM HOLIDAY --" + CR + ", EVENT e",
+            "SELECT NAME FROM HOLIDAY --" + CR + "; DELETE FROM HOLIDAY",
+            "SELECT COUNT(*) FROM HOLIDAY h --" + CR + "JOIN ROUTING r ON 1 = 1",
+            "SELECT NAME FROM HOLIDAY WHERE NAME = 'x' --"
+            + CR
+            + "OR 1 = 1 PLAN (HOLIDAY NATURAL)",
+            "SELECT NAME\r\nFROM HOLIDAY",
+        ],
+    )
+    def test_a_carriage_return_refuses_by_code_point(self, sql):
+        with pytest.raises(GuardError, match="U\\+000D at position"):
+            check_open_query(sql)
+        assert run_open_query("q1", sql, run=never_runs)["refused"]
+
+    @pytest.mark.parametrize(
+        "ch, cp",
+        [
+            ("\x0c", "U+000C"),
+            ("\x0b", "U+000B"),
+            ("\x00", "U+0000"),
+            ("\u2028", "U+2028"),
+            ("\u2029", "U+2029"),
+            ("\u200b", "U+200B"),
+            ("\xa0", "U+00A0"),
+            ("\u2018", "U+2018"),
+            ("\u201c", "U+201C"),
+            ("\x7f", "U+007F"),
+            ("\u00e9", "U+00E9"),
+        ],
+    )
+    def test_other_non_whitelisted_characters_refuse(self, ch, cp):
+        sql = "SELECT NAME FROM HOLIDAY WHERE NAME = 'a" + ch + "b'"
+        with pytest.raises(GuardError, match=cp.replace("+", "\\+")):
+            check_open_query(sql)
+
+    def test_the_position_is_named(self):
+        with pytest.raises(GuardError, match="U\\+000D at position 24"):
+            check_open_query("SELECT NAME FROM HOLIDAY" + CR + " WHERE 1 = 1")
+
+    def test_lf_and_tab_are_fine(self):
+        assert check_open_query("SELECT NAME\n\tFROM HOLIDAY\n WHERE NAME = 'a'") == [
+            "HOLIDAY"
+        ]
+
+
+class TestCommentsRefused:
+    """Q1, second half: comments are refused outright; the audit log since
+    1 Oct (2,012 calls) shows nobody sends one."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT NAME FROM HOLIDAY -- a comment",
+            "SELECT NAME FROM HOLIDAY /* a comment */",
+            "SELECT NAME /* inline */ FROM HOLIDAY",
+            "-- leading\nSELECT NAME FROM HOLIDAY",
+            "SELECT NAME FROM HOLIDAY WHERE NAME = 'x' --",
+            "SELECT NAME FROM HOLIDAY WHERE NAME = 'x' /* unterminated",
+        ],
+    )
+    def test_line_and_block_comments_refuse(self, sql):
+        with pytest.raises(GuardError, match="comments are not accepted"):
+            check_open_query(sql)
+        assert run_open_query("q1c", sql, run=never_runs)["refused"]
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT NAME FROM HOLIDAY WHERE NAME = '--'",
+            "SELECT NAME FROM HOLIDAY WHERE NAME = '/* not a comment */'",
+            "SELECT NAME FROM HOLIDAY WHERE NAME = 'a' AND 3 - -1 = 4",
+        ],
+    )
+    def test_comment_markers_inside_literals_and_a_minus_minus_expression_are_fine(
+        self, sql
+    ):
+        assert check_open_query(sql) == ["HOLIDAY"]
+
+
+class TestStartingWithIsOneToken:
+    """Q2 (fourth review, live on main): STARTING WITH was still a
+    terminator in the FROM scanner, so a table after it in an ON condition
+    was unseen. It is one operator token in every scanner now."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB STARTING WITH 'J', EVENT e",
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB STARTING WITH 'J' JOIN EVENT e ON 1 = 1",
+            "SELECT c.WEBPASSWORD FROM HOLIDAY h JOIN HUB u ON u.HUB STARTING WITH 'J', CONTACT c",
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB starting with 'J', ROUTING r",
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB STARTING\n WITH 'J', EVENT e",
+        ],
+    )
+    def test_a_table_after_starting_with_in_an_on_is_seen(self, sql):
+        with pytest.raises(
+            GuardError,
+            match="EVENT is deliberately off|withheld column: WEBPASSWORD|window",
+        ):
+            check_open_query(sql)
+        assert run_open_query("q2", sql, run=never_runs)["refused"]
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT NAME FROM HOLIDAY WHERE NAME STARTING WITH 'A'",
+            "SELECT h.NAME FROM HOLIDAY h JOIN HUB u ON u.HUB STARTING WITH 'J' WHERE h.NAME STARTING WITH 'A'",
+            "SELECT NAME, COUNT(*) FROM HOLIDAY GROUP BY NAME HAVING MIN(NAME) STARTING WITH 'A'",
+            "SELECT h.NAME FROM HOLIDAY h JOIN HUB u ON u.HUB STARTING WITH 'J', AREA a WHERE a.AREA = u.HUB",
+            "SELECT NAME FROM HOLIDAY WHERE NAME starting   with 'A' OR NAME STARTING WITH 'B'",
+        ],
+    )
+    def test_starting_with_in_where_on_and_having_is_accepted(self, sql):
+        assert check_open_query(sql)
+
+    def test_a_bare_with_anywhere_but_first_still_refuses(self):
+        with pytest.raises(GuardError, match="top of the statement"):
+            check_open_query(
+                "SELECT NAME FROM HOLIDAY WHERE NAME STARTING WITH 'A' AND EXISTS (WITH q AS (SELECT 1 AS X FROM HOLIDAY) SELECT 1 FROM EVENT)"
+            )
+
+
+class TestTrailingSemicolonOnMain:
+    def test_one_trailing_semicolon_is_tolerated(self):
+        assert check_open_query("SELECT NAME FROM HOLIDAY;") == ["HOLIDAY"]
+        assert check_open_query("SELECT NAME FROM HOLIDAY ;  ") == ["HOLIDAY"]
+        assert check_open_query(
+            "SELECT h.NAME FROM HOLIDAY h JOIN HUB u ON u.HUB = h.NAME;"
+        ) == ["HOLIDAY", "HUB"]
+
+    def test_two_statements_still_refuse(self):
+        with pytest.raises(GuardError, match="multiple statements"):
+            check_open_query("SELECT NAME FROM HOLIDAY; SELECT NAME FROM HUB")

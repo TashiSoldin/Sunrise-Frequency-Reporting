@@ -513,6 +513,47 @@ _WITH_WORD = re.compile(r"\bWITH\b", re.IGNORECASE)
 _FIRST_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
 
 
+def _check_characters(sql: str) -> None:
+    """Character whitelist, applied to the raw SQL before anything else
+    (Fable fourth review, Q1, 22 Oct 2026): printable ASCII 0x20-0x7E plus
+    LF and TAB only. A bare carriage return ends a -- comment for Firebird
+    but not for the guard's strippers, so everything after it was invisible
+    to every gate; the same class covers FF, VT, NUL, the Unicode line and
+    paragraph separators, zero-width characters, NBSP and smart quotes."""
+    for pos, ch in enumerate(sql):
+        o = ord(ch)
+        if 0x20 <= o <= 0x7E or ch in "\n\t":
+            continue
+        raise GuardError(
+            f"character U+{o:04X} at position {pos} is not accepted on the open path "
+            "— only printable ASCII, line feed and tab are; remove it (a bare carriage "
+            "return, a non-breaking space or a smart quote are the usual causes)"
+        )
+
+
+def _check_no_comments(sql: str) -> None:
+    """Comments are refused outright (Q1): every stripper in the guard had its
+    own idea of where a comment ends, and the audit log since 1 Oct (2,012
+    calls) shows nobody sends one. Outside a plain '...' literal, -- or /*
+    refuses; the strippers stay as defence in depth but are no longer
+    load-bearing."""
+    i, n = 0, len(sql)
+    while i < n:
+        ch = sql[i]
+        if ch == "'":
+            j = i + 1
+            while j < n and sql[j] != "'":
+                j += 1
+            i = j + 1
+        elif sql[i : i + 2] in ("--", "/*"):
+            raise GuardError("comments are not accepted on the open path — remove them")
+        else:
+            i += 1
+
+
+_STARTING_WITH = re.compile(r"\bSTARTING\s+WITH\b", re.IGNORECASE)
+
+
 def _check_introduced_literals(sql: str) -> None:
     """Refuse Firebird's introduced literals — q'{…}', Q'…', x'41', X'…',
     _utf8'…' — before any stripper runs (Fable third review, T3, 22 Oct
@@ -552,15 +593,15 @@ def _check_with_position(cleaned: str) -> None:
     (…) SELECT 1 FROM EVENT), a scalar (WITH … SELECT FIRST 1 WEBPASSWORD
     FROM CONTACT) — was invisible to the FROM scanner, so every table inside
     it escaped the allowlist, the column deny list and the star ban."""
-    first = _FIRST_WORD.search(cleaned)
+    # Firebird's STARTING WITH operator is one token (Q2): fold it away
+    # before looking for WITH, keeping offsets stable.
+    folded = _STARTING_WITH.sub(
+        lambda m: "STARTING_" + "W" * (len(m.group(0)) - 9), cleaned
+    )
+    first = _FIRST_WORD.search(folded)
     first_at = first.start() if first and first.group(0).upper() == "WITH" else -1
-    for m in _WITH_WORD.finditer(cleaned):
+    for m in _WITH_WORD.finditer(folded):
         if m.start() == first_at:
-            continue
-        # Firebird's STARTING WITH operator (827 uses in the audit log since
-        # 1 Oct, every one on VIEW_WBANALYSE) — the word before is STARTING.
-        before = cleaned[: m.start()].rstrip()
-        if re.search(r"\bSTARTING$", before, re.IGNORECASE):
             continue
         if True:
             raise GuardError(
@@ -579,7 +620,10 @@ _CTE_NAME = re.compile(
 # Tokens for the FROM-list scan: identifiers, numbers, parens and commas as
 # single tokens, any other run of punctuation as one token (literals and
 # comments are already blanked, so they never appear).
-_FT = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*|\d+(?:\.\d+)?|[(),]|[^\sA-Za-z0-9_$(),]+")
+_FT = re.compile(
+    r"(?i:STARTING\s+WITH)"  # one operator token (Q2) — never a FROM terminator
+    r"|[A-Za-z_][A-Za-z0-9_$]*|\d+(?:\.\d+)?|[(),]|[^\sA-Za-z0-9_$(),]+"
+)
 _JOIN_WORDS = {"JOIN", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "NATURAL", "OUTER"}
 # Keywords that end a FROM list at its own paren depth.
 _FROM_END = {
@@ -895,6 +939,8 @@ def check_open_query(sql: str) -> list[str]:
     position on the allowlist, no withheld column named anywhere, no
     projection star over a table that has withheld columns. Returns the
     tables referenced; raises GuardError with the reason otherwise."""
+    _check_characters(sql)  # Q1: before anything else reads the text
+    _check_no_comments(sql)  # Q1: the strippers are no longer load-bearing
     if '"' in sql:
         raise GuardError(
             "quoted identifiers are not supported on the open path — every "
@@ -902,7 +948,10 @@ def check_open_query(sql: str) -> list[str]:
         )
     _check_introduced_literals(sql)  # before any stripper reads the text (T3)
     assert_select_only(sql)
-    cleaned = _strip_literals_and_comments(sql)
+    cleaned = _strip_literals_and_comments(sql).rstrip()
+    cleaned = cleaned.removesuffix(
+        ";"
+    )  # one trailing semicolon, tolerated upstream (Q3)
     _check_with_position(cleaned)  # T2
     if _PLAN_WORD.search(cleaned):
         # Fable re-review R5 (21 Oct 2026): a user PLAN clause beats every
