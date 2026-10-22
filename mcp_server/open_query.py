@@ -1174,7 +1174,7 @@ _W_TOKEN = re.compile(
 )
 _NOT_EQUAL_OPS = {"<>", "!=", "~=", "^="}
 _NEGATED_RANGE_OPS = {"~<", "^<", "~>", "^>", "!<", "!>"}
-_SET_OPS = {"UNION", "EXCEPT", "INTERSECT"}
+_SET_OPS = {"UNION"}  # Firebird 3 has no EXCEPT / INTERSECT (fifth review F1)
 _OUTER = {"LEFT", "RIGHT", "FULL"}
 _JOIN_KW = {"JOIN", "INNER", "CROSS", "NATURAL"} | _OUTER
 # Keywords that end a FROM list or a WHERE / ON clause at the block level.
