@@ -2560,3 +2560,133 @@ class TestReviewR8Pins:
     def test_the_rule_sentence_says_outside_any_or(self):
         for t in ("ROUTING", "VIEW_EVENTSCANS"):
             assert "outside any OR" in WINDOWED[t]["rule"]
+
+
+# --- Fable third review of Chunk 3 (22 Oct 2026): T1, T5 and the trailing semicolon
+
+
+class TestReviewT1CaseSpans:
+    """T1 BLOCKER: the conjunct splitter split on every top-level AND, and
+    the ANDs inside an unparenthesised CASE WHEN … AND key AND … THEN … END
+    sit at that same level, so the key escaped as a bare conjunct though
+    the CASE is always true. CASE … END is now an opaque, nesting-aware span
+    in the splitter; a CASE with no matching END refuses; a key inside any
+    function call is not a key."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM ROUTING r WHERE CASE WHEN 1 = 1 AND r.WAYBILL = 'A' AND 1 = 1 THEN 1 ELSE 1 END = 1",
+            (
+                "SELECT COUNT(*) FROM ROUTING r WHERE CASE WHEN 1 = 1 AND r.AGENTDATE >= '2026-10-01' "
+                "AND r.AGENTDATE <= '2026-10-07' AND 1 = 1 THEN 1 ELSE 1 END = 1"
+            ),
+            "SELECT COUNT(*) FROM VIEW_EVENTSCANS v WHERE CASE WHEN 1 = 1 AND v.WAYBILL = 'A' AND 1 = 1 THEN 1 ELSE 1 END = 1",
+            (
+                "SELECT COUNT(*) FROM HOLIDAY h JOIN ROUTING r ON CASE WHEN 1 = 1 AND r.WAYBILL = 'A' AND 1 = 1 "
+                "THEN 1 ELSE 1 END = 1"
+            ),
+            (
+                "SELECT COUNT(*) FROM ROUTING r WHERE CASE WHEN 1 = 1 THEN CASE WHEN 1 = 1 AND r.WAYBILL = 'A' "
+                "AND 1 = 1 THEN 1 ELSE 1 END ELSE 1 END = 1"
+            ),
+            "SELECT COUNT(*) FROM ROUTING r WHERE CASE WHEN r.LEG = 1 AND r.WAYBILL = 'A' THEN 1 ELSE 1 END = 1",
+            "SELECT COUNT(*) FROM ROUTING r WHERE CASE r.LEG WHEN 1 THEN 1 ELSE 1 END = 1 AND CASE WHEN 1 = 1 AND r.WAYBILL = 'A' THEN 1 END = 1",
+            "SELECT COUNT(*) FROM ROUTING r WHERE IIF(1 = 1 AND r.WAYBILL = 'A' AND 1 = 1, 1, 1) = 1",
+            "SELECT COUNT(*) FROM ROUTING r WHERE NULLIF(r.WAYBILL = 'A', FALSE)",
+            "SELECT COUNT(*) FROM ROUTING r WHERE COALESCE(1 = 1 AND r.WAYBILL = 'A', TRUE)",
+        ],
+    )
+    def test_a_key_inside_case_or_a_function_is_not_a_key(self, sql):
+        with pytest.raises(
+            GuardError,
+            match="no key or window on ROUTING|no key or window on VIEW_EVENTSCANS",
+        ):
+            check_open_query(sql)
+        assert run_open_query("t1", sql, run=never_runs)["refused"]
+
+    @pytest.mark.parametrize(
+        "where",
+        [
+            "r.WAYBILL = 'A' AND CASE WHEN r.LEG = 1 THEN 1 ELSE 0 END = 1",
+            "CASE WHEN r.LEG = 1 THEN 1 ELSE 0 END = 1 AND r.WAYBILL = 'A'",
+            "r.WAYBILL = 'A' AND CASE WHEN r.LEG = 1 AND r.MTYPE = 'M' THEN 1 ELSE 0 END = 1",
+            "r.WAYBILL = 'A' AND CASE WHEN 1 = 1 THEN CASE WHEN r.LEG = 1 THEN 1 END ELSE 0 END = 1",
+            "r.AGENTDATE BETWEEN '2026-10-01' AND '2026-10-07' AND CASE r.MTYPE WHEN 'M' THEN 1 ELSE 0 END = 1",
+        ],
+    )
+    def test_case_used_harmlessly_beside_a_real_bare_key_passes(self, where):
+        assert check_open_query(f"SELECT COUNT(*) FROM ROUTING r WHERE {where}") == [
+            "ROUTING"
+        ]
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' AND CASE WHEN r.LEG = 1 THEN 1 ELSE 0 = 1",
+            "SELECT COUNT(*) FROM ROUTING r WHERE CASE WHEN 1 = 1 AND r.WAYBILL = 'A' THEN 1",
+            "SELECT CASE WHEN 1 = 1 THEN 1 END FROM ROUTING r WHERE r.WAYBILL = 'A' AND CASE WHEN 1 = 1 THEN 1",
+        ],
+    )
+    def test_a_case_without_end_refuses(self, sql):
+        with pytest.raises(
+            GuardError, match="CASE without a matching END|no key or window"
+        ):
+            check_open_query(sql)
+        assert run_open_query("t1", sql, run=never_runs)["refused"]
+
+    def test_case_in_the_select_list_does_not_disturb_the_where(self):
+        assert check_open_query(
+            "SELECT CASE WHEN r.LEG = 1 THEN 'first' ELSE 'later' END, COUNT(*) FROM ROUTING r "
+            "WHERE r.WAYBILL = 'A' GROUP BY 1"
+        ) == ["ROUTING"]
+
+    def test_or_inside_a_case_is_not_a_top_level_or(self):
+        assert check_open_query(
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' AND CASE WHEN r.LEG = 1 OR r.LEG = 2 THEN 1 ELSE 0 END = 1"
+        ) == ["ROUTING"]
+
+
+class TestTrailingSemicolon:
+    def test_one_trailing_semicolon_is_tolerated(self):
+        windows = []
+        assert check_open_query(
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A';", windows
+        ) == ["ROUTING"]
+        assert windows == ["ROUTING (r): keyed by WAYBILL (1 literal)"]
+        assert check_open_query(
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' ;  "
+        ) == ["ROUTING"]
+
+    def test_two_statements_still_refuse(self):
+        with pytest.raises(GuardError, match="multiple statements"):
+            check_open_query(
+                "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A'; SELECT 1 FROM HOLIDAY"
+            )
+
+
+class TestReviewT2T3StillRefuseOnTheBranch:
+    @pytest.mark.parametrize(
+        "sql, needle",
+        [
+            (
+                "SELECT COUNT(*) FROM HOLIDAY h WHERE EXISTS (WITH q AS (SELECT 1 AS X FROM HOLIDAY) SELECT 1 FROM ROUTING)",
+                "top of the statement",
+            ),
+            (
+                "SELECT (WITH q AS (SELECT 1 AS X FROM HOLIDAY) SELECT FIRST 1 WEBPASSWORD FROM CONTACT) FROM HOLIDAY",
+                "top of the statement",
+            ),
+            (
+                "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' AND r.MTYPE = q'{'}' OR 1 = 1 AND r.MTYPE = q'{'}'",
+                "plain single quotes",
+            ),
+            (
+                "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = x'41'",
+                "plain single quotes",
+            ),
+        ],
+    )
+    def test_hot_fix_two_shapes(self, sql, needle):
+        with pytest.raises(GuardError, match=needle):
+            check_open_query(sql)

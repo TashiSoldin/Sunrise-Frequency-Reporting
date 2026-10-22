@@ -1366,9 +1366,19 @@ def _split_conjuncts(level_idx, toks, group, match):
     cur: list[int] = []
     between = False
     has_or = False
+    case_depth = 0  # CASE … END is an opaque span (review T1): its ANDs and
+    #                 ORs sit at this level but belong to the CASE, so a key
+    #                 inside one must never escape as a bare conjunct
     for i in level_idx:
         t, k = toks[i]
         u = t.upper() if k == "ID" else t
+        if k == "ID" and u == "CASE":
+            case_depth += 1
+        elif k == "ID" and u == "END" and case_depth:
+            case_depth -= 1
+        if case_depth:
+            cur.append(i)
+            continue
         if k == "ID" and u == "OR":
             has_or = True
         if k == "ID" and u == "AND" and not between:
@@ -1381,6 +1391,11 @@ def _split_conjuncts(level_idx, toks, group, match):
         elif k == "ID" and u == "AND" and between:
             between = False
         cur.append(i)
+    if case_depth:
+        raise GuardError(
+            "a CASE without a matching END — the window check cannot tell where the "
+            "expression ends; write CASE … END in full"
+        )
     if cur:
         conjs.append(cur)
     # expand each conjunct to the full contiguous range it covers
@@ -2024,6 +2039,7 @@ def _check_windowed(sql: str, tables: list[str], windows: list[str] | None) -> N
 
 
 def _check_windowed_blocks(sql: str, specs: dict, windows: list[str]) -> None:
+    sql = sql.rstrip().removesuffix(";")  # one trailing semicolon is tolerated upstream
     toks = _w_tokens(sql)
     group, match, is_sub = _paren_structure(toks)
     ctes = {
