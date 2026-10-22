@@ -1165,7 +1165,8 @@ _MANIFEST_HINT = (
 # Tokens for the window check — unlike the guard's cleaned text, string
 # literals are KEPT (the dates and keys live in them); comments are blanked.
 _W_TOKEN = re.compile(
-    r"'(?:[^']|'')*'"
+    r"(?i:STARTING\s+WITH)"  # one operator token (fourth review Q2) — never a clause end
+    r"|'(?:[^']|'')*'"
     r"|[A-Za-z_][A-Za-z0-9_$]*"
     r"|\d+(?:\.\d+)?"
     r"|~=|\^=|!=|<>|<=|>=|~<|\^<|~>|\^>|!<|!>|\|\||[=<>()*,.?+\-/]"
@@ -1712,7 +1713,13 @@ def _why_not(toks, c, group, match, is_sub, ref_label):
         return f"{ref_label} sits inside an OR — an OR widens the read; put alternatives in IN (…)"
     if "NOT" in ids:
         return f"{ref_label} is negated (NOT) — a negation does not bound the read"
-    if "LIKE" in ids or "STARTING" in ids or "CONTAINING" in ids or "SIMILAR" in ids:
+    if (
+        "LIKE" in ids
+        or "STARTING" in ids
+        or "CONTAINING" in ids
+        or "SIMILAR" in ids
+        or any(t.upper().startswith("STARTING") for t, k in text if k == "P")
+    ):
         return f"{ref_label} LIKE / STARTING WITH … is not a key — use = or IN (…)"
     if ops & _NOT_EQUAL_OPS:
         return f"{ref_label} <> / != / ~= / ^= … is not a key — use = or IN (…)"

@@ -1144,64 +1144,6 @@ class TestCharacterWhitelist:
     after it was invisible to every gate. The raw SQL must be printable
     ASCII plus LF and TAB; anything else refuses, naming the code point."""
 
-# --- windowed relations (QT-000007 line 4, 21 Oct 2026) ----------------------
-
-R_WB = "SELECT WAYBILL, LEG, MANIFEST FROM ROUTING WHERE WAYBILL = '102155314'"
-V_WB = "SELECT EVENTDATE, EVENTTIME, NAME, HUB FROM VIEW_EVENTSCANS WHERE WAYBILL = '102155314'"
-
-
-def _in_list(n, prefix="W"):
-    return ", ".join(f"'{prefix}{i}'" for i in range(n))
-
-
-class TestWindowedShape:
-    def test_both_tables_are_allowlisted_windowed_and_out_of_denied(self):
-        for t in ("ROUTING", "VIEW_EVENTSCANS"):
-            assert t in ALLOWLIST and t in WINDOWED and t not in DENIED
-            assert "2026-10-21" in ALLOWLIST[t]  # cites the plan file
-            assert t in DENIED_COLUMNS
-
-    def test_the_signed_rule_as_data(self):
-        r, v = WINDOWED["ROUTING"], WINDOWED["VIEW_EVENTSCANS"]
-        assert r["keys"] == {"WAYBILL": 100, "MANIFEST": 20}
-        assert (r["date"], r["max_days"]) == ("AGENTDATE", 31)
-        assert "BOOKDATE" in r["filters_only"]
-        assert v["keys"] == {"WAYBILL": 100, "TRACKNO": 100, "MANIFEST": 20}
-        assert (v["date"], v["max_days"]) == ("EVENTDATE", 3)
-        assert {"WAYDATE", "ACCNUM", "NAME", "HUB"} <= set(v["filters_only"])
-
-    def test_recipient_and_username_are_served_delotp_is_not(self):
-        assert DENIED_COLUMNS["VIEW_EVENTSCANS"] == frozenset()
-        assert DENIED_COLUMNS["ROUTING"] == frozenset({"DELOTP"})
-        ctx = schema_context("VIEW_EVENTSCANS")["tables"]["VIEW_EVENTSCANS"]
-        assert {"RECIPIENT", "USERNAME"} <= {c["name"] for c in ctx["columns"]}
-
-    def test_event_family_hints_point_at_the_event_counts_tool(self):
-        assert "event-counts" in DENIED["EVENT"] and "separate quote" in DENIED["EVENT"]
-        assert "VIEW_EVENTSCANS" in DENIED["EVENT"]
-
-
-class TestWindowedAllowedForms:
-    @pytest.mark.parametrize(
-        "sql",
-        [
-            R_WB,
-            "SELECT WAYBILL FROM ROUTING WHERE WAYBILL IN ('A', 'B', 'C')",
-            "SELECT r.WAYBILL FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M'",
-            "SELECT WAYBILL FROM ROUTING WHERE MANIFEST IN (37733, 37739, 1016558)",
-            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN DATE '2026-09-01' AND DATE '2026-10-01'",
-            "SELECT COUNT(*) FROM ROUTING r WHERE r.AGENTDATE >= '2026-10-01' AND r.AGENTDATE <= '2026-10-07'",
-            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE >= DATE '2026-10-01' AND AGENTDATE < DATE '2026-10-08'",
-            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE = DATE '2026-10-19'",
-            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN TIMESTAMP '2026-10-01 00:00' AND TIMESTAMP '2026-10-03 23:59'",
-            "SELECT MTYPE, COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11' AND BOOKDATE IS NOT NULL GROUP BY 1",
-            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11' AND (MTYPE = 'M' OR MTYPE = 'R')",
-            "select waybill from routing where waybill = 'x'",
-        ],
-    )
-    def test_routing_forms_pass(self, sql):
-        assert check_open_query(sql) == ["ROUTING"]
-
     @pytest.mark.parametrize(
         "sql",
         [
@@ -1351,6 +1293,64 @@ class TestReviewF1ExceptIntersectAreIdentifiers:
     3.0.13 — `SELECT 1 FROM HOLIDAY EXCEPT` prepares with EXCEPT as the
     alias — yet the scanner treated them as FROM-list terminators, so
     `FROM HOLIDAY EXCEPT, EVENT e` ended the list before EVENT."""
+
+# --- windowed relations (QT-000007 line 4, 21 Oct 2026) ----------------------
+
+R_WB = "SELECT WAYBILL, LEG, MANIFEST FROM ROUTING WHERE WAYBILL = '102155314'"
+V_WB = "SELECT EVENTDATE, EVENTTIME, NAME, HUB FROM VIEW_EVENTSCANS WHERE WAYBILL = '102155314'"
+
+
+def _in_list(n, prefix="W"):
+    return ", ".join(f"'{prefix}{i}'" for i in range(n))
+
+
+class TestWindowedShape:
+    def test_both_tables_are_allowlisted_windowed_and_out_of_denied(self):
+        for t in ("ROUTING", "VIEW_EVENTSCANS"):
+            assert t in ALLOWLIST and t in WINDOWED and t not in DENIED
+            assert "2026-10-21" in ALLOWLIST[t]  # cites the plan file
+            assert t in DENIED_COLUMNS
+
+    def test_the_signed_rule_as_data(self):
+        r, v = WINDOWED["ROUTING"], WINDOWED["VIEW_EVENTSCANS"]
+        assert r["keys"] == {"WAYBILL": 100, "MANIFEST": 20}
+        assert (r["date"], r["max_days"]) == ("AGENTDATE", 31)
+        assert "BOOKDATE" in r["filters_only"]
+        assert v["keys"] == {"WAYBILL": 100, "TRACKNO": 100, "MANIFEST": 20}
+        assert (v["date"], v["max_days"]) == ("EVENTDATE", 3)
+        assert {"WAYDATE", "ACCNUM", "NAME", "HUB"} <= set(v["filters_only"])
+
+    def test_recipient_and_username_are_served_delotp_is_not(self):
+        assert DENIED_COLUMNS["VIEW_EVENTSCANS"] == frozenset()
+        assert DENIED_COLUMNS["ROUTING"] == frozenset({"DELOTP"})
+        ctx = schema_context("VIEW_EVENTSCANS")["tables"]["VIEW_EVENTSCANS"]
+        assert {"RECIPIENT", "USERNAME"} <= {c["name"] for c in ctx["columns"]}
+
+    def test_event_family_hints_point_at_the_event_counts_tool(self):
+        assert "event-counts" in DENIED["EVENT"] and "separate quote" in DENIED["EVENT"]
+        assert "VIEW_EVENTSCANS" in DENIED["EVENT"]
+
+
+class TestWindowedAllowedForms:
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            R_WB,
+            "SELECT WAYBILL FROM ROUTING WHERE WAYBILL IN ('A', 'B', 'C')",
+            "SELECT r.WAYBILL FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M'",
+            "SELECT WAYBILL FROM ROUTING WHERE MANIFEST IN (37733, 37739, 1016558)",
+            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN DATE '2026-09-01' AND DATE '2026-10-01'",
+            "SELECT COUNT(*) FROM ROUTING r WHERE r.AGENTDATE >= '2026-10-01' AND r.AGENTDATE <= '2026-10-07'",
+            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE >= DATE '2026-10-01' AND AGENTDATE < DATE '2026-10-08'",
+            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE = DATE '2026-10-19'",
+            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN TIMESTAMP '2026-10-01 00:00' AND TIMESTAMP '2026-10-03 23:59'",
+            "SELECT MTYPE, COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11' AND BOOKDATE IS NOT NULL GROUP BY 1",
+            "SELECT COUNT(*) FROM ROUTING WHERE AGENTDATE BETWEEN '2026-10-05' AND '2026-10-11' AND (MTYPE = 'M' OR MTYPE = 'R')",
+            "select waybill from routing where waybill = 'x'",
+        ],
+    )
+    def test_routing_forms_pass(self, sql):
+        assert check_open_query(sql) == ["ROUTING"]
 
     @pytest.mark.parametrize(
         "sql",
@@ -1523,6 +1523,7 @@ class TestReviewLowLengthAndWholeStatementScan:
         assert len(sql) <= 4000
         with pytest.raises(GuardError, match=f"U\\+00A0 at position {len(sql) - 3}"):
             check_open_query(sql)
+
 
 
             V_WB,
@@ -2690,3 +2691,60 @@ class TestReviewT2T3StillRefuseOnTheBranch:
     def test_hot_fix_two_shapes(self, sql, needle):
         with pytest.raises(GuardError, match=needle):
             check_open_query(sql)
+
+
+class TestReviewQ2OnTheBranch:
+    """Q2 on the branch: STARTING WITH is one token in the window tokenizer
+    too, so WITH never ends a clause region and an OR after it is seen."""
+
+    @pytest.mark.parametrize(
+        "where",
+        [
+            "r.MTYPE STARTING WITH 'M' AND r.WAYBILL = 'A'",
+            "r.WAYBILL = 'A' AND r.MTYPE STARTING WITH 'M'",
+            "r.WAYBILL = 'A' AND (r.MTYPE STARTING WITH 'M' OR r.MTYPE STARTING WITH 'R')",
+        ],
+    )
+    def test_starting_with_beside_a_real_key_passes(self, where):
+        assert check_open_query(f"SELECT COUNT(*) FROM ROUTING r WHERE {where}") == [
+            "ROUTING"
+        ]
+
+    @pytest.mark.parametrize(
+        "sql, needle",
+        [
+            (
+                "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' AND r.MTYPE STARTING WITH 'M' OR 1 = 1",
+                "top-level OR",
+            ),
+            (
+                "SELECT COUNT(*) FROM ROUTING r WHERE r.MTYPE STARTING WITH 'M' OR r.WAYBILL = 'A'",
+                "top-level OR",
+            ),
+            (
+                "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL STARTING WITH 'A'",
+                "not a key",
+            ),
+            (
+                "SELECT COUNT(*) FROM VIEW_EVENTSCANS v WHERE v.TRACKNO STARTING WITH 'A'",
+                "not a key",
+            ),
+            (
+                "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB STARTING WITH 'J', ROUTING r",
+                "no key or window on ROUTING",
+            ),
+            (
+                "SELECT COUNT(*) FROM HOLIDAY h JOIN ROUTING r ON r.ORIGHUB STARTING WITH 'J' AND r.WAYBILL = 'A' OR 1 = 1",
+                "top-level OR",
+            ),
+        ],
+    )
+    def test_an_or_or_an_unkeyed_table_after_starting_with_is_seen(self, sql, needle):
+        with pytest.raises(GuardError, match=needle):
+            check_open_query(sql)
+        assert run_open_query("q2b", sql, run=never_runs)["refused"]
+
+    def test_a_keyed_table_after_starting_with_in_an_on_passes(self):
+        assert check_open_query(
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB STARTING WITH 'J', ROUTING r WHERE r.WAYBILL = 'A'"
+        ) == ["HOLIDAY", "HUB", "ROUTING"]
