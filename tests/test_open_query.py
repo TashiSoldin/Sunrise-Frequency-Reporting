@@ -1401,6 +1401,13 @@ class TestReviewMediumWithLockAndBoundaries:
             check_open_query(sql)
         assert run_open_query("lock", sql, run=never_runs)["refused"]
 
+    def test_the_with_lock_rule_itself_is_load_bearing(self):
+        # here the operator token hides the bare WITH from the position check
+        # and the FROM list ended at WHERE, so only the WITH LOCK rule refuses
+        # (scratch-copy proof 22 Oct 2026: rule deleted -> this test fails)
+        with pytest.raises(GuardError, match="WITH LOCK is not accepted"):
+            check_open_query("SELECT NAME FROM HOLIDAY WHERE NAME STARTING WITH LOCK")
+
     def test_the_operator_token_needs_whole_words(self):
         with pytest.raises(GuardError):
             check_open_query(
