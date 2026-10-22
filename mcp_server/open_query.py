@@ -482,8 +482,6 @@ _STOP = {
     "HAVING",
     "ORDER",
     "UNION",
-    "EXCEPT",
-    "INTERSECT",
     "ROWS",
     "FETCH",
     "OFFSET",
@@ -551,7 +549,18 @@ def _check_no_comments(sql: str) -> None:
             i += 1
 
 
-_STARTING_WITH = re.compile(r"\bSTARTING\s+WITH\b", re.IGNORECASE)
+_STARTING_WITH = re.compile(
+    r"(?<![A-Za-z0-9_$])STARTING\s+WITH(?![A-Za-z0-9_$])", re.IGNORECASE
+)
+_WITH_LOCK = re.compile(r"\bWITH\s+LOCK\b", re.IGNORECASE)
+_MAX_SQL_CHARS = (
+    4000  # the audit log's truncation point; the longest logged call is 3,071
+)
+_RELATIONS = frozenset(
+    json.loads(
+        (Path(__file__).resolve().parent / "relations_2026-08-06.json").read_text()
+    )
+)
 
 
 def _check_introduced_literals(sql: str) -> None:
@@ -585,6 +594,38 @@ def _check_introduced_literals(sql: str) -> None:
                     "single quotes"
                 )
             i += 1
+
+
+def _cte_spans(cleaned: str) -> dict[str, tuple[int, int]]:
+    """CTE name -> (body start, body end) character span of its AS ( … )."""
+    spans = {}
+    for m in _CTE_NAME.finditer(cleaned):
+        name = m.group(1).upper()
+        open_at = m.end() - 1  # the '(' the regex ends on
+        depth, j = 0, open_at
+        while j < len(cleaned):
+            if cleaned[j] == "(":
+                depth += 1
+            elif cleaned[j] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        spans[name] = (open_at, j)
+    return spans
+
+
+def _check_cte_names(spans: dict) -> None:
+    """A CTE may not be named after a relation (fifth review, F2): inside its
+    own body a non-recursive CTE cannot see itself, so `WITH CONTACT AS
+    (SELECT * FROM CONTACT) …` reads the BASE table there while the guard
+    had excluded the name everywhere — every gate skipped it."""
+    for name in spans:
+        if name in _RELATIONS:
+            raise GuardError(
+                f"CTE names may not shadow a table ({name} is a relation in this "
+                "database) — give the common table expression another name"
+            )
 
 
 def _check_with_position(cleaned: str) -> None:
@@ -621,19 +662,22 @@ _CTE_NAME = re.compile(
 # single tokens, any other run of punctuation as one token (literals and
 # comments are already blanked, so they never appear).
 _FT = re.compile(
-    r"(?i:STARTING\s+WITH)"  # one operator token (Q2) — never a FROM terminator
+    r"(?i:(?<![A-Za-z0-9_$])STARTING\s+WITH(?![A-Za-z0-9_$]))"  # one operator token (Q2)
     r"|[A-Za-z_][A-Za-z0-9_$]*|\d+(?:\.\d+)?|[(),]|[^\sA-Za-z0-9_$(),]+"
 )
 _JOIN_WORDS = {"JOIN", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "NATURAL", "OUTER"}
 # Keywords that end a FROM list at its own paren depth.
+# Each of these was prepared live as `SELECT 1 FROM HOLIDAY <word>` on
+# 22 Oct 2026 and REJECTED by Firebird 3.0.13, so none can be an alias.
+# EXCEPT and INTERSECT prepare as aliases (Firebird 3 has no such set
+# operators) and are NOT here (fifth review, F1): `FROM HOLIDAY EXCEPT, EVENT e`
+# is a cross join with EVENT under an alias named EXCEPT.
 _FROM_END = {
     "WHERE",
     "GROUP",
     "HAVING",
     "ORDER",
     "UNION",
-    "EXCEPT",
-    "INTERSECT",
     "ROWS",
     "FETCH",
     "OFFSET",
@@ -651,7 +695,9 @@ _FROM_LIST_PROBLEM = (
 )
 
 
-def _scan_from_lists(cleaned: str) -> tuple[list[str], str | None]:
+def _scan_from_lists(
+    cleaned: str, with_positions: bool = False
+) -> tuple[list, str | None]:
     """Every identifier in table position across EVERY FROM list in the
     statement, in order of appearance, plus a problem message if any FROM
     list could not be read to its end.
@@ -666,9 +712,11 @@ def _scan_from_lists(cleaned: str) -> tuple[list[str], str | None]:
     scanner does not understand — a parenthesised join, a procedure call, a
     stray token, a dangling comma — is reported as a problem, and the caller
     refuses: the fence never falls through with a partial table set."""
-    toks = _FT.findall(cleaned)
+    matches = list(_FT.finditer(cleaned))
+    toks = [m.group(0) for m in matches]
+    char_at = [m.start() for m in matches]
     n = len(toks)
-    found: list[tuple[int, str]] = []  # (position, name)
+    found: list[tuple[int, str]] = []  # (token position, name)
     problem: str | None = None
     # innermost enclosing '(' per token, and whether that paren opens a SELECT
     # (a subquery) rather than a function / expression — a FROM inside
@@ -819,6 +867,8 @@ def _scan_from_lists(cleaned: str) -> tuple[list[str], str | None]:
                 problem = _FROM_LIST_PROBLEM.format(what=prob)
         i += 1
     found.sort()
+    if with_positions:
+        return [(char_at[i], name) for i, name in found], problem
     return [name for _, name in found], problem
 
 
@@ -939,6 +989,11 @@ def check_open_query(sql: str) -> list[str]:
     position on the allowlist, no withheld column named anywhere, no
     projection star over a table that has withheld columns. Returns the
     tables referenced; raises GuardError with the reason otherwise."""
+    if len(sql) > _MAX_SQL_CHARS:
+        raise GuardError(
+            f"the statement is {len(sql):,} characters — the open path accepts at "
+            f"most {_MAX_SQL_CHARS:,}; shorten it"
+        )
     _check_characters(sql)  # Q1: before anything else reads the text
     _check_no_comments(sql)  # Q1: the strippers are no longer load-bearing
     if '"' in sql:
@@ -960,9 +1015,16 @@ def check_open_query(sql: str) -> list[str]:
             "a PLAN clause is not accepted on the open path — the server chooses "
             "the plan; remove it"
         )
-    ctes = {m.group(1).upper() for m in _CTE_NAME.finditer(cleaned)}
-    names, from_problem = _scan_from_lists(cleaned)
-    tables = [t for t in names if t not in ctes]
+    if _WITH_LOCK.search(cleaned):
+        raise GuardError("WITH LOCK is not accepted on the open path — remove it")
+    spans = _cte_spans(cleaned)
+    _check_cte_names(spans)
+    placed, from_problem = _scan_from_lists(cleaned, with_positions=True)
+    # A CTE name is excluded only for references OUTSIDE its own body; inside
+    # it (a non-recursive CTE cannot see itself) the name is the base table.
+    tables = [
+        t for pos, t in placed if t not in spans or spans[t][0] <= pos <= spans[t][1]
+    ]
     if not tables and from_problem is None:
         raise GuardError("no table found in the FROM clause")
     # The names that WERE read are checked first so a refused relation gets

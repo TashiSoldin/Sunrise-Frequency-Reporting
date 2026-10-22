@@ -1280,3 +1280,178 @@ class TestTrailingSemicolonOnMain:
     def test_two_statements_still_refuse(self):
         with pytest.raises(GuardError, match="multiple statements"):
             check_open_query("SELECT NAME FROM HOLIDAY; SELECT NAME FROM HUB")
+
+
+# --- hot-fix 4, 22 Oct 2026: fifth review F1, F2, the medium and the lows
+
+
+class TestReviewF1ExceptIntersectAreIdentifiers:
+    """F1 (live on main): EXCEPT and INTERSECT are not keywords in Firebird
+    3.0.13 — `SELECT 1 FROM HOLIDAY EXCEPT` prepares with EXCEPT as the
+    alias — yet the scanner treated them as FROM-list terminators, so
+    `FROM HOLIDAY EXCEPT, EVENT e` ended the list before EVENT."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM HOLIDAY EXCEPT, EVENT e",
+            "SELECT COUNT(*) FROM HOLIDAY INTERSECT, EVENT e",
+            "SELECT COUNT(*) FROM HOLIDAY EXCEPT JOIN EVENT e ON 1 = 1",
+            "SELECT c.WEBPASSWORD FROM HOLIDAY EXCEPT, CONTACT c",
+            "SELECT * FROM HOLIDAY INTERSECT, CONTACT c",
+            "SELECT COUNT(*) FROM HOLIDAY h JOIN HUB u ON u.HUB = h.NAME EXCEPT, EVENT e",
+        ],
+    )
+    def test_a_table_after_an_except_or_intersect_alias_is_seen(self, sql):
+        with pytest.raises(
+            GuardError,
+            match="EVENT is deliberately off|withheld column: WEBPASSWORD|SELECT \\*",
+        ):
+            check_open_query(sql)
+        assert run_open_query("f1", sql, run=never_runs)["refused"]
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT NAME FROM HOLIDAY EXCEPT SELECT TRACKNO FROM EVENT",
+            "SELECT NAME FROM HOLIDAY INTERSECT SELECT NAME FROM HUB",
+            "SELECT NAME FROM HOLIDAY h FIRST, EVENT e",
+            "SELECT NAME FROM HOLIDAY h LOCK, EVENT e",
+        ],
+    )
+    def test_anything_unconsumed_after_a_table_reference_refuses(self, sql):
+        with pytest.raises(GuardError):
+            check_open_query(sql)
+        assert run_open_query("f1", sql, run=never_runs)["refused"]
+
+    def test_except_as_a_plain_alias_is_fine(self):
+        assert check_open_query(
+            "SELECT EXCEPT.NAME FROM HOLIDAY EXCEPT WHERE EXCEPT.NAME = 'A'"
+        ) == ["HOLIDAY"]
+        assert check_open_query(
+            "SELECT NAME FROM HOLIDAY UNION ALL SELECT NAME FROM HUB"
+        ) == ["HOLIDAY", "HUB"]
+
+    @pytest.mark.parametrize("word", ["EXCEPT", "INTERSECT"])
+    def test_the_words_are_in_no_keyword_set(self, word):
+        import mcp_server.open_query as oq
+
+        assert word not in oq._FROM_END and word not in oq._STOP
+
+
+class TestReviewF2CteScoping:
+    """F2 (live on main): a CTE named after a relation reads the BASE table
+    inside its own body (a non-recursive CTE cannot see itself) while the
+    guard excluded the name everywhere — `WITH CONTACT AS (SELECT * FROM
+    CONTACT) SELECT * FROM CONTACT c JOIN HOLIDAY h ON 1 = 1` returned every
+    CONTACT column, WEBPASSWORD included, with tables = [HOLIDAY]."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "WITH CONTACT AS (SELECT * FROM CONTACT) SELECT * FROM CONTACT c JOIN HOLIDAY h ON 1 = 1",
+            "WITH CONTACT AS (SELECT WEBPASSWORD AS P FROM CONTACT) SELECT P FROM CONTACT",
+            "WITH CONTACT AS (SELECT NAME, WEBPASSWORD FROM CONTACT) SELECT NAME FROM CONTACT",
+            "WITH EVENT AS (SELECT TRACKNO FROM EVENT) SELECT TRACKNO FROM EVENT",
+            "WITH HOLIDAY AS (SELECT NAME FROM HOLIDAY) SELECT NAME FROM HOLIDAY",
+            "WITH ROUTING AS (SELECT WAYBILL FROM ROUTING) SELECT WAYBILL FROM ROUTING",
+            "WITH VEHICLE AS (SELECT 1 AS X FROM HOLIDAY) SELECT X FROM VEHICLE",
+            "with contact as (select 1 as x from holiday) select x from contact",
+        ],
+    )
+    def test_a_cte_named_after_any_relation_refuses(self, sql):
+        with pytest.raises(GuardError, match="CTE names may not shadow a table"):
+            check_open_query(sql)
+        assert run_open_query("f2", sql, run=never_runs)["refused"]
+
+    def test_a_cte_referencing_itself_in_its_body_is_judged_as_a_base_table(self):
+        import mcp_server.open_query as oq
+
+        with pytest.raises(GuardError, match="not on the open-path allowlist"):
+            check_open_query("WITH k AS (SELECT 1 AS X FROM k) SELECT X FROM k")
+        # outside its body the CTE name is excluded as before
+        assert check_open_query(
+            "WITH k AS (SELECT NAME FROM HOLIDAY) SELECT NAME FROM k"
+        ) == ["HOLIDAY"]
+        assert check_open_query(
+            "WITH a AS (SELECT NAME FROM HOLIDAY), b AS (SELECT NAME FROM a) SELECT b.NAME FROM b JOIN a ON 1 = 1"
+        ) == ["HOLIDAY"]
+        assert (
+            len(oq._RELATIONS) == 224
+            and "CONTACT" in oq._RELATIONS
+            and "VEHICLE" in oq._RELATIONS
+        )
+
+
+class TestReviewMediumWithLockAndBoundaries:
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT NAME FROM HOLIDAY WITH LOCK",
+            "SELECT NAME FROM HOLIDAY A$STARTING WITH LOCK",
+            "SELECT NAME FROM HOLIDAY STARTING WITH LOCK",
+            "SELECT NAME FROM HOLIDAY WHERE NAME = 'x' with   lock",
+        ],
+    )
+    def test_with_lock_anywhere_refuses(self, sql):
+        with pytest.raises(
+            GuardError,
+            match="WITH LOCK is not accepted|top of the statement|could not be read",
+        ):
+            check_open_query(sql)
+        assert run_open_query("lock", sql, run=never_runs)["refused"]
+
+    def test_the_operator_token_needs_whole_words(self):
+        with pytest.raises(GuardError):
+            check_open_query(
+                "SELECT NAME FROM HOLIDAY WHERE NAME = 'A' AND A$STARTING WITH 'x' IS NULL"
+            )
+        # STARTING WITHX is a Firebird syntax error, not a load risk; what
+        # matters is that neither scanner reads it as the operator token
+        import mcp_server.open_query as oq
+
+        assert "STARTING WITH" not in [
+            t.upper() for t in oq._FT.findall("NAME STARTING WITHX 'A'")
+        ]
+        assert oq._STARTING_WITH.search("NAME STARTING WITHX 'A'") is None
+        assert oq._STARTING_WITH.search("A$STARTING WITH 'A'") is None
+        with pytest.raises(GuardError):
+            check_open_query("SELECT NAME FROM HOLIDAY WHERE NAME XSTARTING WITH 'A'")
+        assert check_open_query(
+            "SELECT NAME FROM HOLIDAY WHERE NAME STARTING WITH 'A'"
+        ) == ["HOLIDAY"]
+
+
+class TestReviewLowLengthAndWholeStatementScan:
+    def test_a_statement_over_4000_characters_refuses(self):
+        sql = (
+            "SELECT NAME FROM HOLIDAY WHERE NAME IN ("
+            + ", ".join(["'AAAAAAAA'"] * 400)
+            + ")"
+        )
+        assert len(sql) > 4000
+        with pytest.raises(GuardError, match="at most 4,000"):
+            check_open_query(sql)
+        assert run_open_query("len", sql, run=never_runs)["refused"]
+
+    def test_a_statement_at_the_cap_passes(self):
+        head = "SELECT NAME FROM HOLIDAY WHERE NAME IN ("
+        items = []
+        while len(head + ", ".join(items) + ", 'X')") < 3990:
+            items.append("'AAAAAAAA'")
+        sql = head + ", ".join(items) + ", 'X')"
+        assert 3980 <= len(sql) <= 4000
+        assert check_open_query(sql) == ["HOLIDAY"]
+
+    def test_the_character_whitelist_scans_the_whole_statement(self):
+        # a bad character at the very end of a maximal statement — a mutant
+        # that scanned only the first 64 characters passed the suite (fifth
+        # review, low); this pins the full scan
+        head = "SELECT NAME FROM HOLIDAY WHERE NAME IN ("
+        items = []
+        while len(head + ", ".join(items) + ", 'X\xa0')") < 3990:
+            items.append("'AAAAAAAA'")
+        sql = head + ", ".join(items) + ", 'X\xa0')"
+        assert len(sql) <= 4000
+        with pytest.raises(GuardError, match=f"U\\+00A0 at position {len(sql) - 3}"):
+            check_open_query(sql)
