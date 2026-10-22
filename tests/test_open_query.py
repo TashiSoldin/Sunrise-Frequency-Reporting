@@ -985,3 +985,105 @@ class TestPlanClauseRefused:
         assert check_open_query("SELECT NAME FROM HOLIDAY /* PLAN (x) */") == [
             "HOLIDAY"
         ]
+
+
+# --- hot-fix 22 Oct 2026: WITH-first subqueries (T2) and introduced literals (T3)
+
+
+class TestWithOnlyAtTheTop:
+    """T2 (third review, live on main): a subquery opening with WITH was not
+    marked as a subquery by the FROM scanner, so its inner FROM was skipped
+    and every table inside escaped the allowlist, DENIED_COLUMNS and the
+    star ban. WITH is now accepted only as the first word of the statement."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM HOLIDAY h WHERE EXISTS (WITH q AS (SELECT 1 AS X FROM HOLIDAY) SELECT 1 FROM EVENT)",
+            "SELECT (WITH q AS (SELECT 1 AS X FROM HOLIDAY) SELECT FIRST 1 WEBPASSWORD FROM CONTACT) FROM HOLIDAY",
+            "SELECT COUNT(*) FROM HOLIDAY h WHERE EXISTS (WITH q AS (SELECT 1 AS X FROM HOLIDAY) SELECT 1 FROM ROUTING)",
+            "SELECT COUNT(*) FROM HOLIDAY h WHERE h.HOLIDAY IN (with q as (select 1 as x from holiday) select 1 from event)",
+            "SELECT h.NAME FROM HOLIDAY h JOIN (WITH q AS (SELECT 1 AS X FROM HOLIDAY) SELECT TRACKNO FROM EVENT) e ON 1 = 1",
+        ],
+    )
+    def test_a_with_anywhere_but_first_is_refused(self, sql):
+        with pytest.raises(GuardError, match="top of the statement"):
+            check_open_query(sql)
+        assert run_open_query("t2", sql, run=never_runs)["refused"]
+
+    def test_with_at_the_top_is_still_accepted(self):
+        assert check_open_query(
+            "WITH big AS (SELECT ACCNUM FROM CUSTOMER) SELECT ACCNUM FROM big"
+        ) == ["CUSTOMER"]
+        assert check_open_query(
+            "  -- a comment first\n  WITH a AS (SELECT HUB FROM HUB), b AS (SELECT NAME FROM HOLIDAY) "
+            "SELECT a.HUB FROM a, b"
+        ) == ["HOLIDAY", "HUB"]
+        assert check_open_query(
+            "/* leading */ with recursive r as (select 1 as n from holiday) select n from r"
+        ) == ["HOLIDAY"]
+
+    def test_with_in_a_literal_or_comment_is_fine(self):
+        assert check_open_query(
+            "SELECT NAME FROM HOLIDAY WHERE NAME = 'WITH' -- WITH"
+        ) == ["HOLIDAY"]
+
+    def test_the_scanner_sees_inside_a_with_subquery_too(self):
+        # defence in depth: even if the WITH rule were off, the scanner now
+        # treats ( WITH … as a subquery and reads its FROM lists
+        import mcp_server.open_query as oq
+
+        names, problem = oq._scan_from_lists(
+            "SELECT COUNT(*) FROM HOLIDAY h WHERE EXISTS (WITH q AS (SELECT 1 AS X FROM HOLIDAY) SELECT 1 FROM EVENT)"
+        )
+        assert "EVENT" in names and problem is None
+
+
+class TestIntroducedLiteralsRefused:
+    """T3 (third review): Firebird's q'{…}', x'…' and _charset'…' literals
+    are not modelled by the literal stripper, so a quote inside one desyncs
+    it and can hide an OR, a keyword, a denied column or a table. Checked on
+    the raw SQL before any stripper runs."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            (
+                "SELECT COUNT(*) FROM ROUTING r WHERE r.WAYBILL = 'A' AND r.MTYPE = q'{'}' "
+                "OR 1 = 1 AND r.MTYPE = q'{'}'"
+            ),
+            "SELECT COUNT(*) FROM HOLIDAY WHERE NAME = x'41'",
+            "SELECT COUNT(*) FROM HOLIDAY WHERE NAME = X'41'",
+            "SELECT COUNT(*) FROM HOLIDAY WHERE NAME = Q'<a>'",
+            "SELECT COUNT(*) FROM HOLIDAY WHERE NAME = _utf8'abc'",
+            "SELECT COUNT(*) FROM HOLIDAY WHERE NAME = q'{x}'; DELETE FROM HOLIDAY",
+            "SELECT NAME FROM HOLIDAY WHERE NAME = q'{'}' UNION ALL SELECT WEBPASSWORD FROM CONTACT WHERE NAME = q'{'}'",
+        ],
+    )
+    def test_introduced_literals_are_refused(self, sql):
+        with pytest.raises(GuardError, match="plain single quotes"):
+            check_open_query(sql)
+        assert run_open_query("t3", sql, run=never_runs)["refused"]
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT NAME FROM HOLIDAY WHERE NAME = 'O''Reilly'",
+            "SELECT NAME FROM HOLIDAY WHERE NAME = 'it''s' OR NAME = 'a''b'",
+            "SELECT NAME FROM HOLIDAY WHERE HOLIDAY = DATE '2026-10-01'",
+            "SELECT NAME FROM HOLIDAY WHERE HOLIDAY = TIMESTAMP '2026-10-01 00:00'",
+            "SELECT NAME FROM HOLIDAY WHERE NAME = 'q''{x}' -- q'{ in a comment",
+            "SELECT NAME FROM HOLIDAY /* x'41' */ WHERE NAME = 'x'",
+            "SELECT NAME AS q FROM HOLIDAY WHERE NAME = 'A'",
+        ],
+    )
+    def test_plain_literals_are_still_accepted(self, sql):
+        assert check_open_query(sql) == ["HOLIDAY"]
+
+    def test_the_check_runs_before_the_select_only_guard(self):
+        # the stripper would otherwise be desynced by the q'{'}' and could
+        # hide the DELETE; the introduced-literal refusal comes first
+        with pytest.raises(GuardError, match="plain single quotes"):
+            check_open_query(
+                "SELECT NAME FROM HOLIDAY WHERE NAME = q'{'}'; DELETE FROM HOLIDAY WHERE NAME = q'{'}'"
+            )

@@ -509,6 +509,58 @@ _STOP = {
 }
 
 _PLAN_WORD = re.compile(r"\bPLAN\b", re.IGNORECASE)
+_WITH_WORD = re.compile(r"\bWITH\b", re.IGNORECASE)
+_FIRST_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
+
+
+def _check_introduced_literals(sql: str) -> None:
+    """Refuse Firebird's introduced literals — q'{…}', Q'…', x'41', X'…',
+    _utf8'…' — before any stripper runs (Fable third review, T3, 22 Oct
+    2026). Neither sql_guard's literal stripper nor the window tokenizer
+    models them, so a quote inside one desyncs the stripper and can hide an
+    OR, a forbidden keyword, a denied column or a table. The rule: outside a
+    plain '…' literal or a comment, an identifier character immediately
+    followed by a quote refuses. Plain literals with doubled quotes
+    ('O''Reilly') and DATE '…' with a space are untouched."""
+    i, n = 0, len(sql)
+    while i < n:
+        ch = sql[i]
+        if ch == "'":
+            j = i + 1
+            while j < n and sql[j] != "'":
+                j += 1
+            i = j + 1  # a doubled quote simply opens the next literal
+        elif ch == "-" and sql[i : i + 2] == "--":
+            j = sql.find("\n", i)
+            i = n if j == -1 else j
+        elif ch == "/" and sql[i : i + 2] == "/*":
+            j = sql.find("*/", i + 2)
+            i = n if j == -1 else j + 2
+        else:
+            if (ch.isalnum() or ch in "_$") and i + 1 < n and sql[i + 1] == "'":
+                raise GuardError(
+                    "introduced string literals (q'…', x'…', _charset'…') are not "
+                    "accepted on the open path — write string literals with plain "
+                    "single quotes"
+                )
+            i += 1
+
+
+def _check_with_position(cleaned: str) -> None:
+    """WITH is accepted only as the very first word of the statement (Fable
+    third review, T2): a subquery that opens with WITH — EXISTS (WITH q AS
+    (…) SELECT 1 FROM EVENT), a scalar (WITH … SELECT FIRST 1 WEBPASSWORD
+    FROM CONTACT) — was invisible to the FROM scanner, so every table inside
+    it escaped the allowlist, the column deny list and the star ban."""
+    first = _FIRST_WORD.search(cleaned)
+    first_at = first.start() if first and first.group(0).upper() == "WITH" else -1
+    for m in _WITH_WORD.finditer(cleaned):
+        if m.start() != first_at:
+            raise GuardError(
+                "WITH is accepted only at the start of the statement — write common "
+                "table expressions at the top of the statement only"
+            )
+
 
 _CTE_NAME = re.compile(
     r"(?:\bWITH\b|,)\s*(?:RECURSIVE\s+)?([A-Za-z_][A-Za-z0-9_$]*)"
@@ -579,7 +631,7 @@ def _scan_from_lists(cleaned: str) -> tuple[list[str], str | None]:
     sub_paren = {
         k
         for k, tk in enumerate(toks)
-        if tk == "(" and k + 1 < n and toks[k + 1].upper() == "SELECT"
+        if tk == "(" and k + 1 < n and toks[k + 1].upper() in ("SELECT", "WITH")
     }
 
     def is_join_word(i):
@@ -623,7 +675,7 @@ def _scan_from_lists(cleaned: str) -> tuple[list[str], str | None]:
                     if (
                         i + 1 < n
                         and _IDENT.fullmatch(toks[i + 1])
-                        and toks[i + 1].upper() == "SELECT"
+                        and toks[i + 1].upper() in ("SELECT", "WITH")
                     ):
                         i = skip_paren(
                             i
@@ -831,8 +883,10 @@ def check_open_query(sql: str) -> list[str]:
             "quoted identifiers are not supported on the open path — every "
             "Parcel Perfect name is plain uppercase; write it unquoted"
         )
+    _check_introduced_literals(sql)  # before any stripper reads the text (T3)
     assert_select_only(sql)
     cleaned = _strip_literals_and_comments(sql)
+    _check_with_position(cleaned)  # T2
     if _PLAN_WORD.search(cleaned):
         # Fable re-review R5 (21 Oct 2026): a user PLAN clause beats every
         # index the guard relies on — `… PLAN (R NATURAL)` is a scan on demand.
