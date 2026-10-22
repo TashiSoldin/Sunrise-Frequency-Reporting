@@ -20,7 +20,9 @@ The 3h bought the fence, not per-question logic; the fence is:
   measured plans (WINDOWED); the time cap cannot stop Firebird server-side,
   so this predicate check is the real load guard for them;
 - row and time caps — a cap that is HIT refuses the answer rather than
-  truncating silently, the same rule every revenue fetcher applies;
+  truncating silently, the same rule every revenue fetcher applies; the time
+  cap is wall-clock (a worker with a deadline; the connection is cancelled
+  and closed on expiry), not the driver's per-read socket timeout;
 - date plausibility flags on every date column in the result — Parcel Perfect
   carries 1899-12-30 placeholders and mis-keyed years as a matter of course,
   and an aggregate over them is the project's recorded date-column failure
@@ -40,6 +42,7 @@ import json
 import re
 import socket
 import sys
+import threading
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -49,7 +52,7 @@ sys.path.insert(0, str(REPO / "revenue_reports"))
 
 from day_guards import PP_NULL_DATE, classify_dates, plausible_window
 
-from mcp_server.db import run_select
+from mcp_server.db import cancel_thread, run_select
 from mcp_server.sql_guard import (
     GuardError,
     _strip_literals_and_comments,
@@ -69,11 +72,16 @@ __all__ = [
 # An open answer is a read of raw rows, not an extract feeding a report — 500
 # rows is presentable; more means the question wants an aggregate or a filter.
 ROW_CAP = 500
-# Socket-level cap on how long we WAIT. Honest limitation: Firebird may keep
-# executing an aborted aggregate server-side after the socket closes — the cap
-# bounds the answer, not the production load (the quote's deleted-sentence
-# lesson). Firebird 3.0.13 has no SET STATEMENT TIMEOUT, so a true DB-side cap
-# is impossible on this engine.
+# WALL-CLOCK cap on how long we WAIT (sixth review S2/S5, 22 Oct 2026: the
+# driver's socket timeout is per read, so a statement that answered nothing
+# for 30 s ran 30 s). The fetch runs in a worker thread with this deadline;
+# on expiry the answer is refused at once and the worker's connection gets a
+# best-effort Firebird cancel (op_cancel) and its socket shut, see db.
+# cancel_thread. Honest limitation: Firebird 3.0.13 has no SET STATEMENT
+# TIMEOUT and firebirdsql 1.3 exposes no cancel call, so whether the server
+# stops the statement depends on it honouring op_cancel or noticing the
+# closed socket — the cap bounds the answer, not the production load (the
+# quote's deleted-sentence lesson).
 #
 # The allowlist keeps the 100M+-row EVENT-family tables unreachable, but it
 # does NOT bound load on its own: a self-cross-join of an allowlisted table
@@ -753,28 +761,81 @@ _FROM_LIST_PROBLEM = (
 )
 
 
-def _scan_from_lists(
-    cleaned: str, with_positions: bool = False
-) -> tuple[list, str | None]:
-    """Every identifier in table position across EVERY FROM list in the
-    statement, in order of appearance, plus a problem message if any FROM
-    list could not be read to its end.
+# The join-word sequences Firebird 3 accepts (OUTER needs LEFT / RIGHT / FULL;
+# NATURAL joins carry no ON and are refused by the window check as "natural").
+_JOIN_FORMS = {
+    ("JOIN",),
+    ("INNER", "JOIN"),
+    ("CROSS", "JOIN"),
+    ("LEFT", "JOIN"),
+    ("LEFT", "OUTER", "JOIN"),
+    ("RIGHT", "JOIN"),
+    ("RIGHT", "OUTER", "JOIN"),
+    ("FULL", "JOIN"),
+    ("FULL", "OUTER", "JOIN"),
+}
+
+
+class _Item:
+    """One item in table position, as the single FROM-list walk saw it: a
+    base relation / CTE name or a derived table, its alias, how it was joined
+    and the character span of its ON condition. The allowlist scan and the
+    window check both read THIS list (sixth review S1, 22 Oct 2026: the
+    window check used to walk the FROM list a second time with its own loop,
+    which stopped silently at a derived table's column list while the
+    scanner read past it — two walks that could disagree)."""
+
+    __slots__ = ("alias", "char", "derived", "join_words", "name", "on", "tok", "using")
+
+    def __init__(self, tok, char, name, derived, join_words):
+        self.tok, self.char, self.name, self.derived = tok, char, name, derived
+        self.join_words = join_words  # () first item, (",") comma, else join words
+        self.alias = None
+        self.on = None  # (start char, stop char) of the ON condition, or None
+        self.using = False
+
+    @property
+    def kind(self):
+        w = self.join_words
+        if w == ():
+            return "from"
+        if w == (",",):
+            return "comma"
+        if w not in _JOIN_FORMS:
+            return (
+                "natural"  # NATURAL, or a malformed join: the window check refuses it
+            )
+        for outer in ("LEFT", "RIGHT", "FULL"):
+            if outer in w:
+                return outer.lower()
+        return "cross" if "CROSS" in w else "inner"
+
+
+def _from_items(cleaned: str) -> tuple[list, str | None]:
+    """THE FROM-list walk: every item in table position across EVERY FROM
+    list in the statement, in order of appearance, plus a problem message if
+    any FROM list could not be read to its end.
 
     Hot-fix 21 Oct 2026 (Fable re-review R1): the Day 5 scanner stopped at
     the first ON or closing paren, so a comma-listed table after `JOIN … ON …`
     or after a derived table was never seen by the allowlist, the column deny
-    list or the star ban. Each FROM is now parsed through to its terminator:
+    list or the star ban. Each FROM is parsed through to its terminator:
     table [alias] { , table | <join words> table [alias] [ON … | USING …] }.
     After ON / USING the condition is skipped at the list's own depth up to
     the next join word, comma or terminator. Anything in table position the
-    scanner does not understand — a parenthesised join, a procedure call, a
+    walk does not understand — a parenthesised join, a procedure call, a
     stray token, a dangling comma — is reported as a problem, and the caller
-    refuses: the fence never falls through with a partial table set."""
+    refuses: the fence never falls through with a partial table set.
+
+    Sixth review S1 (22 Oct 2026): this is the only walk. The window check
+    attributes these items to SELECT blocks by character offset and refuses
+    any it cannot place (see _attribute_items) instead of walking again."""
     matches = list(_FT.finditer(cleaned))
     toks = [m.group(0) for m in matches]
     char_at = [m.start() for m in matches]
     n = len(toks)
-    found: list[tuple[int, str]] = []  # (token position, name)
+    end_char = len(cleaned) + 1
+    items: list[_Item] = []
     problem: str | None = None
     # innermost enclosing '(' per token, and whether that paren opens a SELECT
     # (a subquery) rather than a function / expression — a FROM inside
@@ -793,10 +854,12 @@ def _scan_from_lists(
         if tk == "(" and k + 1 < n and toks[k + 1].upper() in ("SELECT", "WITH")
     }
 
+    def is_ident(i):
+        return i < n and _IDENT.fullmatch(toks[i]) is not None
+
     def is_join_word(i):
         return (
-            i < n
-            and _IDENT.fullmatch(toks[i]) is not None
+            is_ident(i)
             and toks[i].upper() in _JOIN_WORDS
             # LEFT( / RIGHT( are string functions; JOIN ( is a join to a derived table
             and not (
@@ -821,67 +884,72 @@ def _scan_from_lists(
 
     def parse_list(i, top):
         """i just after a FROM; top = the list is not inside any paren, so a
-        ')' cannot legitimately end it. Returns (names, problem)."""
-        names = []
+        ')' cannot legitimately end it. Returns (items, problem)."""
+        out: list[_Item] = []
         expect_table = True
-        derived = False
+        join_words: tuple = ()
         while i < n:
             tok = toks[i]
             u = tok.upper()
             if expect_table:
-                derived = False
                 if tok == "(":
-                    if (
-                        i + 1 < n
-                        and _IDENT.fullmatch(toks[i + 1])
-                        and toks[i + 1].upper() in ("SELECT", "WITH")
-                    ):
+                    if is_ident(i + 1) and toks[i + 1].upper() in ("SELECT", "WITH"):
+                        item = _Item(i, char_at[i], None, True, join_words)
                         i = skip_paren(
                             i
-                        )  # derived table; its own FROM is scanned separately
-                        derived = True
+                        )  # derived table; its own FROM is walked separately
                     else:
-                        return names, "a parenthesised join or a bracketed FROM item"
-                elif _IDENT.fullmatch(tok) and u not in _STOP and u not in _JOIN_WORDS:
-                    names.append((i, u))
+                        return out, "a parenthesised join or a bracketed FROM item"
+                elif is_ident(i) and u not in _STOP and u not in _JOIN_WORDS:
+                    item = _Item(i, char_at[i], u, False, join_words)
                     i += 1
                     if i < n and toks[i] == "(":
                         # SOME_PROC(args): not a base relation. The name is
                         # still reported so the allowlist refuses it by name;
                         # the problem makes the refusal certain either way.
-                        return names, f"{u}(…) in table position (a procedure call)"
+                        out.append(item)
+                        return out, f"{u}(…) in table position (a procedure call)"
                 else:
-                    return names, f"'{tok}' where a table name was expected"
+                    return out, f"'{tok}' where a table name was expected"
                 # optional alias
-                if i < n and _IDENT.fullmatch(toks[i]) and toks[i].upper() == "AS":
-                    if i + 1 < n and _IDENT.fullmatch(toks[i + 1]):
+                if is_ident(i) and toks[i].upper() == "AS":
+                    if is_ident(i + 1):
+                        item.alias = toks[i + 1].upper()
                         i += 2
                     else:
-                        return names, "AS without an alias"
+                        out.append(item)
+                        return out, "AS without an alias"
                 elif (
-                    i < n
-                    and _IDENT.fullmatch(toks[i])
+                    is_ident(i)
                     and toks[i].upper() not in _STOP
                     and toks[i].upper() not in _JOIN_WORDS
                 ):
+                    item.alias = toks[i].upper()
                     i += 1
                 # a derived table may name its columns: (SELECT …) t (A1, A2)
-                if derived and i < n and toks[i] == "(":
+                if item.derived and i < n and toks[i] == "(":
                     i = skip_paren(i)
+                out.append(item)
                 expect_table = False
                 continue
             # after a table reference
             if tok == ",":
                 expect_table = True
+                join_words = (",",)
                 i += 1
                 continue
             if is_join_word(i):
+                words = []
                 while is_join_word(i):
+                    words.append(toks[i].upper())
                     i += 1
+                join_words = tuple(words)
                 expect_table = True
                 continue
-            if _IDENT.fullmatch(tok) and u in ("ON", "USING"):
+            if is_ident(i) and u in ("ON", "USING"):
+                item = out[-1]
                 i += 1
+                start = i
                 # skip the condition at this depth
                 while i < n:
                     t2 = toks[i]
@@ -895,19 +963,26 @@ def _scan_from_lists(
                     ):
                         break
                     i += 1
+                if u == "USING":
+                    item.using = True
+                else:
+                    item.on = (
+                        char_at[start] if start < n else end_char,
+                        char_at[i] if i < n else end_char,
+                    )
                 continue
             if tok == ")":
-                return names, ("a ')' with no open paren" if top else None)
-            if _IDENT.fullmatch(tok) and u in _FROM_END:
-                return names, None
-            return names, f"'{tok}' after a table reference"
+                return out, ("a ')' with no open paren" if top else None)
+            if is_ident(i) and u in _FROM_END:
+                return out, None
+            return out, f"'{tok}' after a table reference"
         if expect_table:
-            return names, "a FROM list that ends after a comma or JOIN"
-        return names, None
+            return out, "a FROM list that ends after a comma or JOIN"
+        return out, None
 
     i = 0
     while i < n:
-        if _IDENT.fullmatch(toks[i]) and toks[i].upper() == "FROM":
+        if is_ident(i) and toks[i].upper() == "FROM":
             if encl[i] != -1 and encl[i] not in sub_paren:
                 opener = toks[encl[i] - 1].upper() if encl[i] >= 1 else ""
                 if opener in _FROM_FUNCTIONS:
@@ -919,15 +994,26 @@ def _scan_from_lists(
                     )
                 i += 1
                 continue
-            names, prob = parse_list(i + 1, encl[i] == -1)
-            found.extend(names)
+            found, prob = parse_list(i + 1, encl[i] == -1)
+            items.extend(found)
             if prob and problem is None:
                 problem = _FROM_LIST_PROBLEM.format(what=prob)
         i += 1
-    found.sort()
+    items.sort(key=lambda it: it.tok)
+    return items, problem
+
+
+def _scan_from_lists(
+    cleaned: str, with_positions: bool = False
+) -> tuple[list, str | None]:
+    """Every relation name in table position (the single FROM walk's items,
+    derived tables left out), in order of appearance, plus the walk's problem
+    message if a FROM list could not be read to its end."""
+    items, problem = _from_items(cleaned)
+    named = [it for it in items if not it.derived]
     if with_positions:
-        return [(char_at[i], name) for i, name in found], problem
-    return [name for _, name in found], problem
+        return [(it.char, it.name) for it in named], problem
+    return [it.name for it in named], problem
 
 
 def _referenced_tables(cleaned: str) -> list[str]:
@@ -1094,6 +1180,7 @@ def _check_star_projection(cleaned: str, tables: list[str]) -> None:
 WINDOWED: dict[str, dict] = {
     "ROUTING": {
         "keys": {"WAYBILL": 100, "MANIFEST": 20},  # key column -> max IN-list literals
+        "key_only": ("MANIFEST",),  # S2: only ever = / IN — a range changes the plan
         "date": "AGENTDATE",
         "max_days": 31,
         "filters_only": ("BOOKDATE", "AGENT", "ORIGHUB", "DESTHUB", "MTYPE", "STATUS"),
@@ -1113,7 +1200,8 @@ WINDOWED: dict[str, dict] = {
             "20)) or a bare window (AGENTDATE BETWEEN two literal dates or >= and "
             "<= literal dates, at most 31 days) on the ROUTING alias — nothing "
             "wrapped around or inside it, the key or date range outside any OR, not "
-            "under NOT, not in an outer join's ON; BOOKDATE, "
+            "under NOT, not in an outer join's ON; MANIFEST may appear only as such a "
+            "key (a manifest range is not supported); BOOKDATE, "
             "AGENT, hub, MTYPE and STATUS are filters only; and wherever ROUTING is "
             "read, every VIEW_WBANALYSE, MANIFEST or AGENTDRIVER in the statement "
             "must carry its own key the same way (WAYBILL / MANIFEST / AGENT = or "
@@ -1123,6 +1211,7 @@ WINDOWED: dict[str, dict] = {
     },
     "VIEW_EVENTSCANS": {
         "keys": {"WAYBILL": 100, "TRACKNO": 100, "MANIFEST": 20},
+        "key_only": ("MANIFEST",),  # S2: only ever = / IN — a range changes the plan
         "date": "EVENTDATE",
         "max_days": 3,
         "filters_only": ("WAYDATE", "ACCNUM", "NAME", "HUB", "USERNAME", "AGENTNAME"),
@@ -1145,7 +1234,8 @@ WINDOWED: dict[str, dict] = {
             "integer or IN (up to 20)) or a bare window (EVENTDATE BETWEEN two "
             "literal dates or >= and <= literal dates, at most 3 days) on its alias "
             "— nothing wrapped around or inside it, the key or date range outside any "
-            "OR, not under NOT, not in an outer join's ON; "
+            "OR, not under NOT, not in an outer join's ON; MANIFEST may appear only as "
+            "such a key (a manifest range is not supported); "
             "WAYDATE, ACCNUM, NAME, HUB, USERNAME and AGENTNAME are filters only — "
             "the view is for waybill and manifest lookups; a scans-by-type-over-a-"
             "date-range question is the event-counts tool, quoted separately; and "
@@ -1155,6 +1245,20 @@ WINDOWED: dict[str, dict] = {
         ),
     },
 }
+
+# Sixth review S2 (22 Oct 2026): a MANIFEST comparison that is not a key, beside
+# a window, made Firebird AND a bitmap over the whole EV_MANIFEST / RO_MANIFEST
+# index — `v.EVENTDATE = '2026-10-21' AND v.MANIFEST > 0` (a one-day window)
+# planned INDEX (EV_EVENTDATE, EV_MANIFEST) and ran past the cap; the fifth
+# review measured the ROUTING twin at 5.8 s. The window bounds one index, not
+# the plan, so on the two windowed tables MANIFEST may appear ONLY as a valid key.
+_KEY_ONLY_HINT = (
+    "{ref} may appear on {table} only as a key ({ref} = a positive integer or {ref} IN "
+    "(up to {limit})) — {what} is not a key, and a manifest range is not supported: any "
+    "other comparison on MANIFEST makes Firebird AND a bitmap over the whole MANIFEST "
+    "index beside the window (a one-day EVENTDATE window with MANIFEST > 0 ran past the "
+    "15 s cap on 22 Oct 2026) — drop the MANIFEST condition or write it as a key"
+)
 
 _MANIFEST_HINT = (
     "manifest numbers repeat across branches and leg types (37733 is 133 rows "
@@ -1224,9 +1328,13 @@ def _blank_comments(sql: str) -> str:
     return "".join(out)
 
 
-def _w_tokens(sql: str) -> list[tuple[str, str]]:
-    """(text, kind) with kind in LIT / NUM / ID / P (anything else)."""
+def _w_tokens_pos(sql: str) -> tuple[list[tuple[str, str]], list[int]]:
+    """(text, kind) with kind in LIT / NUM / ID / P (anything else), plus the
+    character offset each token starts at — the offsets are what ties these
+    tokens to the FROM walk's items (the walk runs on the literal-blanked
+    text, which keeps every offset)."""
     toks = []
+    starts = []
     for m in _W_TOKEN.finditer(_blank_comments(sql)):
         t = m.group(0)
         if t.startswith("'"):
@@ -1237,7 +1345,13 @@ def _w_tokens(sql: str) -> list[tuple[str, str]]:
             toks.append((t, "ID"))
         else:
             toks.append((t, "P"))
-    return toks
+        starts.append(m.start())
+    return toks, starts
+
+
+def _w_tokens(sql: str) -> list[tuple[str, str]]:
+    """(text, kind) with kind in LIT / NUM / ID / P (anything else)."""
+    return _w_tokens_pos(sql)[0]
 
 
 def _paren_structure(toks):
@@ -1430,120 +1544,77 @@ def _clause_region(level_idx, start_pos, toks, stop_on_join=False):
     return region
 
 
-def _parse_block(block, toks, group, match, is_sub, ctes):
-    """Fill refs / where / ons for one block from its level tokens."""
-    level = _level_tokens(block, toks, group, is_sub)
-    pos = {i: q for q, i in enumerate(level)}
-    from_i = next(
-        (i for i in level if toks[i][1] == "ID" and toks[i][0].upper() == "FROM"), None
-    )
-    if from_i is None:
-        return
-    n_level = len(level)
+_UNATTRIBUTED = (
+    "{what} is read somewhere the window check could not attribute to a SELECT "
+    "block — write a plain FROM / JOIN … ON list"
+)
 
-    def parse_ref(q, kind):
-        """One table item at level position q -> (ref, q_after) or (None, reason)."""
-        if q >= n_level:
-            return None, "a FROM list that ends early"
-        i = level[q]
-        t, k = toks[i]
-        u = t.upper() if k == "ID" else t
-        if t == "(" and k == "P":
-            close = match.get(i, len(toks))
-            if not is_sub.get(i, False):
-                return None, "a parenthesised join or an unrecognised FROM item"
-            ref = _Ref(None, None, kind, derived=True)
-            q += 1
-            while q < n_level and level[q] <= close:
-                q += 1
-        elif k == "ID" and u not in _STOP and u not in _JOIN_KW:
-            ref = _Ref(u, u, kind, is_cte=u in ctes)
-            q += 1
-            if q < n_level and toks[level[q]][0] == "(" and toks[level[q]][1] == "P":
-                return None, f"{u}(...) in FROM (a procedure call)"
-        else:
-            return None, "an unrecognised FROM item"
-        if q < n_level:
-            tj, kj = toks[level[q]]
-            uj = tj.upper() if kj == "ID" else tj
-            if kj == "ID" and uj == "AS":
-                if q + 1 < n_level and toks[level[q + 1]][1] == "ID":
-                    ref.alias = toks[level[q + 1]][0].upper()
-                    q += 2
-            elif kj == "ID" and uj not in _STOP and uj not in _JOIN_KW and uj != "ON":
-                ref.alias = uj
-                q += 1
-        return ref, q
 
-    q = pos[from_i] + 1
-    first = True
-    while q < n_level:
-        i = level[q]
-        t, k = toks[i]
-        u = t.upper() if k == "ID" else t
-        if first:
-            first = False
-            ref, q2 = parse_ref(q, "from")
-            if ref is None:
-                block.unsupported = q2
-                return
-            block.refs.append(ref)
-            q = q2
-        elif t == "," and k == "P":
-            ref, q2 = parse_ref(q + 1, "comma")
-            if ref is None:
-                block.unsupported = q2
-                return
-            block.refs.append(ref)
-            q = q2
-        elif k == "ID" and u in _JOIN_KW:
-            words = []
-            while (
-                q < n_level
-                and toks[level[q]][1] == "ID"
-                and toks[level[q]][0].upper() in (_JOIN_KW | {"OUTER"})
-            ):
-                words.append(toks[level[q]][0].upper())
-                q += 1
-            if "JOIN" not in words or "NATURAL" in words:
-                block.unsupported = "a NATURAL join or a join without JOIN"
-                return
-            outer = [w for w in words if w in _OUTER]
-            kind = (
-                outer[0].lower()
-                if outer
-                else ("cross" if "CROSS" in words else "inner")
+def _attribute_items(items, blocks, toks, starts, group, match, is_sub, ctes):
+    """Place every item of the single FROM walk in exactly one SELECT block,
+    by character offset, and fill block.refs / block.ons from it. REFUSES —
+    never skips — an item that lands on a token the window tokenizer does not
+    see or inside no block (sixth review S1). The walk and this attribution
+    are the only readers of table position: whatever the allowlist saw, the
+    window check judges."""
+    at = {s: i for i, s in enumerate(starts)}
+    by_scope: dict[int, list] = {}
+    for b in blocks:
+        by_scope.setdefault(b.g, []).append(b)
+    levels: dict[int, list[int]] = {}
+    for it in items:
+        what = it.name or "a derived table"
+        wi = at.get(it.char)
+        placed = wi is not None and (
+            (it.derived and toks[wi] == ("(", "P"))
+            or (
+                not it.derived
+                and toks[wi][1] == "ID"
+                and toks[wi][0].upper() == it.name
             )
-            ref, q2 = parse_ref(q, kind)
-            if ref is None:
-                block.unsupported = q2
-                return
-            block.refs.append(ref)
-            q = q2
-            if (
-                q < n_level
-                and toks[level[q]][1] == "ID"
-                and toks[level[q]][0].upper() == "ON"
-            ):
-                region = _clause_region(level, level[q], toks, stop_on_join=True)
-                cs, has_or = _split_conjuncts(region, toks, group, match)
-                if has_or:
-                    block.or_clauses.append(f"the ON of the {kind.upper()} join")
-                    cs = []
-                block.ons.append((kind, cs))
-                q += 1 + len(region)
-            elif (
-                q < n_level
-                and toks[level[q]][1] == "ID"
-                and toks[level[q]][0].upper() == "USING"
-            ):
-                block.unsupported = "a USING join"
-                return
-            elif kind != "cross":
-                block.unsupported = "a JOIN without ON"
-                return
-        else:
-            break
+        )
+        if not placed:
+            raise GuardError(_UNATTRIBUTED.format(what=what))
+        scope = _scope_of(wi, group, is_sub)
+        block = next(
+            (b for b in by_scope.get(scope, ()) if b.start <= wi < b.end), None
+        )
+        if block is None:
+            raise GuardError(_UNATTRIBUTED.format(what=what))
+        kind = it.kind
+        block.refs.append(
+            _Ref(
+                it.name,
+                it.alias or it.name,
+                kind,
+                is_cte=(not it.derived and it.name in ctes),
+                derived=it.derived,
+            )
+        )
+        if kind == "natural":
+            block.unsupported = (
+                block.unsupported or "a NATURAL join or a join without JOIN"
+            )
+        elif it.using:
+            block.unsupported = block.unsupported or "a USING join"
+        elif it.on is not None:
+            level = levels.get(block.n)
+            if level is None:
+                level = levels[block.n] = _level_tokens(block, toks, group, is_sub)
+            lo, hi = it.on
+            region = [i for i in level if lo <= starts[i] < hi]
+            cs, has_or = _split_conjuncts(region, toks, group, match)
+            if has_or:
+                block.or_clauses.append(f"the ON of the {kind.upper()} join")
+                cs = []
+            block.ons.append((kind, cs))
+        elif kind in ("inner", "left", "right", "full"):
+            block.unsupported = block.unsupported or "a JOIN without ON"
+
+
+def _parse_where(block, toks, group, match, is_sub):
+    """Fill block.where from the block's own WHERE clause; flatten the ONs."""
+    level = _level_tokens(block, toks, group, is_sub)
     where_i = next(
         (i for i in level if toks[i][1] == "ID" and toks[i][0].upper() == "WHERE"), None
     )
@@ -1557,6 +1628,23 @@ def _parse_block(block, toks, group, match, is_sub, ctes):
     block.ons = [
         (kind, _flatten(cs, toks, group, match, is_sub)) for kind, cs in block.ons
     ]
+
+
+def _attributed_table_refs(sql: str) -> list[tuple[str, int]]:
+    """(name, SELECT block number) for every item of the FROM walk — the
+    attribution the window check relies on, exposed so the suite can assert
+    that every table the allowlist scan sees is judged in some block."""
+    sql = sql.rstrip().removesuffix(";")
+    cleaned = _strip_literals_and_comments(sql)
+    items, problem = _from_items(cleaned)
+    if problem:
+        raise GuardError(problem)
+    toks, starts = _w_tokens_pos(sql)
+    group, match, is_sub = _paren_structure(toks)
+    ctes = {m.group(1).upper() for m in _CTE_NAME.finditer(cleaned)}
+    blocks = _blocks(toks, group, match, is_sub)
+    _attribute_items(items, blocks, toks, starts, group, match, is_sub, ctes)
+    return [(r.name or "(derived)", b.n) for b in blocks for r in b.refs]
 
 
 def _flatten(conjs, toks, group, match, is_sub):
@@ -1749,6 +1837,15 @@ def _why_not(toks, c, group, match, is_sub, ref_label):
     )
 
 
+def _is_join_equality(toks, c):
+    """`a.X = b.Y` with two different aliases — a join condition, not a bound."""
+    if len(c) != 7 or toks[c[3]] != ("=", "P"):
+        return False
+    a1, _col1, j1 = _ref_at(toks, c, 0)
+    a2, _col2, j2 = _ref_at(toks, c, 4)
+    return a1 is not None and a2 is not None and a1 != a2 and j1 == 3 and j2 == 7
+
+
 def _mentions(toks, c, alias, col):
     """Does the conjunct contain alias.col (or bare col when alias is None)?"""
     for j in range(len(c)):
@@ -1770,6 +1867,8 @@ def _judge(table, spec, alias, conjs, outer_conjs, single):
     alias_u = alias.upper()
     qualifying: list[str] = []
     reasons: list[str] = []
+    hard: list[str] = []  # refusals that stand even when a key or window qualifies
+    key_only = spec.get("key_only", ())
     lows: list[_dt.date] = []
     highs: list[_dt.date] = []
     pins_seen: set[str] = set()
@@ -1796,11 +1895,29 @@ def _judge(table, spec, alias, conjs, outer_conjs, single):
                 limit = spec["keys"][col]
                 vals = values if kind == "in" else (values if kind == "eq" else None)
                 if vals is None:
+                    if col in key_only:
+                        hard.append(
+                            _KEY_ONLY_HINT.format(
+                                ref=ref,
+                                table=table,
+                                limit=limit,
+                                what=f"{ref} compared with {values[0][2] if kind in ('lo', 'hi') else 'BETWEEN'}",
+                            )
+                        )
                     reasons.append(
                         f"{ref} {('>=' if kind == 'lo' else '<=')} … is not a key — use = or IN (…)"
                     )
                     continue
                 bad = _key_literal_problem(col, vals, ref)
+                if col in key_only and (bad or (kind == "in" and len(vals) > limit)):
+                    hard.append(
+                        _KEY_ONLY_HINT.format(
+                            ref=ref,
+                            table=table,
+                            limit=limit,
+                            what=bad or f"{ref} IN (…) has {len(vals)} literals",
+                        )
+                    )
                 if bad:
                     reasons.append(bad)
                 elif kind == "in" and len(vals) > limit:
@@ -1862,6 +1979,20 @@ def _judge(table, spec, alias, conjs, outer_conjs, single):
                 )
             continue
         # not a bare shape on this alias — is the alias's key/date/filter mentioned?
+        for col in key_only:
+            if _is_join_equality(toks, c):
+                continue  # m.MANIFEST = r.MANIFEST joins; it is no range on either side
+            if _mentions(toks, c, alias_u, col) or (
+                single and _mentions(toks, c, None, col)
+            ):
+                hard.append(
+                    _KEY_ONLY_HINT.format(
+                        ref=f"{label}{col}",
+                        table=table,
+                        limit=spec["keys"][col],
+                        what="a comparison other than = / IN, or one wrapped in an expression",
+                    )
+                )
         ordered = sorted(
             set(spec["keys"]) | ({spec["date"]} if spec["date"] else set())
         ) + sorted(spec["filters_only"])
@@ -1894,6 +2025,27 @@ def _judge(table, spec, alias, conjs, outer_conjs, single):
             )
     for kind_name, c in outer_conjs:
         shape = _bare_shape(toks, c, group, match, is_sub)
+        for col in key_only:
+            is_key = (
+                shape is not None
+                and mine(shape)
+                and shape[1] == col
+                and shape[2] in ("eq", "in")
+                and not _key_literal_problem(col, shape[3], f"{label}{col}")
+                and len(shape[3]) <= spec["keys"][col]
+            )
+            if not is_key and (
+                _mentions(toks, c, alias_u, col)
+                or (single and _mentions(toks, c, None, col))
+            ):
+                hard.append(
+                    _KEY_ONLY_HINT.format(
+                        ref=f"{label}{col}",
+                        table=table,
+                        limit=spec["keys"][col],
+                        what=f"a comparison other than = / IN in the ON of a {kind_name.upper()} JOIN",
+                    )
+                )
         if (
             shape is not None
             and mine(shape)
@@ -1925,7 +2077,7 @@ def _judge(table, spec, alias, conjs, outer_conjs, single):
     keyed_by_manifest = any(q.startswith("keyed by MANIFEST") for q in qualifying)
     if spec["pins"] and keyed_by_manifest and not set(spec["pins"]) <= pins_seen:
         qualifying.append(_MANIFEST_HINT)
-    return qualifying, reasons
+    return qualifying, reasons, hard
 
 
 def _key_literal_problem(col, vals, ref):
@@ -2018,44 +2170,54 @@ _OR_RULE = (
 )
 
 
-def _check_windowed(sql: str, tables: list[str], windows: list[str] | None) -> None:
+def _check_windowed(
+    sql: str, tables: list[str], windows: list[str] | None, items=None
+) -> None:
     """Whitelist: every SELECT block that reads a windowed table must key or
     window that table's alias with an exact bare conjunct; and if any block
     reads a windowed table, every block reading a _JOIN_BOUND relation must
     key it the same way. Describe what was applied (into `windows`) or refuse
     naming the block, the alias and what was missing. Any internal error in
     the check is itself a refusal (review R6) — never an accepted statement,
-    never a tool error."""
+    never a tool error. `items` are the FROM walk's items as the allowlist
+    scan saw them (computed here if not given) — every one of them is
+    attributed to a SELECT block or the statement refuses, windowed or not."""
     specs = {t: WINDOWED[t] for t in tables if t in WINDOWED}
-    if not specs:
-        return
     scratch: list[str] = []
     try:
-        _check_windowed_blocks(sql, specs, scratch)
+        _check_windowed_blocks(sql, specs, scratch, items)
     except GuardError:
         raise
     except Exception as e:
-        first = next(iter(specs.values()))
+        rule = next(iter(specs.values()))["rule"] if specs else _CONJUNCT_RULE
         raise GuardError(
             f"the window check could not parse this statement ({type(e).__name__}) — "
             "write the WHERE as plain AND-ed predicates on the table's alias. "
-            f"Rule: {first['rule']}."
+            f"Rule: {rule}."
         ) from None
     if windows is not None:
         windows.extend(scratch)
 
 
-def _check_windowed_blocks(sql: str, specs: dict, windows: list[str]) -> None:
+def _check_windowed_blocks(sql: str, specs: dict, windows: list[str], items) -> None:
     sql = sql.rstrip().removesuffix(";")  # one trailing semicolon is tolerated upstream
-    toks = _w_tokens(sql)
+    toks, starts = _w_tokens_pos(sql)
     group, match, is_sub = _paren_structure(toks)
-    ctes = {
-        m.group(1).upper()
-        for m in _CTE_NAME.finditer(_strip_literals_and_comments(sql))
-    }
+    cleaned = _strip_literals_and_comments(sql)
+    ctes = {m.group(1).upper() for m in _CTE_NAME.finditer(cleaned)}
     blocks = _blocks(toks, group, match, is_sub)
+    if items is None:
+        items, problem = _from_items(cleaned)
+        if problem:
+            raise GuardError(problem)
+    # Sixth review S1: ONE walk. The items the allowlist scan read are placed
+    # in their SELECT blocks by offset; an item that cannot be placed refuses
+    # the statement here, whether or not a windowed table is involved.
+    _attribute_items(items, blocks, toks, starts, group, match, is_sub, ctes)
+    if not specs:
+        return
     for b in blocks:
-        _parse_block(b, toks, group, match, is_sub, ctes)
+        _parse_where(b, toks, group, match, is_sub)
     ctx = (toks, group, match, is_sub)
     many = len(blocks) > 1
     # Review R2: refuse if ANY block could not be parsed, wherever it sits,
@@ -2105,7 +2267,7 @@ def _check_windowed_blocks(sql: str, specs: dict, windows: list[str]) -> None:
             spec = dict(specs[ref.name], _ctx=ctx)
             conjs, outer = conjunct_sets(b)
             alias_text = _alias_text(toks, b, ref)
-            qualifying, reasons = _judge(
+            qualifying, reasons, hard = _judge(
                 ref.name, spec, alias_text, conjs, outer, len(b.refs) == 1
             )
             label = (
@@ -2113,6 +2275,13 @@ def _check_windowed_blocks(sql: str, specs: dict, windows: list[str]) -> None:
                 if ref.alias != ref.name
                 else ref.name
             )
+            if hard:
+                # Sixth review S2: MANIFEST on a windowed table only as a key —
+                # a range beside the window is refused even when a key or
+                # window qualifies, because it changes the plan.
+                raise GuardError(
+                    f"{'; '.join(hard)}{where_label(b)}. Rule: {spec['rule']}."
+                )
             if qualifying:
                 short = (
                     f"{ref.name} ({_alias_text(toks, b, ref)})"
@@ -2142,7 +2311,7 @@ def _check_windowed_blocks(sql: str, specs: dict, windows: list[str]) -> None:
             spec = dict(_JOIN_BOUND[ref.name], _ctx=ctx)
             conjs, outer = conjunct_sets(b)
             a = _alias_text(toks, b, ref)
-            qualifying, reasons = _judge(
+            qualifying, reasons, _hard = _judge(
                 ref.name, spec, a, conjs, outer, len(b.refs) == 1
             )
             if qualifying:
@@ -2213,7 +2382,8 @@ def check_open_query(sql: str, windows: list[str] | None = None) -> list[str]:
         raise GuardError("WITH LOCK is not accepted on the open path — remove it")
     spans = _cte_spans(cleaned)
     _check_cte_names(spans)
-    placed, from_problem = _scan_from_lists(cleaned, with_positions=True)
+    items, from_problem = _from_items(cleaned)
+    placed = [(it.char, it.name) for it in items if not it.derived]
     # A CTE name is excluded only for references OUTSIDE its own body; inside
     # it (a non-recursive CTE cannot see itself) the name is the base table.
     tables = [
@@ -2245,7 +2415,7 @@ def check_open_query(sql: str, windows: list[str] | None = None) -> list[str]:
     tables = sorted(set(tables))
     _check_denied_columns(cleaned, tables)
     _check_star_projection(cleaned, tables)
-    _check_windowed(sql, tables, windows)
+    _check_windowed(sql, tables, windows, items)
     return tables
 
 
@@ -2303,6 +2473,35 @@ def _date_warnings(columns: list[str], rows: list[tuple]) -> list[str]:
     return warnings
 
 
+class _DeadlineExceeded(TimeoutError):
+    """The fetch did not answer inside the wall-clock cap."""
+
+
+def _run_with_deadline(run, sql: str, deadline_s: float, cancel=cancel_thread):
+    """Run `run(sql, (), ROW_CAP + 1, timeout=deadline_s)` in a worker thread
+    and wait at most `deadline_s` of wall-clock time. On expiry the worker's
+    database connection is cancelled and closed through `cancel` (keyed by
+    the worker's thread ident) and _DeadlineExceeded is raised; the worker
+    then dies on its dead socket. Anything the worker raised is re-raised."""
+    outcome: dict = {}
+
+    def work():
+        try:
+            outcome["value"] = run(sql, (), ROW_CAP + 1, timeout=deadline_s)
+        except BaseException as e:
+            outcome["error"] = e
+
+    worker = threading.Thread(target=work, name="open_query-fetch", daemon=True)
+    worker.start()
+    worker.join(deadline_s)
+    if worker.is_alive():
+        cancel(worker.ident)
+        raise _DeadlineExceeded(f"no answer inside {deadline_s} s")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["value"]
+
+
 def run_open_query(question: str, sql: str, run=run_select) -> dict:
     """Gate, run and shape one open query. Refusals come back as the same
     {"ok": False, "refused": True, ...} shape the revenue tools use."""
@@ -2323,22 +2522,25 @@ def run_open_query(question: str, sql: str, run=run_select) -> dict:
 
     started = time.perf_counter()
     try:
-        columns, rows = run(sql, (), ROW_CAP + 1, timeout=TIMEOUT_S)
+        columns, rows = _run_with_deadline(run, sql, TIMEOUT_S)
     except ConnectionError:
         raise
     except Exception as e:
-        # The driver reports a tripped socket timeout as OperationalError
-        # "Can not recv() packets" (fbcore._recv_channel), not TimeoutError —
-        # observed live 18 Aug when a MAX() over the 3.1M-row view blew a 30s
-        # cap. A genuine mid-query disconnect reads the same; either way the
-        # query was abandoned, not answered.
+        # The wall-clock deadline raises _DeadlineExceeded; the driver reports
+        # a tripped socket timeout as OperationalError "Can not recv() packets"
+        # (fbcore._recv_channel), not TimeoutError — observed live 18 Aug when
+        # a MAX() over the 3.1M-row view blew a 30s cap. A genuine mid-query
+        # disconnect reads the same; either way the query was abandoned, not
+        # answered.
         msg = str(e).lower()
         if isinstance(e, (socket.timeout, TimeoutError)) or (
             "timed out" in msg or "can not recv" in msg
         ):
             return _refused(
-                f"the query exceeded the {TIMEOUT_S}s time cap (or the "
-                "connection dropped mid-query) and was abandoned — narrow it "
+                f"the query ran past the {TIMEOUT_S} s wall-clock time cap (or the "
+                "connection dropped mid-query) and was abandoned: its connection was "
+                "cancelled and closed, so Firebird drops the statement when it honours "
+                "the cancel or next touches the connection — narrow it "
                 "(add WHERE bounds, or aggregate in SQL rather than fetching "
                 "rows)"
             )

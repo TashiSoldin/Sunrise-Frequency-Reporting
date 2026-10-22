@@ -176,6 +176,14 @@ not cover, answered from the raw data through a fence:
   convert the column, not the literal, and scan (M1), and `''` is a shared
   junk TRACKNO (M2); `MANIFEST` is a positive integer — `0` is the
   no-manifest sentinel on ~41% of EVENT rows (B4); IN-list duplicates count.
+  **MANIFEST only as a key** (sixth review S2, 22 Oct 2026): on ROUTING and
+  the view, MANIFEST may appear only as `=` / `IN` — any other comparison
+  (`>`, `<>`, BETWEEN, NOT, a wrapper, a subquery), beside a window or a key,
+  is refused with "a manifest range is not supported": a one-day EVENTDATE
+  window with `MANIFEST > 0` planned `INDEX (EV_EVENTDATE, EV_MANIFEST)`, a
+  bitmap over the whole MANIFEST index ANDed with the window, and ran past
+  the cap. A join equality (`m.MANIFEST = r.MANIFEST`) is a join condition,
+  not a range, and passes.
   `BOOKDATE`, `AGENT`, hubs, `MTYPE`, `STATUS` on ROUTING and `WAYDATE`,
   `ACCNUM`, `NAME`, `HUB`, `USERNAME`, `AGENTNAME` on the view are filters
   only (BOOKDATE is populated only on local-delivery rows; the view's
@@ -197,7 +205,15 @@ not cover, answered from the raw data through a fence:
   `CURRENT_DATE` range; an OR; a wrapper; an outer-join ON; a filter-only
   column; an over-long IN-list; reversed or one-sided bounds; the sentinel or
   an unquoted key; the big relation's missing key) and states the rule in one
-  sentence; an accepted query carries a `Window applied —` note. The widths
+  sentence; an accepted query carries a `Window applied —` note. **One FROM
+  walk** (sixth review S1): `_from_items` is the only reader of table
+  position — the allowlist takes its names from it and the window check
+  attributes its items to SELECT blocks by character offset
+  (`_attribute_items`), refusing any item it cannot place. There is no second
+  walk to disagree with the first (the window check's own loop had stopped
+  silently at a derived table's column list, `(SELECT …) t (A)`, so a
+  key-less ROUTING or an unkeyed VIEW_WBANALYSE listed after it went
+  unjudged). The widths
   come from live plans and timings, every PLAN line recorded in
   `research/db_query_interface/routing_eventscans_plans_2026-10-21.md`
   (ROUTING 31 days = 48,680 rows in 168 ms cold, the unbounded count 7.9 s;
@@ -209,10 +225,18 @@ not cover, answered from the raw data through a fence:
   (SUBTOTAL / VAT / TOTAL / INVAMOUNT / TOTPAID / VATPAID) carry the
   honest-boundary note like the view's do.
 - **Row cap 500 — a hit cap refuses**, never truncates (the every-fetcher
-  rule). **Time cap 15s** via the driver socket timeout; honest limitation:
-  it bounds how long we wait, not what Firebird keeps executing, so the real
-  load bound is the allowlist. The driver reports a tripped timeout as
-  `OperationalError: Can not recv() packets`.
+  rule). **Time cap 15 s, wall-clock** (sixth review S2/S5, 22 Oct 2026): the
+  fetch runs in a worker thread with a hard deadline; on expiry the answer is
+  refused at once and the worker's connection gets a best-effort Firebird
+  `op_cancel` (fb_cancel_raise — in the wire protocol since 2.5, not surfaced
+  by firebirdsql 1.3) and a socket shutdown + close (`db.cancel_thread`), so
+  the worker dies on its dead socket. Before this the cap was the driver's
+  per-read socket timeout and an in-limit statement that sent nothing ran
+  30 s. Honest limitation: Firebird 3.0.13 has no SET STATEMENT TIMEOUT; the
+  cap bounds how long we wait, and whether the server stops the statement
+  depends on it honouring the cancel or noticing the closed socket — the real
+  load bound is the allowlist and the window rule. The driver reports a
+  tripped socket read as `OperationalError: Can not recv() packets`.
 - **Date plausibility flags** on every date column in the result
   (`day_guards.plausible_window` / `classify_dates`): 1899-12-30 placeholders,
   pre-1990 junk and future dates are counted per column — PP carries all
