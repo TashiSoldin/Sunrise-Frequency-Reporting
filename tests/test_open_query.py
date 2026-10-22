@@ -1087,3 +1087,44 @@ class TestIntroducedLiteralsRefused:
             check_open_query(
                 "SELECT NAME FROM HOLIDAY WHERE NAME = q'{'}'; DELETE FROM HOLIDAY WHERE NAME = q'{'}'"
             )
+
+
+class TestStartingWithIsNotACte:
+    """Follow-up to T2: Firebird's STARTING WITH operator carries the WITH
+    keyword (827 uses in the audit log since 1 Oct, Larry's console); it is
+    accepted, and the scanner refuses a FROM inside any parentheses that
+    open neither a subquery nor a FROM-taking function, so the operator can
+    never front a hidden table list."""
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT WAYBILL FROM VIEW_WBANALYSE WHERE WAYBILL STARTING WITH 'DSN'",
+            "SELECT WAYBILL FROM VIEW_WBANALYSE w WHERE w.CUSTNAME starting with 'ab' AND w.WAYDATE = '2026-10-01'",
+            "SELECT WAYBILL FROM VIEW_WBANALYSE WHERE WAYBILL STARTING WITH UPPER('dsn')",
+            "SELECT NAME FROM HOLIDAY WHERE NAME STARTING WITH 'A' OR NAME STARTING WITH 'B'",
+            "WITH k AS (SELECT NAME FROM HOLIDAY WHERE NAME STARTING WITH 'A') SELECT NAME FROM k",
+            "SELECT NAME FROM HOLIDAY WHERE SUBSTRING(NAME FROM 1 FOR 3) = 'ABC'",
+            "SELECT NAME FROM HOLIDAY WHERE EXTRACT(YEAR FROM HOLIDAY) = 2026",
+            "SELECT TRIM(LEADING 'x' FROM NAME) FROM HOLIDAY",
+            "SELECT NAME FROM HOLIDAY WHERE POSITION('a' IN NAME) > 0 AND SUBSTRING(NAME FROM 2) = 'b'",
+        ],
+    )
+    def test_starting_with_and_from_taking_functions_are_accepted(self, sql):
+        assert check_open_query(sql)
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM HOLIDAY h WHERE EXISTS (h.NAME STARTING WITH 'x' SELECT 1 FROM EVENT)",
+            "SELECT COUNT(*) FROM HOLIDAY h WHERE (1 FROM EVENT) = 1",
+            "SELECT COUNT(*) FROM HOLIDAY h WHERE COALESCE(NAME, (SELECT 1 FROM EVENT)) = 1",
+            "SELECT COUNT(*) FROM HOLIDAY h WHERE NAME = (WITH q AS (SELECT 1 AS X FROM HOLIDAY) SELECT FIRST 1 WEBPASSWORD FROM CONTACT)",
+        ],
+    )
+    def test_a_from_in_unexplained_parentheses_or_a_hidden_with_still_refuses(
+        self, sql
+    ):
+        with pytest.raises(GuardError):
+            check_open_query(sql)
+        assert run_open_query("t2b", sql, run=never_runs)["refused"]

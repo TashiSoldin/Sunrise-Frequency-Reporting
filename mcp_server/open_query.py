@@ -555,7 +555,14 @@ def _check_with_position(cleaned: str) -> None:
     first = _FIRST_WORD.search(cleaned)
     first_at = first.start() if first and first.group(0).upper() == "WITH" else -1
     for m in _WITH_WORD.finditer(cleaned):
-        if m.start() != first_at:
+        if m.start() == first_at:
+            continue
+        # Firebird's STARTING WITH operator (827 uses in the audit log since
+        # 1 Oct, every one on VIEW_WBANALYSE) — the word before is STARTING.
+        before = cleaned[: m.start()].rstrip()
+        if re.search(r"\bSTARTING$", before, re.IGNORECASE):
+            continue
+        if True:
             raise GuardError(
                 "WITH is accepted only at the start of the statement — write common "
                 "table expressions at the top of the statement only"
@@ -591,6 +598,8 @@ _FROM_END = {
     "INTO",
     "WITH",
 }
+# Functions whose argument list carries a FROM keyword that is not a table list.
+_FROM_FUNCTIONS = {"SUBSTRING", "EXTRACT", "TRIM", "POSITION", "OVERLAY"}
 _FROM_LIST_PROBLEM = (
     "the FROM list could not be read to its end ({what}) — the open path refuses "
     "a statement whose table list it cannot be sure of (fail closed); write a "
@@ -750,7 +759,15 @@ def _scan_from_lists(cleaned: str) -> tuple[list[str], str | None]:
     while i < n:
         if _IDENT.fullmatch(toks[i]) and toks[i].upper() == "FROM":
             if encl[i] != -1 and encl[i] not in sub_paren:
-                i += 1  # FROM inside a function / expression, not a table list
+                opener = toks[encl[i] - 1].upper() if encl[i] >= 1 else ""
+                if opener in _FROM_FUNCTIONS:
+                    i += 1  # SUBSTRING(x FROM 1 FOR 3), EXTRACT(YEAR FROM d) …
+                    continue
+                if problem is None:
+                    problem = _FROM_LIST_PROBLEM.format(
+                        what="a FROM inside parentheses that open neither a subquery nor a function"
+                    )
+                i += 1
                 continue
             names, prob = parse_list(i + 1, encl[i] == -1)
             found.extend(names)
