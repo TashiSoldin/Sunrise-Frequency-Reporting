@@ -1,0 +1,368 @@
+[
+ {
+  "id": "p9 S47 AGENTDATE IN beside window",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.AGENTDATE BETWEEN '2026-10-19' AND '2026-10-21' AND r.AGENTDATE IN ('2026-10-19', '2026-10-20')",
+  "beside": "'r . AGENTDATE IN ( '…' , '…' )' beside the AGENTDATE window",
+  "hint": "write it as r.AGENTDATE + 0 IN ( '…' , '…' ) so no index can take it"
+ },
+ {
+  "id": "p9 S48 AGENTDATE LIKE beside window",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.AGENTDATE BETWEEN '2026-10-19' AND '2026-10-21' AND r.AGENTDATE LIKE '2026%'",
+  "beside": "'r . AGENTDATE LIKE '…'' beside the AGENTDATE window",
+  "hint": "write it as r.AGENTDATE + 0 LIKE '…' so no index can take it"
+ },
+ {
+  "id": "p9 K02 MANIFEST key + EXPORT = 0",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.EXPORT = 0",
+  "beside": "'r . EXPORT = n' beside the MANIFEST key",
+  "hint": "write it as r.EXPORT + 0 = n so no index can take it"
+ },
+ {
+  "id": "p9 K03 MANIFEST key + COSTSERV = 'ONX'",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.COSTSERV = 'ONX'",
+  "beside": "'r . COSTSERV = '…'' beside the MANIFEST key",
+  "hint": "write it as r.COSTSERV || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9 K04 MANIFEST key + AGENT > 0",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.AGENT > 0",
+  "beside": "'r . AGENT > n' beside the MANIFEST key",
+  "hint": "write it as r.AGENT + 0 > n so no index can take it"
+ },
+ {
+  "id": "p9 K05 WAYBILL IN (3) + EXPORT = 0",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.WAYBILL IN ('102155314', '102155315', '102155316') AND r.EXPORT = 0",
+  "beside": "'r . EXPORT = n' beside the WAYBILL key",
+  "hint": "write it as r.EXPORT + 0 = n so no index can take it"
+ },
+ {
+  "id": "p9 K06 key + window + EXPORT = 0",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.WAYBILL = '102155314' AND r.AGENTDATE BETWEEN '2026-10-19' AND '2026-10-21' AND r.EXPORT = 0",
+  "beside": "'r . EXPORT = n' beside the AGENTDATE window",
+  "hint": "write it as r.EXPORT + 0 = n so no index can take it"
+ },
+ {
+  "id": "p9 K07 MANIFEST key + BOOKDATE IS NULL",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.BOOKDATE IS NULL",
+  "beside": "'r . BOOKDATE IS NULL' beside the MANIFEST key",
+  "hint": "write it as r.BOOKDATE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9 K08 MANIFEST key + AWB LIKE '1%'",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.AWB LIKE '1%'",
+  "beside": "'r . AWB LIKE '…'' beside the MANIFEST key",
+  "hint": "write it as r.AWB || '' LIKE '…' so no index can take it"
+ },
+ {
+  "id": "p9 K09 MANIFEST IN (3) + EXPORT = 0",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST IN (37733, 37734, 37735) AND r.EXPORT = 0",
+  "beside": "'r . EXPORT = n' beside the MANIFEST key",
+  "hint": "write it as r.EXPORT + 0 = n so no index can take it"
+ },
+ {
+  "id": "p9 KV1 WAYBILL = + ACCNUM =",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.WAYBILL = '102155314' AND v.ACCNUM = 'S135'",
+  "beside": "'v . ACCNUM = '…'' beside the WAYBILL key",
+  "hint": "write it as v.ACCNUM || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9 KV2 MANIFEST = + TRACKNO > ''",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.TRACKNO > ''",
+  "beside": "'v . TRACKNO > '…'' beside the MANIFEST key",
+  "hint": "write it as v.TRACKNO || '' > '…' so no index can take it"
+ },
+ {
+  "id": "p9 KV3 TRACKNO = + USERNAME =",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.TRACKNO = '1021553140001' AND v.USERNAME = 'ADMIN'",
+  "beside": "'v . USERNAME = '…'' beside the TRACKNO key",
+  "hint": "write it as v.USERNAME || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9 KV4 MANIFEST = + WAYBILL LIKE",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.WAYBILL LIKE '1%'",
+  "beside": "'v . WAYBILL LIKE '…'' beside the MANIFEST key",
+  "hint": "write it as v.WAYBILL || '' LIKE '…' so no index can take it"
+ },
+ {
+  "id": "p9 KV5 MANIFEST = + ACCNUM =",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.ACCNUM = 'S135'",
+  "beside": "'v . ACCNUM = '…'' beside the MANIFEST key",
+  "hint": "write it as v.ACCNUM || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9 KV6 WAYBILL IN (3) + SERVICE =",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.WAYBILL IN ('102155314', '102155315', '102155316') AND v.SERVICE = 'ONX'",
+  "beside": "'v . SERVICE = '…'' beside the WAYBILL key",
+  "hint": "write it as v.SERVICE || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9 P05 w.WAYBILL = key + w.SERVICE =",
+  "sql": "SELECT r.WAYBILL, w.ACCNUM FROM ROUTING r JOIN VIEW_WBANALYSE w ON w.WAYBILL = r.WAYBILL WHERE r.AGENTDATE BETWEEN '2026-10-19' AND '2026-10-21' AND w.WAYBILL = '102155314' AND w.SERVICE = 'ONX'",
+  "beside": "'w . SERVICE = '…'' beside the WAYBILL key",
+  "hint": "write it as w.SERVICE || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9b M-AGENT IS NULL",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.AGENT IS NULL",
+  "beside": "'r . AGENT IS NULL' beside the MANIFEST key",
+  "hint": "write it as r.AGENT + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b M-AWB IS NULL",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.AWB IS NULL",
+  "beside": "'r . AWB IS NULL' beside the MANIFEST key",
+  "hint": "write it as r.AWB || '' IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b M-COSTSERV IS NULL",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.COSTSERV IS NULL",
+  "beside": "'r . COSTSERV IS NULL' beside the MANIFEST key",
+  "hint": "write it as r.COSTSERV || '' IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b M-EXPORT IS NULL",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.EXPORT IS NULL",
+  "beside": "'r . EXPORT IS NULL' beside the MANIFEST key",
+  "hint": "write it as r.EXPORT + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b M-PAYGROUP IS NULL",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.PAYGROUP IS NULL",
+  "beside": "'r . PAYGROUP IS NULL' beside the MANIFEST key",
+  "hint": "write it as r.PAYGROUP + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b M-AWB = ''",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.AWB = ''",
+  "beside": "'r . AWB = '…'' beside the MANIFEST key",
+  "hint": "write it as r.AWB || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9b M-PAYGROUP = 0",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.PAYGROUP = 0",
+  "beside": "'r . PAYGROUP = n' beside the MANIFEST key",
+  "hint": "write it as r.PAYGROUP + 0 = n so no index can take it"
+ },
+ {
+  "id": "p9b M-BOOKDATE = d",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.BOOKDATE = '2026-10-20'",
+  "beside": "'r . BOOKDATE = '…'' beside the MANIFEST key",
+  "hint": "write it as r.BOOKDATE + 0 = '…' so no index can take it"
+ },
+ {
+  "id": "p9b M-WAYBILL LIKE '1%'",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.WAYBILL LIKE '1%'",
+  "beside": "'r . WAYBILL LIKE '…'' beside the MANIFEST key",
+  "hint": "write it as r.WAYBILL || '' LIKE '…' so no index can take it"
+ },
+ {
+  "id": "p9b M-WAYBILL > ''",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.WAYBILL > ''",
+  "beside": "'r . WAYBILL > '…'' beside the MANIFEST key",
+  "hint": "write it as r.WAYBILL || '' > '…' so no index can take it"
+ },
+ {
+  "id": "p9b M-AWB LIKE '%'",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.AWB LIKE '%'",
+  "beside": "'r . AWB LIKE '…'' beside the MANIFEST key",
+  "hint": "write it as r.AWB || '' LIKE '…' so no index can take it"
+ },
+ {
+  "id": "p9b M-AWB STARTING WITH ''",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.AWB STARTING WITH ''",
+  "beside": "'r . AWB STARTING WITH '…'' beside the MANIFEST key",
+  "hint": "write it as r.AWB || '' STARTING WITH '…' so no index can take it"
+ },
+ {
+  "id": "p9b M-AWB >= ''",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.AWB >= ''",
+  "beside": "'r . AWB >= '…'' beside the MANIFEST key",
+  "hint": "write it as r.AWB || '' >= '…' so no index can take it"
+ },
+ {
+  "id": "p9b M-BOOKDATE >= '1900-01-01'",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.BOOKDATE >= '1900-01-01'",
+  "beside": "'r . BOOKDATE >= '…'' beside the MANIFEST key",
+  "hint": "write it as r.BOOKDATE + 0 >= '…' so no index can take it"
+ },
+ {
+  "id": "p9b M-BOOKDATE IN (d, d)",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.BOOKDATE IN ('2026-10-20', '2026-10-21')",
+  "beside": "'r . BOOKDATE IN ( '…' , '…' )' beside the MANIFEST key",
+  "hint": "write it as r.BOOKDATE + 0 IN ( '…' , '…' ) so no index can take it"
+ },
+ {
+  "id": "p9b M bare key (no pins) + BOOKDATE IS NULL",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.BOOKDATE IS NULL",
+  "beside": "'r . BOOKDATE IS NULL' beside the MANIFEST key",
+  "hint": "write it as r.BOOKDATE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b W-IN(3) + BOOKDATE IS NULL",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.WAYBILL IN ('102155314', '102155315', '102155316') AND r.BOOKDATE IS NULL",
+  "beside": "'r . BOOKDATE IS NULL' beside the WAYBILL key",
+  "hint": "write it as r.BOOKDATE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b W-IN(3) + AWB = ''",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.WAYBILL IN ('102155314', '102155315', '102155316') AND r.AWB = ''",
+  "beside": "'r . AWB = '…'' beside the WAYBILL key",
+  "hint": "write it as r.AWB || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9b K+W BOOKDATE IS NULL",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.WAYBILL = '102155314' AND r.AGENTDATE BETWEEN '2026-10-19' AND '2026-10-21' AND r.BOOKDATE IS NULL",
+  "beside": "'r . BOOKDATE IS NULL' beside the AGENTDATE window",
+  "hint": "write it as r.BOOKDATE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b M+W BOOKDATE IS NULL",
+  "sql": "SELECT r.WAYBILL, r.LEG FROM ROUTING r WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND r.AGENTDATE BETWEEN '2026-10-19' AND '2026-10-21' AND r.BOOKDATE IS NULL",
+  "beside": "'r . BOOKDATE IS NULL' beside the AGENTDATE window",
+  "hint": "write it as r.BOOKDATE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b V-WAYBILL = + PODDATE IS NULL",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.WAYBILL = '102155314' AND v.PODDATE IS NULL",
+  "beside": "'v . PODDATE IS NULL' beside the WAYBILL key",
+  "hint": "write it as v.PODDATE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b V-WAYBILL = + ACCNUM IS NULL",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.WAYBILL = '102155314' AND v.ACCNUM IS NULL",
+  "beside": "'v . ACCNUM IS NULL' beside the WAYBILL key",
+  "hint": "write it as v.ACCNUM || '' IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b V-WAYBILL = + AGTRACKNO IS NULL",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.WAYBILL = '102155314' AND v.AGTRACKNO IS NULL",
+  "beside": "'v . AGTRACKNO IS NULL' beside the WAYBILL key",
+  "hint": "write it as v.AGTRACKNO || '' IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b V-WAYBILL = + REFERENCE = ''",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.WAYBILL = '102155314' AND v.REFERENCE = ''",
+  "beside": "'v . REFERENCE = '…'' beside the WAYBILL key",
+  "hint": "write it as v.REFERENCE || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9b V-MANIFEST = + PODDATE IS NULL",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.PODDATE IS NULL",
+  "beside": "'v . PODDATE IS NULL' beside the MANIFEST key",
+  "hint": "write it as v.PODDATE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b V-MANIFEST = + AGTRACKNO IS NULL",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.AGTRACKNO IS NULL",
+  "beside": "'v . AGTRACKNO IS NULL' beside the MANIFEST key",
+  "hint": "write it as v.AGTRACKNO || '' IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b V-MANIFEST = + AGTRACKNO = ''",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.AGTRACKNO = ''",
+  "beside": "'v . AGTRACKNO = '…'' beside the MANIFEST key",
+  "hint": "write it as v.AGTRACKNO || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9b V-MANIFEST = + WAYDATE IS NULL",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.WAYDATE IS NULL",
+  "beside": "'v . WAYDATE IS NULL' beside the MANIFEST key",
+  "hint": "write it as v.WAYDATE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b V-MANIFEST = + REFERENCE = ''",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.REFERENCE = ''",
+  "beside": "'v . REFERENCE = '…'' beside the MANIFEST key",
+  "hint": "write it as v.REFERENCE || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9b V-MANIFEST = + ACCNUM = ''",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.ACCNUM = ''",
+  "beside": "'v . ACCNUM = '…'' beside the MANIFEST key",
+  "hint": "write it as v.ACCNUM || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9b V-MANIFEST = + SERVICE = ''",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.SERVICE = ''",
+  "beside": "'v . SERVICE = '…'' beside the MANIFEST key",
+  "hint": "write it as v.SERVICE || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9b V-MANIFEST = + ORIGHUB = ''",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.ORIGHUB = ''",
+  "beside": "'v . ORIGHUB = '…'' beside the MANIFEST key",
+  "hint": "write it as v.ORIGHUB || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9b V-MANIFEST = + USERNAME IS NULL",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.USERNAME IS NULL",
+  "beside": "'v . USERNAME IS NULL' beside the MANIFEST key",
+  "hint": "write it as v.USERNAME || '' IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b V-MANIFEST = + AGENTNAME IS NULL",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.MANIFEST = 37733 AND v.AGENTNAME IS NULL",
+  "beside": "'v . AGENTNAME IS NULL' beside the MANIFEST key",
+  "hint": "write it as v.AGENTNAME || '' IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b V-TRACKNO = + PODDATE IS NULL",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.TRACKNO = '1021553140001' AND v.PODDATE IS NULL",
+  "beside": "'v . PODDATE IS NULL' beside the TRACKNO key",
+  "hint": "write it as v.PODDATE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b V-TRACKNO = + ACCNUM = ''",
+  "sql": "SELECT v.WAYBILL, v.EVENTDATE FROM VIEW_EVENTSCANS v WHERE v.TRACKNO = '1021553140001' AND v.ACCNUM = ''",
+  "beside": "'v . ACCNUM = '…'' beside the TRACKNO key",
+  "hint": "write it as v.ACCNUM || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9b P-w key + INVOICE IS NULL",
+  "sql": "SELECT r.WAYBILL, w.ACCNUM FROM ROUTING r JOIN VIEW_WBANALYSE w ON w.WAYBILL = r.WAYBILL WHERE r.WAYBILL = '102155314' AND w.WAYBILL = '102155314' AND w.INVOICE IS NULL",
+  "beside": "'w . INVOICE IS NULL' beside the WAYBILL key",
+  "hint": "write it as w.INVOICE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b P-w key + PODDATE IS NULL",
+  "sql": "SELECT r.WAYBILL, w.ACCNUM FROM ROUTING r JOIN VIEW_WBANALYSE w ON w.WAYBILL = r.WAYBILL WHERE r.WAYBILL = '102155314' AND w.WAYBILL = '102155314' AND w.PODDATE IS NULL",
+  "beside": "'w . PODDATE IS NULL' beside the WAYBILL key",
+  "hint": "write it as w.PODDATE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b P-w key + INVDATE IS NULL",
+  "sql": "SELECT r.WAYBILL, w.ACCNUM FROM ROUTING r JOIN VIEW_WBANALYSE w ON w.WAYBILL = r.WAYBILL WHERE r.WAYBILL = '102155314' AND w.WAYBILL = '102155314' AND w.INVDATE IS NULL",
+  "beside": "'w . INVDATE IS NULL' beside the WAYBILL key",
+  "hint": "write it as w.INVDATE + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b P-w key + REFERENCE = ''",
+  "sql": "SELECT r.WAYBILL, w.ACCNUM FROM ROUTING r JOIN VIEW_WBANALYSE w ON w.WAYBILL = r.WAYBILL WHERE r.WAYBILL = '102155314' AND w.WAYBILL = '102155314' AND w.REFERENCE = ''",
+  "beside": "'w . REFERENCE = '…'' beside the WAYBILL key",
+  "hint": "write it as w.REFERENCE || '' = '…' so no index can take it"
+ },
+ {
+  "id": "p9b P-w key + RECEIPT IS NULL",
+  "sql": "SELECT r.WAYBILL, w.ACCNUM FROM ROUTING r JOIN VIEW_WBANALYSE w ON w.WAYBILL = r.WAYBILL WHERE r.WAYBILL = '102155314' AND w.WAYBILL = '102155314' AND w.RECEIPT IS NULL",
+  "beside": "'w . RECEIPT IS NULL' beside the WAYBILL key",
+  "hint": "write it as w.RECEIPT + 0 IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b P-w key + INVOICE = 0",
+  "sql": "SELECT r.WAYBILL, w.ACCNUM FROM ROUTING r JOIN VIEW_WBANALYSE w ON w.WAYBILL = r.WAYBILL WHERE r.WAYBILL = '102155314' AND w.WAYBILL = '102155314' AND w.INVOICE = 0",
+  "beside": "'w . INVOICE = n' beside the WAYBILL key",
+  "hint": "write it as w.INVOICE + 0 = n so no index can take it"
+ },
+ {
+  "id": "p9b P-m key + MAWBNO IS NULL",
+  "sql": "SELECT r.LEG, m.MANIFEST FROM ROUTING r JOIN MANIFEST m ON m.MANIFEST = r.MANIFEST WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND m.MANIFEST = 37733 AND m.MAWBNO IS NULL",
+  "beside": "'m . MAWBNO IS NULL' beside the MANIFEST key",
+  "hint": "write it as m.MAWBNO || '' IS NULL so no index can take it"
+ },
+ {
+  "id": "p9b P-m key + REFERENCE = ''",
+  "sql": "SELECT r.LEG, m.MANIFEST FROM ROUTING r JOIN MANIFEST m ON m.MANIFEST = r.MANIFEST WHERE r.MANIFEST = 37733 AND r.MBRANCH = 0 AND r.MTYPE = 'M' AND m.MANIFEST = 37733 AND m.REFERENCE = ''",
+  "beside": "'m . REFERENCE = '…'' beside the MANIFEST key",
+  "hint": "write it as m.REFERENCE || '' = '…' so no index can take it"
+ }
+]

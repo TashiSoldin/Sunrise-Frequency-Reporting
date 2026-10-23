@@ -84,21 +84,25 @@ def test_e2_the_neutral_spelling_is_accepted_on_the_window(sql):
 
 
 def test_e2_a_base_field_indexed_column_is_in_the_set_too():
-    """ACCNUM is WAYBILL.ACCNUM underneath (WA_ACCNUM): beside the window it
-    takes the neutral spelling; beside a key it is a plain filter."""
+    """ACCNUM is WAYBILL.ACCNUM underneath (WA_ACCNUM): beside the window
+    and (ninth review N1, 23 Oct 2026) beside a key it takes the neutral
+    spelling; spelled so, it is a plain filter."""
     with pytest.raises(GuardError) as e:
         check_open_query(V + V1 + " AND v.ACCNUM = 'S135'")
     assert "ACCNUM is an indexed column of VIEW_EVENTSCANS (WAYBILL." in str(e.value)
+    with pytest.raises(GuardError) as e:
+        check_open_query(V + "v.WAYBILL = '102155314' AND v.ACCNUM = 'S135'")
+    assert "beside the WAYBILL key" in str(e.value)
     windows: list[str] = []
-    check_open_query(V + "v.WAYBILL = '102155314' AND v.ACCNUM = 'S135'", windows)
+    check_open_query(V + "v.WAYBILL = '102155314' AND v.ACCNUM || '' = 'S135'", windows)
     assert windows and "keyed by WAYBILL" in windows[0]
 
 
 STILL_FINE = [
-    ("key-then-trackno-range", V + "v.WAYBILL = '102155314' AND v.TRACKNO > ''"),
+    ("key-then-trackno-ne", V + "v.WAYBILL = '102155314' AND v.TRACKNO <> ''"),
     (
-        "trackno-key-then-waybill-range",
-        V + "v.TRACKNO = '1021553140001' AND v.WAYBILL > ''",
+        "trackno-key-then-waybill-neutral",
+        V + "v.TRACKNO = '1021553140001' AND v.WAYBILL || '' > ''",
     ),
     ("window-trackno-ne-no-index", V + V1 + " AND v.TRACKNO <> ''"),
     ("window-waybill-not-null-no-index", V + V1 + " AND v.WAYBILL IS NOT NULL"),
@@ -112,3 +116,21 @@ def test_e2_shapes_that_stay_on_the_key_or_window_remain_accepted(label, sql):
     windows: list[str] = []
     check_open_query(sql, windows)
     assert windows and ("keyed by" in windows[0] or "window" in windows[0])
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        V + "v.WAYBILL = '102155314' AND v.TRACKNO > ''",
+        V + "v.TRACKNO = '1021553140001' AND v.WAYBILL > ''",
+    ],
+    ids=["key-then-trackno-range", "trackno-key-then-waybill-range"],
+)
+def test_e2_beside_a_key_a_range_on_another_key_column_is_refused_too(sql):
+    """Ninth review N1 (23 Oct 2026): the keyed-alias exemption is gone on
+    the view as well (its keyed plans showed no second index, so this is
+    precautionary — the rule is one rule)."""
+    with pytest.raises(GuardError) as e:
+        check_open_query(sql)
+    assert "beside the" in str(e.value) and "key" in str(e.value)
+    assert "|| ''" in str(e.value)

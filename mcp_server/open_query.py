@@ -1171,10 +1171,11 @@ WINDOWED: dict[str, dict] = {
             "otherwise only alias.COL <op> literal, alias.COL IN (literals) or "
             "alias.COL IS [NOT] NULL — no OR, NOT, parentheses, function, CASE or "
             "column-to-column comparison; the window written once (one BETWEEN, or "
-            "one >= and <= pair); beside the window a filter on another indexed "
-            "column only as = / IN on AGENT or spelled r.COL + 0 (numeric, date) / "
-            "r.COL || '' (character) so no second index is read — the refusal names "
-            "the column and its spelling; MANIFEST only as such "
+            "one >= and <= pair); beside the key or the window a filter on another "
+            "indexed column only as = / IN on AGENT or spelled r.COL + 0 (numeric, "
+            "date) / r.COL || '' (character) so no second index is read — the refusal "
+            "names the column and its spelling (a single waybill literal alone is "
+            "the exception: the primary key stops the planner); MANIFEST only as such "
             "a key, in the ON, or in the select list / GROUP BY / ORDER BY (write "
             "r.MANIFEST + 0 to order or group by it without walking the whole index); "
             "BOOKDATE, AGENT, hub, MTYPE and STATUS are filters only; a select list of "
@@ -1212,9 +1213,9 @@ WINDOWED: dict[str, dict] = {
             "range of at most 31 days on VIEW_WBANALYSE), and otherwise only alias.COL "
             "<op> literal, alias.COL IN (literals) or alias.COL IS [NOT] NULL — no OR, "
             "NOT, parentheses, function, CASE or column-to-column comparison; the "
-            "window written once (one BETWEEN, or one >= and <= pair); beside the "
-            "window a filter on another indexed column (TRACKNO or WAYBILL as a range "
-            "or prefix among them) only spelled v.COL || '' (character) / v.COL + 0 "
+            "window written once (one BETWEEN, or one >= and <= pair); beside the key "
+            "or the window a filter on another indexed column (TRACKNO or WAYBILL as a "
+            "range or prefix among them) only spelled v.COL || '' (character) / v.COL + 0 "
             "(numeric, date) so no second index is read — the refusal names the "
             "column and its spelling; MANIFEST "
             "only as such a key, in the ON, or in the select list / GROUP BY / ORDER "
@@ -1386,14 +1387,19 @@ def _key_literal_problem(col, vals, ref):
 #      exactly ONE window form per date column (a second BETWEEN, or a
 #      BETWEEN beside a >= / <= pair, is refused — Firebird ranges on the
 #      first BETWEEN it meets and only filters by the rest; an exact repeat
-#      of the same BETWEEN is tolerated); and beside a window, on an alias
-#      that carries no key, a conjunct on any OTHER indexed column of that
-#      alias (the survey set, _indexed_columns) is refused unless it is = /
-#      IN on a key column of the signed rule (WAYBILL / TRACKNO / MANIFEST,
-#      AGENT on ROUTING — the compound RO_AGNTDATEAGENT takes it) or spelled
-#      col + 0 (numeric, date) / col || '' (character) so no index can take
-#      it; <> / != / IS NOT NULL / CONTAINING take no index and pass. Beside
-#      a key nothing changes: the optimizer stops at the key;
+#      of the same BETWEEN is tolerated); and beside a key OR a window
+#      (ninth review, 23 Oct 2026: beside a MANIFEST key Firebird still ANDed
+#      RO_BOOKDATE for BOOKDATE IS NULL, 4.3 s) a conjunct on any OTHER
+#      indexed column of that alias (the survey set, _indexed_columns) is
+#      refused unless it is = / IN on a key column of the signed rule
+#      (WAYBILL / TRACKNO / MANIFEST, AGENT on ROUTING — the compound
+#      RO_AGNTDATEAGENT takes it) or spelled col + 0 (numeric, date) /
+#      col || '' (character) so no index can take it; <> / != / IS NOT NULL
+#      / CONTAINING take no index and pass; the window column's own window
+#      forms are the window, any other form on it (IS NULL, IN, LIKE, an
+#      unqualifying range) counts. The one exemption: a ROUTING alias keyed
+#      by a single waybill literal and nothing else — a primary-key prefix,
+#      planned RDB$PRIMARY51 alone whatever else is in the WHERE;
 #   4. MANIFEST only as such a key, in a sanctioned ON, or in the select
 #      list / GROUP BY / ORDER BY;
 #   5. a select list of qualified columns, COUNT / SUM / MIN / MAX / AVG over
@@ -1572,9 +1578,9 @@ _SHAPE_RULES = {
         "each join partner's own key, and otherwise alias.COL <op> literal, alias.COL IN "
         "(literals) or alias.COL IS [NOT] NULL; no OR, NOT, parentheses, function, CASE, "
         "subquery, BETWEEN outside a window, or column-to-column comparison; one window "
-        "form per date column; beside a window, a filter on another indexed column only "
-        "as = / IN on a key column or spelled col + 0 (numeric, date) / col || '' "
-        "(character) so no index can take it"
+        "form per date column; beside a key or a window, a filter on another indexed "
+        "column only as = / IN on a key column or spelled col + 0 (numeric, date) / "
+        "col || '' (character) so no index can take it"
     ),
     4: (
         "MANIFEST only as a key (= a positive integer or IN up to the limit), in the "
@@ -2090,8 +2096,12 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
             else:
                 highs_.append(d - _dt.timedelta(days=1) if op == "<" else d)
             return None
+        if kind == "isnull":  # ninth review N2: a 1-tuple, never values[0][2]
+            op = "IS NULL" if values and values[0][0] == "null" else "IS NOT NULL"
+        else:
+            op = values[0][2] if values and len(values[0]) == 3 else "…"
         reasons.append(
-            f"{ref} {values[0][2] if values else ''} … is not a date range — use BETWEEN or >= and <= literal dates"
+            f"{ref} {op} … is not a date range — use BETWEEN or >= and <= literal dates"
         )
         return None
 
@@ -2359,18 +2369,36 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
             return values[0][0] == "null"
         return False  # cmp = the not-equal operators
 
-    def no_second_index(alias, rel, keys_here, window_col):
-        """On an alias bounded by its window and carrying no key, refuse a
-        conjunct on any other indexed column unless = / IN on a signed key
-        column or spelled so no index can take it."""
+    def no_second_index(
+        alias, rel, keys_here, quals, date_col, max_days, only_date=False
+    ):
+        """On an alias that qualifies by a key or a window (`quals`, its
+        qualifying descriptions), refuse a conjunct on any other indexed
+        column unless = / IN on a signed key column or spelled so no index
+        can take it. The window column's own window forms are the window
+        and pass; any other form on it (IS NULL, IN, LIKE, a range that did
+        not qualify) is a second index like any other (ninth review N1 / N2:
+        beside a MANIFEST key Firebird ANDed RO_BOOKDATE for `BOOKDATE IS
+        NULL`, 4.3 s, and RO_AWB for `AWB = ''`, 3.8 s, on 23 Oct 2026)."""
         indexed = _indexed_columns(rel)
         eq_ok = set(keys_here)
         if rel == table:
             cols_here = _columns_of(table)
             eq_ok |= {p["join"] for p in _PARTNERS.values() if p["join"] in cols_here}
+        window_col = date_col if any(" window " in q for q in quals) else None
+        keyed_cols = sorted({q.split()[2] for q in quals if q.startswith("keyed by")})
+        beside = (
+            f"the {window_col} window"
+            if window_col
+            else f"the {' / '.join(keyed_cols)} key"
+        )
         for c, col, kind, values, neutral in seen[alias]:
-            if col == window_col or neutral or col not in indexed:
+            if neutral or col not in indexed:
                 continue
+            if only_date and not (col == date_col and kind == "isnull"):
+                continue  # the single-waybill-literal exemption; date IS NULL aside (N2)
+            if col == window_col and kind in ("between", "eq", "lo", "hi"):
+                continue  # the window itself (a looser extra bound merges into it)
             if kind in ("eq", "in") and col in eq_ok:
                 continue
             if not index_can_take(kind, values):
@@ -2378,29 +2406,51 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
             ref = f"{label_for(alias)}{col}"
             want = _neutral_spelling(rel, col) or _NEUTRAL_NUM
             k = 3 if len(c) > 1 and toks[c[1]] == (".", "P") else 1
+            if col == date_col and kind in ("between", "lo", "hi"):
+                how = (
+                    f"narrow it to a window of at most {max_days} days ({ref} BETWEEN "
+                    f"two literal dates, or >= and <= literal dates), or write it as "
+                    f"{ref} {want} {describe(c[k:])} so no index can take it"
+                )
+            else:
+                how = f"write it as {ref} {want} {describe(c[k:])} so no index can take it"
             raise _shape_refusal(
                 3,
                 table,
-                f"'{describe(c)}' beside the {window_col} window — {col} is an indexed "
-                f"column of {rel} ({', '.join(indexed[col])}), and beside a range-driven "
-                "window Firebird ANDs a second bitmap built over that whole index (the "
-                "shape that ran past the 15 s cap on 22 Oct 2026); write it as "
-                f"{ref} {want} {describe(c[k:])} so no index can take it, or key the "
-                f"read ({' / '.join(sorted(keys_here))} = or IN)",
+                f"'{describe(c)}' beside {beside} — {col} is an indexed column of {rel} "
+                f"({', '.join(indexed[col])}), and beside a key or a range-driven window "
+                "Firebird ANDs a second bitmap built over that whole index (a window + "
+                "MANIFEST > 0 ran past the 15 s cap on 22 Oct 2026; a MANIFEST key + "
+                f"BOOKDATE IS NULL took 4.3 s on 23 Oct 2026); {how}",
             )
 
-    keyed_w = any(q.startswith("keyed by") for q in qualifying)
+    def single_waybill_literal(quals):
+        """The one exemption (ninth review N1, plans read 23 Oct 2026): a
+        ROUTING alias keyed by ONE waybill literal and nothing else is a
+        prefix match on the primary key, and Firebird plans RDB$PRIMARY51
+        alone whatever else is in the WHERE (tests/test_review9_fix_pass.py
+        asserts the plans live). AGENTDATE IS NULL stays under the rule even
+        here (N2: refused by this rule, always; the old gate refused it by
+        accident, and the fix only narrows)."""
+        return table == "ROUTING" and quals == ["keyed by WAYBILL (1 literal)"]
+
     window_w = spec["date"] if any(" window " in q for q in qualifying) else None
-    if window_w and not keyed_w:
-        no_second_index(w_alias, table, spec["keys"], window_w)
+    if qualifying:
+        no_second_index(
+            w_alias,
+            table,
+            spec["keys"],
+            qualifying,
+            spec["date"],
+            spec["max_days"],
+            only_date=single_waybill_literal(qualifying),
+        )
     for a, rel in partners.items():
         pspec = _PARTNERS[rel]
-        if (
-            pspec["date"]
-            and any(" window " in q for q in pkeyed[a])
-            and not any(q.startswith("keyed by") for q in pkeyed[a])
-        ):
-            no_second_index(a, rel, pspec["keys"], pspec["date"])
+        if pkeyed[a]:
+            no_second_index(
+                a, rel, pspec["keys"], pkeyed[a], pspec["date"], pspec["max_days"]
+            )
 
     # --- rule 5: the select list, GROUP BY, HAVING, ORDER BY, ROWS ------------------
     def expect_ref(c, j, where_):
@@ -2431,17 +2481,20 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
         nav_note.append(col)
 
     def by_item(c, where_, allow_dir):
+        """-> the (alias, col, neutral) the item names (a position resolved
+        to its select item), or None; the caller decides on the note."""
         j = 0
+        item = None
         if toks[c[0]][1] == "NUM":
             j = 1
             pos = int(toks[c[0]][0]) if toks[c[0]][0].isdigit() else 0
             if 1 <= pos <= len(sel_items):
-                note_if_indexed(sel_items[pos - 1])  # the position resolved
+                item = sel_items[pos - 1]  # the position resolved
         else:
             alias, col, j = expect_ref(c, 0, where_)
             neutral, j = neutral_at(c, j)
             check_neutral(alias, col, neutral, 5)
-            note_if_indexed((alias, col, neutral))
+            item = (alias, col, neutral)
         if allow_dir and j < len(c) and word(c[j]) in ("ASC", "DESC"):
             j += 1
         if j != len(c):
@@ -2450,6 +2503,32 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
                 table,
                 f"'{describe(c)}' in the {where_} is not a qualified column, a position or col + 0",
             )
+        return item
+
+    def past_the_window_prefix(items):
+        """ORDER BY <window column>, <the next segments of a compound index
+        led by it> navigates that index over the window's range only (ninth
+        review N3, plan read 23 Oct 2026: `ORDER BY r.AGENTDATE, r.AGENT`
+        beside the AGENTDATE window -> PLAN (R ORDER RO_AGNTDATEAGENT)) ->
+        the items past that prefix, which the note still covers."""
+        if not window_w or not items or items[0] is None:
+            return items
+        cols = [
+            it[1] if it and aliases[it[0]] == table and not it[2] else None
+            for it in items
+        ]
+        if cols[0] != window_w:
+            return items
+        best = 1
+        for idx in _index_survey().get("relations", {}).get(table, {}).values():
+            fields = [f.upper() for f in (idx.get("fields") or [])]
+            if idx.get("inactive") or not fields or fields[0] != window_w:
+                continue
+            k = 0
+            while k < len(cols) and k < len(fields) and cols[k] == fields[k]:
+                k += 1
+            best = max(best, k)
+        return items[best:]
 
     def split_commas(idx):
         out, cur = [], []
@@ -2565,7 +2644,7 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
         if not gb:
             raise _shape_refusal(5, table, "an empty GROUP BY")
         for c in split_commas(gb):
-            by_item(c, "GROUP BY", False)
+            note_if_indexed(by_item(c, "GROUP BY", False))
     hv = region("HAVING")
     if hv is not None:
         if not hv:
@@ -2605,8 +2684,9 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
     if ob is not None:
         if not ob:
             raise _shape_refusal(5, table, "an empty ORDER BY")
-        for c in split_commas(ob):
-            by_item(c, "ORDER BY", True)
+        items = [by_item(c, "ORDER BY", True) for c in split_commas(ob)]
+        for it in past_the_window_prefix(items):
+            note_if_indexed(it)
     rw = region("ROWS")
     if rw is not None:
         ws = [toks[i] for i in rw]

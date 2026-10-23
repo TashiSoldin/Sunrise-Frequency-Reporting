@@ -54,14 +54,11 @@ def test_e3_the_hint_and_the_neutral_spelling_on_the_partner():
     "sql",
     [
         RW
-        + "r.WAYBILL = '102155314' AND w.WAYBILL = '102155314' AND w.WAYDATE >= '2000-01-01'",
-        RW
-        + "r.WAYBILL = '102155314' AND w.WAYBILL = '102155314' AND w.ACCNUM = 'S135'",
+        + "r.WAYBILL = '102155314' AND w.WAYBILL = '102155314' AND w.ACCNUM || '' = 'S135'",
         RW + W3 + " AND " + WD + " AND w.WAYDATE >= '2000-01-01'",
     ],
     ids=[
-        "keyed-plus-waydate-range",
-        "keyed-plus-accnum",
+        "keyed-plus-accnum-neutral",
         "window-plus-second-waydate-bound",
     ],
 )
@@ -70,3 +67,29 @@ def test_e3_keyed_partners_with_a_filter_stay_accepted(sql):
     windows: list[str] = []
     check_open_query(sql, windows)
     assert any(w.startswith("VIEW_WBANALYSE") for w in windows)
+
+
+@pytest.mark.parametrize(
+    "sql,needle",
+    [
+        (
+            RW
+            + "r.WAYBILL = '102155314' AND w.WAYBILL = '102155314' AND w.WAYDATE >= '2000-01-01'",
+            "narrow it to a window of at most 31 days",
+        ),
+        (
+            RW
+            + "r.WAYBILL = '102155314' AND w.WAYBILL = '102155314' AND w.ACCNUM = 'S135'",
+            "write it as w.ACCNUM || '' = '…'",
+        ),
+    ],
+    ids=["keyed-plus-waydate-range", "keyed-plus-accnum"],
+)
+def test_e3_beside_the_partner_key_the_rule_applies_too(sql, needle):
+    """Ninth review N1 (23 Oct 2026): the keyed-alias exemption is gone for
+    partners as well — a lone WAYDATE bound beside the partner's key is a
+    whole-index range, a second indexed column takes the neutral spelling."""
+    with pytest.raises(GuardError) as e:
+        check_open_query(sql)
+    assert "beside the WAYBILL key" in str(e.value)
+    assert needle in str(e.value)

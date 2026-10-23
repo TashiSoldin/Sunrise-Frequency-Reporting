@@ -143,8 +143,8 @@ def test_e1_a_neutralised_key_column_is_not_a_key():
 
 
 STILL_FINE = [
-    ("key-then-agent-range", R + "r.WAYBILL IN ('102155314', 'X') AND r.AGENT > 0"),
-    ("manifest-key-then-agent-range", R + "r.MANIFEST = 37733 AND r.AGENT > 0"),
+    ("single-waybill-then-agent-range", R + "r.WAYBILL = '102155314' AND r.AGENT > 0"),
+    ("manifest-key-then-agent-eq", R + "r.MANIFEST = 37733 AND r.AGENT = 30105"),
     ("window-agent-eq-compound", R + W3 + " AND r.AGENT = 30105"),
     ("window-agent-in-compound", R + W3 + " AND r.AGENT IN (1, 2, 3)"),
     ("window-agent-ne-no-index", R + W3 + " AND r.AGENT <> 0"),
@@ -160,3 +160,29 @@ def test_e1_shapes_whose_plan_stays_on_one_index_remain_accepted(label, sql):
     windows: list[str] = []
     check_open_query(sql, windows)
     assert windows and ("keyed by" in windows[0] or "window" in windows[0])
+
+
+REFUSED_SINCE_THE_NINTH_REVIEW = [
+    (
+        "key-list-then-agent-range",
+        R + "r.WAYBILL IN ('102155314', 'X') AND r.AGENT > 0",
+    ),
+    ("manifest-key-then-agent-range", R + "r.MANIFEST = 37733 AND r.AGENT > 0"),
+]
+
+
+@pytest.mark.parametrize(
+    "label,sql",
+    REFUSED_SINCE_THE_NINTH_REVIEW,
+    ids=[s[0] for s in REFUSED_SINCE_THE_NINTH_REVIEW],
+)
+def test_e1_beside_a_key_the_rule_applies_too(label, sql):
+    """Ninth review N1 (23 Oct 2026): these planned RO_MANIFEST / the PK
+    alone on 23 Oct, but beside a non-unique key Firebird ANDed RO_BOOKDATE
+    for BOOKDATE IS NULL (4.3 s) and RO_AWB for AWB = '' (3.8 s), so the
+    keyed-alias exemption is gone — only a single waybill literal keeps
+    it (tests/test_review9_fix_pass.py)."""
+    with pytest.raises(GuardError) as e:
+        check_open_query(sql)
+    assert "beside the" in str(e.value) and "key" in str(e.value)
+    assert "write it as r.AGENT + 0 > n" in str(e.value)
