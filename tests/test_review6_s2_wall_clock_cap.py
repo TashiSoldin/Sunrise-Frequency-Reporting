@@ -10,7 +10,10 @@ and its socket closed, so the worker dies instead of lingering.
 Firebird 3.0.13 has no SET STATEMENT TIMEOUT and firebirdsql 1.3 exposes no
 cancel call or statement-timeout attribute, so the cancel is the raw opcode
 plus the socket close — pinned here at the packet level, never against the
-production database.
+production database. The refusal text (design change, 23 Oct 2026) says the
+statement may still be running server-side and asks for a narrower window
+or key, never a retry as-is; the connect race (seventh review V6) is pinned
+in test_windowed_shape.py.
 """
 
 import socket
@@ -77,7 +80,9 @@ class TestTheCapIsWallClock:
         assert out["refused"] and "time cap" in out["reason"]
         assert "wall-clock" in out["reason"] and "cancelled and closed" in out["reason"]
         assert TIMEOUT_S - 0.5 <= elapsed <= TIMEOUT_S + 1.5, elapsed
-        assert out["reason"].endswith("rather than fetching rows)")
+        assert "may still be running server-side" in out["reason"]
+        assert "do not retry it as-is" in out["reason"]
+        assert "narrow the window or the key" in out["reason"]
 
 
 class _FakeRaw:
@@ -141,6 +146,18 @@ class TestCancelThread:
                 db._ACTIVE.pop(77, None)
         assert conn.sock._sock.closed is True
 
+    def test_a_slot_still_connecting_is_marked_cancelled(self):
+        with db._ACTIVE_LOCK:
+            db._ACTIVE[88] = db._CONNECTING
+        try:
+            assert db.cancel_thread(88) is True
+            with db._ACTIVE_LOCK:
+                assert 88 in db._CANCELLED
+        finally:
+            with db._ACTIVE_LOCK:
+                db._ACTIVE.pop(88, None)
+                db._CANCELLED.discard(88)
+
     def test_run_select_registers_the_connection_under_its_thread(self, monkeypatch):
         seen = {}
 
@@ -165,7 +182,9 @@ class TestCancelThread:
                 pass
 
         conn = Conn()
-        monkeypatch.setattr(db, "connect", lambda timeout=None: conn)
+        monkeypatch.setattr(
+            db, "connect", lambda timeout=None, connect_timeout=None: conn
+        )
         assert db.run_select(SQL) == (["NAME"], [("x",)])
         assert seen["registered"] is conn
         with db._ACTIVE_LOCK:

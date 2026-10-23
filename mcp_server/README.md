@@ -148,82 +148,85 @@ not cover, answered from the raw data through a fence:
   messages — a waybill's scan history is on `VIEW_EVENTSCANS`, and scans by
   type over a date range are the event-counts tool Reuven asked for on
   20 Oct 2026, quoted separately. Quoted identifiers refuse outright.
-- **Windowed tables** (`WINDOWED`, QT-000007 line 4, 21 Oct 2026; rewritten
-  as a whitelist after the Fable review the same day): `ROUTING` (6.2M rows)
-  and `VIEW_EVENTSCANS` (a UNION over the 113M-row EVENT family with eight
-  lookups per row) are queryable only under a rule checked in
-  `check_open_query` after the allowlist, identifier and star gates. The
-  statement is split into **SELECT blocks** — the outer query, each
-  `UNION`/`EXCEPT`/`INTERSECT` branch, each CTE body, derived table and
-  subquery is its own block with its own FROM list and WHERE (review B1: a
-  key in one UNION branch had covered the other). A block that reads a
-  windowed table is accepted only if that table's alias carries, as a
-  **direct top-level AND conjunct** of the block's WHERE or of the ON of an
-  INNER / comma join — never an outer join's ON (B2), never HAVING or the
-  select list — a **bare** predicate of exactly one of these forms:
-  `alias.KEY = 'literal'`, `alias.KEY IN ('literal', …)` within the limit,
-  `alias.DATE BETWEEN lit AND lit`, or `alias.DATE >= lit AND alias.DATE <=
-  lit` (both conjuncts top-level; `DATE '…'` / `TIMESTAMP '…'` prefixes are
-  read; plain grouping parentheses are fine). Nothing wrapped around or
-  inside it — no CASE, IIF, COALESCE, IS FALSE/TRUE, `= FALSE`, NOT, function
-  call, arithmetic or OR (B3: a comparison that restricts nothing had counted
-  as the key). ROUTING: `WAYBILL` (= or IN, up to 100), `MANIFEST` (= or IN,
-  up to 20; MBRANCH and MTYPE optional — the result note says they pin one
-  trip), or an `AGENTDATE` range of at most 31 days. VIEW_EVENTSCANS:
-  `WAYBILL` or `TRACKNO` (= or IN, up to 100), `MANIFEST` (= or IN, up to
-  20), or an `EVENTDATE` range of at most 3 days. **Literal rules**: string
-  keys are quoted, non-empty strings — an unquoted number makes Firebird
-  convert the column, not the literal, and scan (M1), and `''` is a shared
-  junk TRACKNO (M2); `MANIFEST` is a positive integer — `0` is the
+- **Windowed tables take the one-block shape** (`WINDOWED`, `_PARTNERS`,
+  `_check_windowed_shape`; QT-000007 line 4, 21 Oct 2026; design change
+  23 Oct 2026). `ROUTING` (6.2M rows) and `VIEW_EVENTSCANS` (a UNION over the
+  113M-row EVENT family with eight lookups per row) are queryable only under
+  a rule checked in `check_open_query` after the allowlist, identifier and
+  star gates. Seven adversarial reviews (21–23 Oct) each found a place a
+  predicate could hide in the accepted language — a UNION branch, a CTE, a
+  derived table, a subquery, a join partner's column, a derived column pushed
+  down by the optimizer — and each was closed one at a time. The language
+  for these two tables is now a **whitelist of shapes**, so those escapes are
+  unexpressible rather than caught; nothing changes for a statement that
+  does not touch them. A statement that reads either table is accepted only
+  if all of this holds, else refused naming the rule and the one-block form:
+  1. **one SELECT block** — no WITH, no derived table, no subquery anywhere
+     (select list, WHERE, ON, HAVING), no UNION;
+  2. **one windowed table, first in the FROM**; the other items may only be
+     `VIEW_WBANALYSE`, `MANIFEST` and `AGENTDRIVER`, at most one each, joined
+     with `JOIN … ON` or `LEFT JOIN … ON` (no comma join, CROSS, NATURAL,
+     RIGHT or FULL), and the whole ON is the one sanctioned equality —
+     `w.WAYBILL = r.WAYBILL`, `m.MANIFEST = r.MANIFEST`, `d.AGENT = r.AGENT`
+     (the view has no AGENT column, so AGENTDRIVER partners ROUTING only);
+  3. **a WHERE of plain AND-ed conjuncts**: one is the signed key or window
+     on the windowed alias — ROUTING `WAYBILL` (= or IN, up to 100),
+     `MANIFEST` (= or IN, up to 20; MBRANCH and MTYPE optional — the result
+     note says they pin one trip) or an `AGENTDATE` range of at most 31 days;
+     VIEW_EVENTSCANS `WAYBILL` or `TRACKNO` (= or IN, up to 100), `MANIFEST`
+     (= or IN, up to 20) or an `EVENTDATE` range of at most 3 days — written
+     as `alias.KEY = 'literal'`, `alias.KEY IN ('literal', …)`, `alias.DATE
+     BETWEEN lit AND lit` or `alias.DATE >= lit AND alias.DATE <= lit` (`DATE
+     '…'` / `TIMESTAMP '…'` prefixes read); each join partner carries its own
+     key the same way (the signed 21 Oct join rule: `WAYBILL` on the view or
+     a `WAYDATE` range of at most 31 days, `MANIFEST` on MANIFEST, `AGENT` on
+     AGENTDRIVER — the plans read 21 Oct show Firebird driving such a join
+     from the big side with a full scan otherwise); every other conjunct is
+     `alias.COL <op> literal` (`=`, `<>`, `<`, `<=`, `>`, `>=`, LIKE,
+     STARTING WITH, CONTAINING), `alias.COL IN (literals)` or `alias.COL IS
+     [NOT] NULL` — no OR, NOT, parentheses, function, CASE, BETWEEN outside a
+     window, or column-to-column comparison;
+  4. **MANIFEST only as such a key**, in a sanctioned ON, or in the select
+     list / GROUP BY / ORDER BY — any other comparison on it changed the plan
+     (sixth review S2: a one-day window with `MANIFEST > 0` planned a bitmap
+     over the whole MANIFEST index and ran past the cap; the seventh review
+     reached the same plan through a bare column, a derived table and a join
+     partner);
+  5. **a select list of qualified columns**, `COUNT / SUM / MIN / MAX / AVG`
+     over a qualified column or `*`, with FIRST / SKIP / DISTINCT / ROWS as
+     before; GROUP BY / ORDER BY by qualified column, position or `col + 0`;
+     HAVING only `aggregate <op> literal`. Ordering or grouping ROUTING by an
+     indexed column (WAYBILL, MANIFEST, AGENT, BOOKDATE) makes Firebird walk
+     that whole index (seventh review V4: a keyed read grouped by MANIFEST
+     took 7.3 s) — the result note says so and suggests `r.MANIFEST + 0`;
+  6. everything the general guard does (ASCII whitelist, comments, literals,
+     the 4,000-character cap, the allowlist, DENIED_COLUMNS, the star ban)
+     still runs first.
+  A statement that reads one table with no alias may write bare column
+  names; with a join partner every column must be qualified. **Literal
+  rules**: string keys are quoted, non-empty strings — an unquoted number
+  makes Firebird convert the column, not the literal, and scan (M1), and `''`
+  is a shared junk TRACKNO (M2); `MANIFEST` is a positive integer — `0` is the
   no-manifest sentinel on ~41% of EVENT rows (B4); IN-list duplicates count.
-  **MANIFEST only as a key** (sixth review S2, 22 Oct 2026): on ROUTING and
-  the view, MANIFEST may appear only as `=` / `IN` — any other comparison
-  (`>`, `<>`, BETWEEN, NOT, a wrapper, a subquery), beside a window or a key,
-  is refused with "a manifest range is not supported": a one-day EVENTDATE
-  window with `MANIFEST > 0` planned `INDEX (EV_EVENTDATE, EV_MANIFEST)`, a
-  bitmap over the whole MANIFEST index ANDed with the window, and ran past
-  the cap. A join equality (`m.MANIFEST = r.MANIFEST`) is a join condition,
-  not a range, and passes.
   `BOOKDATE`, `AGENT`, hubs, `MTYPE`, `STATUS` on ROUTING and `WAYDATE`,
   `ACCNUM`, `NAME`, `HUB`, `USERNAME`, `AGENTNAME` on the view are filters
   only (BOOKDATE is populated only on local-delivery rows; the view's
-  lookup-side columns make the planner scan TRACK and WAYBILL). A bare column
-  with no alias is attributed only in a single-table block. Ranges are
-  inclusive: `BETWEEN a AND b` is b − a + 1 days, `>= a AND < b` is b − a.
-  **Joins to the big relations** (`_JOIN_BOUND`, Akha's call on the 21 Oct
-  finding, widened by review H1): if any block reads a windowed table, every
-  block that reads `VIEW_WBANALYSE`, `MANIFEST` or `AGENTDRIVER` must key
-  that relation's alias by the same bare-conjunct rule — `WAYBILL` on the
-  view (or a `WAYDATE` range of at most 31 days, the daily extraction's
-  indexed path), `MANIFEST` on MANIFEST, `AGENT` on AGENTDRIVER (it has no
-  MANIFEST column) — because the plans read 21 Oct show Firebird driving such
-  a join from the big side with a full scan unless its own column is bounded
-  (only a single `=` on the ROUTING side propagates, and the fence must not
-  depend on the optimizer). Without a windowed table in the statement those
-  three relations are unchanged from Day 5. The refusal names the block, the
-  alias and what was missing (no bare conjunct; a subquery, parameter or
-  `CURRENT_DATE` range; an OR; a wrapper; an outer-join ON; a filter-only
-  column; an over-long IN-list; reversed or one-sided bounds; the sentinel or
-  an unquoted key; the big relation's missing key) and states the rule in one
-  sentence; an accepted query carries a `Window applied —` note. **One FROM
-  walk** (sixth review S1): `_from_items` is the only reader of table
-  position — the allowlist takes its names from it and the window check
-  attributes its items to SELECT blocks by character offset
-  (`_attribute_items`), refusing any item it cannot place. There is no second
-  walk to disagree with the first (the window check's own loop had stopped
-  silently at a derived table's column list, `(SELECT …) t (A)`, so a
-  key-less ROUTING or an unkeyed VIEW_WBANALYSE listed after it went
-  unjudged). The widths
-  come from live plans and timings, every PLAN line recorded in
+  lookup-side columns make the planner scan TRACK and WAYBILL). Ranges are
+  inclusive: `BETWEEN a AND b` is b − a + 1 days, `>= a AND < b` is b − a. An
+  accepted query carries a `Window applied —` note per bounded relation.
+  **One FROM walk** (sixth review S1): `_from_items` is the only reader of
+  table position — the allowlist takes its names from it and the shape check
+  reads its items, join words and ON spans. The widths come from live plans
+  and timings, every PLAN line recorded in
   `research/db_query_interface/routing_eventscans_plans_2026-10-21.md`
   (ROUTING 31 days = 48,680 rows in 168 ms cold, the unbounded count 7.9 s;
-  the view 1/3/7 days = 1.2/3.5/6.9 s warm). The 15 s cap cannot stop
-  Firebird 3 server-side, so this predicate check is the load guard for these
-  two. `ROUTING.DELOTP` (the delivery one-time PIN) is withheld, so `SELECT *`
-  refuses on ROUTING as on any table with withheld columns; the view's
-  `RECIPIENT` and `USERNAME` are names and are served. ROUTING's money columns
-  (SUBTOTAL / VAT / TOTAL / INVAMOUNT / TOTPAID / VATPAID) carry the
-  honest-boundary note like the view's do.
+  the view 1/3/7 days = 1.2/3.5/6.9 s warm; the 3-day count 14.5 s on a cold
+  morning, 23 Oct). The 15 s cap cannot stop Firebird 3 server-side, so this
+  shape is the load guard for these two. `ROUTING.DELOTP` (the delivery
+  one-time PIN) is withheld, so `SELECT *` refuses on ROUTING as on any table
+  with withheld columns; the view's `RECIPIENT` and `USERNAME` are names and
+  are served. ROUTING's money columns (SUBTOTAL / VAT / TOTAL / INVAMOUNT /
+  TOTPAID / VATPAID) carry the honest-boundary note like the view's do.
 - **Row cap 500 — a hit cap refuses**, never truncates (the every-fetcher
   rule). **Time cap 15 s, wall-clock** (sixth review S2/S5, 22 Oct 2026): the
   fetch runs in a worker thread with a hard deadline; on expiry the answer is
@@ -236,7 +239,14 @@ not cover, answered from the raw data through a fence:
   cap bounds how long we wait, and whether the server stops the statement
   depends on it honouring the cancel or noticing the closed socket — the real
   load bound is the allowlist and the window rule. The driver reports a
-  tripped socket read as `OperationalError: Can not recv() packets`.
+  tripped socket read as `OperationalError: Can not recv() packets`. The
+  refusal says the statement may still be running server-side and asks for a
+  narrower window or key, never a retry as-is. **Connect budget 5 s**
+  (seventh review V6, 23 Oct 2026): the open path's TCP probe and Firebird
+  handshake get 5 s of the cap, `db.run_select` registers the worker's slot
+  before it connects, and a cancel that lands during the connect closes the
+  connection the moment it exists — a deadline can no longer expire with
+  nothing registered to cancel.
 - **Date plausibility flags** on every date column in the result
   (`day_guards.plausible_window` / `classify_dates`): 1899-12-30 placeholders,
   pre-1990 junk and future dates are counted per column — PP carries all

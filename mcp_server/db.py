@@ -41,7 +41,9 @@ MAX_ROWS = 1000
 CONNECT_TIMEOUT_S = 10
 
 
-def connect(timeout: float | None = None) -> firebirdsql.Connection:
+def connect(
+    timeout: float | None = None, connect_timeout: float = CONNECT_TIMEOUT_S
+) -> firebirdsql.Connection:
     """timeout is the socket timeout in seconds — a read that blocks longer
     raises. It caps how long we WAIT, not what Firebird executes: an
     abandoned aggregate may keep running server-side after the socket
@@ -52,14 +54,17 @@ def connect(timeout: float | None = None) -> firebirdsql.Connection:
     review: a host that drops packets rather than refusing hangs the driver
     indefinitely, where a refusing one fails in ~2s) is covered for EVERY
     caller by the bounded TCP probe below, which converts the hang into a
-    clean ConnectionError within CONNECT_TIMEOUT_S."""
+    clean ConnectionError within connect_timeout. The Firebird handshake
+    runs under the same connect_timeout (seventh review V6, 23 Oct 2026: the
+    open path gives the whole connect 5 s of its cap); the per-read timeout
+    takes over once the attachment exists."""
     load_dotenv()
     probe = socket.create_connection(
         (os.getenv("DB_HOST"), int(os.getenv("DB_PORT", "3050"))),
-        timeout=CONNECT_TIMEOUT_S,
+        timeout=connect_timeout,
     )
     probe.close()
-    return firebirdsql.connect(
+    conn = firebirdsql.connect(
         host=os.getenv("DB_HOST"),
         database=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"),
@@ -68,8 +73,12 @@ def connect(timeout: float | None = None) -> firebirdsql.Connection:
         charset="latin1",
         use_unicode=True,
         isolation_level=firebirdsql.ISOLATION_LEVEL_READ_COMMITED_RO,
-        timeout=timeout,
+        timeout=connect_timeout,
     )
+    raw = getattr(getattr(conn, "sock", None), "_sock", None)
+    if raw is not None:
+        raw.settimeout(timeout)
+    return conn
 
 
 def run_select(
@@ -77,26 +86,36 @@ def run_select(
     params: tuple = (),
     max_rows: int = MAX_ROWS,
     timeout: float | None = None,
+    connect_timeout: float = CONNECT_TIMEOUT_S,
 ) -> tuple[list[str], list[tuple]]:
     """Run one guarded SELECT and return (column_names, rows), capped.
 
-    The connection is registered under the calling thread's ident for the
-    duration of the fetch so a caller on another thread can cancel it on a
-    wall-clock deadline (cancel_thread)."""
+    The calling thread's slot in _ACTIVE is taken BEFORE the connect (as
+    _CONNECTING) and holds the connection for the duration of the fetch, so
+    a caller on another thread can cancel it on a wall-clock deadline
+    (cancel_thread) at any point — a cancel that lands while this thread is
+    still connecting is honoured the moment the connection exists."""
     assert_select_only(sql)
-    try:
-        conn = connect(timeout)
-    except Exception as e:
-        # Said in the tool error the client relays: a raw WinError/socket
-        # message must never be mistaken for an answer about the data.
-        raise ConnectionError(
-            f"the Parcel Perfect database is unreachable ({e}) — the query "
-            "did not run, so this says nothing about the data asked for"
-        ) from e
     ident = threading.get_ident()
     with _ACTIVE_LOCK:
-        _ACTIVE[ident] = conn
+        _ACTIVE[ident] = _CONNECTING
+        _CANCELLED.discard(ident)
+    conn = None
     try:
+        try:
+            conn = connect(timeout, connect_timeout)
+        except Exception as e:
+            # Said in the tool error the client relays: a raw WinError/socket
+            # message must never be mistaken for an answer about the data.
+            raise ConnectionError(
+                f"the Parcel Perfect database is unreachable ({e}) — the query "
+                "did not run, so this says nothing about the data asked for"
+            ) from e
+        with _ACTIVE_LOCK:
+            cancelled = ident in _CANCELLED
+            _ACTIVE[ident] = conn
+        if cancelled:
+            raise TimeoutError("cancelled before the statement ran")
         with closing(conn.cursor()) as cur:
             cur.execute(sql, params)
             columns = [d[0] for d in cur.description]
@@ -105,13 +124,15 @@ def run_select(
     finally:
         with _ACTIVE_LOCK:
             _ACTIVE.pop(ident, None)
+            _CANCELLED.discard(ident)
         # A timed-out query leaves the socket dead; close() then raises its
         # own "Can not recv() packets" over the wire detach and would MASK
         # the real error. The cleanup failure carries no information.
-        try:
-            conn.close()
-        except Exception:
-            pass
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 # --- wall-clock cancel (sixth review S2/S5, 22 Oct 2026) ----------------------
@@ -130,7 +151,9 @@ def run_select(
 # the server drop the attachment when it next touches the connection. Which
 # of the two the server acts on first is not provable from here; neither can
 # be made worse by the other.
-_ACTIVE: dict[int, firebirdsql.Connection] = {}
+_CONNECTING = object()  # the slot is taken, the connection does not exist yet
+_ACTIVE: dict[int, object] = {}
+_CANCELLED: set[int] = set()  # idents cancelled while still connecting
 _ACTIVE_LOCK = threading.Lock()
 _OP_CANCEL = 91  # firebirdsql.wireprotocol.WireProtocol.op_cancel
 _FB_CANCEL_RAISE = 3  # ibase.h: fb_cancel_raise
@@ -138,10 +161,15 @@ _FB_CANCEL_RAISE = 3  # ibase.h: fb_cancel_raise
 
 def cancel_thread(ident: int) -> bool:
     """Cancel and close the connection that thread `ident` is fetching on.
-    Returns False when that thread has no registered connection (already
-    finished, or a test double). Never raises."""
+    A thread still connecting (seventh review V6) is marked cancelled and
+    raises as soon as its connection exists, without running the statement.
+    Returns False when that thread has no registered slot (already finished,
+    or a test double). Never raises."""
     with _ACTIVE_LOCK:
         conn = _ACTIVE.get(ident)
+        if conn is _CONNECTING:
+            _CANCELLED.add(ident)
+            return True
     if conn is None:
         return False
     stream = getattr(conn, "sock", None)
