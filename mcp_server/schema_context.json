@@ -5037,5 +5037,1950 @@
     }
    ]
   }
+ },
+ "indices": {
+  "survey_date": "2026-10-23",
+  "source": "RDB$INDICES / RDB$INDEX_SEGMENTS / RDB$VIEW_RELATIONS / RDB$RELATION_FIELDS, read live by research/db_query_interface/index_survey.py",
+  "relations": {
+   "AGENT": {
+    "AG_ACCNO": {
+     "fields": [
+      "ACCNO"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "AG_MTYPENAME": {
+     "fields": [
+      "MTYPE",
+      "NAME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "AG_NAME": {
+     "fields": [
+      "NAME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RDB$PRIMARY7": {
+     "fields": [
+      "AGENT"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "AGENTDRIVER": {
+    "AGD_AGENT": {
+     "fields": [
+      "AGENT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "AGD_FROMDATE": {
+     "fields": [
+      "FROMDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "AGD_ROUTEDRIVER": {
+     "fields": [
+      "ROUTE",
+      "AGENTDRIVER"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RDB$PRIMARY122": {
+     "fields": [
+      "AGENTDRIVER"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "AREA": {
+    "AR_HUBNAME": {
+     "fields": [
+      "HUB",
+      "NAME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "AR_NAME": {
+     "fields": [
+      "NAME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RDB$PRIMARY14": {
+     "fields": [
+      "HUB",
+      "AREA"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "BRANCH": {
+    "RDB$PRIMARY15": {
+     "fields": [
+      "BRANCH"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "COLLECT": {
+    "CO_ACCDATE": {
+     "fields": [
+      "ACCNUM",
+      "COLLECTIONDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CO_ADDUSERDATE": {
+     "fields": [
+      "ADDUSER",
+      "COLLECTIONDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CO_AGENTUSERDATE": {
+     "fields": [
+      "AGENTUSER",
+      "COLLECTIONDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CO_AGNTSTATCOLL": {
+     "fields": [
+      "AGENT",
+      "COLLECTIONDATE",
+      "STATUS",
+      "COLLECT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CO_AGNTSTATDATE": {
+     "fields": [
+      "AGENT",
+      "STATUS",
+      "COLLECTIONDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CO_CHECKINUSERDATE": {
+     "fields": [
+      "CHECKINUSER",
+      "COLLECTIONDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CO_COLLECTUSERDATE": {
+     "fields": [
+      "COLLECTUSER",
+      "COLLECTIONDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CO_DATE": {
+     "fields": [
+      "COLLECTIONDATE",
+      "AGENT",
+      "COLLECT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CO_DONE": {
+     "fields": [
+      "DONE",
+      "AGENT",
+      "STATUS",
+      "COLLECT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CO_RECURDAY": {
+     "fields": [
+      "RECURDAY"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CO_STATBRAGNT": {
+     "fields": [
+      "STATUS",
+      "BRANCH",
+      "AGENT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RDB$PRIMARY16": {
+     "fields": [
+      "COLLECT"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "COMPANY": {
+    "RDB$PRIMARY81": {
+     "fields": [
+      "COMPANY"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "COSTCENTRE": {
+    "RDB$PRIMARY25": {
+     "fields": [
+      "ACCNUM",
+      "COSTCENTRE"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "COSTCNTR": {
+    "CC_NAME": {
+     "fields": [
+      "NAME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RDB$PRIMARY18": {
+     "fields": [
+      "COSTCNTR"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "CUSTOMER": {
+    "CS_BRANCH": {
+     "fields": [
+      "BRANCH"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CS_CUSTNAME": {
+     "fields": [
+      "CUSTNAME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CS_PLACE": {
+     "fields": [
+      "PLACE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CU_REP": {
+     "fields": [
+      "REP"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CU_SECTOR": {
+     "fields": [
+      "SECTOR"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "CU_UPPERACCNUM": {
+     "fields": [],
+     "unique": false,
+     "inactive": false,
+     "expression": true
+    },
+    "RDB$PRIMARY28": {
+     "fields": [
+      "ACCNUM"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "EVENT": {
+    "EV_AGENT_EVTYPE": {
+     "fields": [
+      "AGENT",
+      "EVENTTYPE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "EV_EVENTDATE": {
+     "fields": [
+      "EVENTDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "EV_EXPORT": {
+     "fields": [
+      "EXPORT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "EV_MANIFEST": {
+     "fields": [
+      "MANIFEST"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "EV_TRACKDATETIME": {
+     "fields": [
+      "TRACKNO",
+      "EVENTDATE",
+      "EVENTTIME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "EV_TYPEDATETIME": {
+     "fields": [
+      "EVENTTYPE",
+      "EVENTDATE",
+      "EVENTTIME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "EV_WEBEXPORT": {
+     "fields": [
+      "WEBEXPORT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RDB$PRIMARY130": {
+     "fields": [
+      "TRACKNO",
+      "HUB",
+      "EVENTTYPE",
+      "MANIFEST"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "FAILTYPE": {
+    "RDB$PRIMARY75": {
+     "fields": [
+      "FAILTYPE"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "INSTYPE": {
+    "IT_DESCRIPTION": {
+     "fields": [
+      "DESCRIPTION"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RDB$PRIMARY39": {
+     "fields": [
+      "INSTYPE"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "MANIFEST": {
+    "MA_AGENTDATE": {
+     "fields": [
+      "AGENT",
+      "AGENTDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_AGENTMAWB": {
+     "fields": [
+      "AGENT",
+      "MAWBNO"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_AGENTREFERENCE": {
+     "fields": [
+      "AGENT",
+      "REFERENCE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_BRANCHAGENTDATE": {
+     "fields": [
+      "BRANCH",
+      "MTYPE",
+      "AGENT",
+      "AGENTDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_DATE": {
+     "fields": [
+      "BRANCH",
+      "MTYPE",
+      "AGENTDATE",
+      "MAWBNO"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_DESTORIGDATE": {
+     "fields": [
+      "DESTHUB",
+      "ORIGHUB",
+      "AGENTDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_DTORDEAG": {
+     "fields": [
+      "AGENTDATE",
+      "ORIGHUB",
+      "DESTHUB",
+      "AGENT",
+      "CUSTOMSGROUP"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_EXPORT": {
+     "fields": [
+      "EXPORT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_MANIFEST": {
+     "fields": [
+      "MANIFEST"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_MAWBNO": {
+     "fields": [
+      "MAWBNO"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_ORIGDESTDATE": {
+     "fields": [
+      "ORIGHUB",
+      "DESTHUB",
+      "AGENTDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_PAYGROUP": {
+     "fields": [
+      "PAYGROUP"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_REFERENCE": {
+     "fields": [
+      "REFERENCE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "MA_UPPERMAWB": {
+     "fields": [],
+     "unique": false,
+     "inactive": false,
+     "expression": true
+    },
+    "RDB$PRIMARY44": {
+     "fields": [
+      "BRANCH",
+      "MTYPE",
+      "MANIFEST"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "PLACE": {
+    "PL_HUBAREAORDER": {
+     "fields": [
+      "HUB",
+      "AREA",
+      "SORTORDER",
+      "PCODE",
+      "TOWN"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PL_OPSHUBAREA": {
+     "fields": [
+      "OPSHUB",
+      "AREA",
+      "TOWN"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PL_PCODETOWN": {
+     "fields": [
+      "PCODE",
+      "TOWN"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PL_RING": {
+     "fields": [
+      "RING"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PL_TOWNCAT": {
+     "fields": [
+      "TOWN",
+      "CATEGORY"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PL_ZONE": {
+     "fields": [
+      "ZONE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RDB$PRIMARY50": {
+     "fields": [
+      "PLACE"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "POD": {
+    "PO_ACCNUMDATE": {
+     "fields": [
+      "ACCNUM",
+      "PODDATE",
+      "PODTIME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PO_ACCWAY": {
+     "fields": [
+      "ACCNUM",
+      "WAYBILL"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PO_BATCH": {
+     "fields": [
+      "BATCH"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PO_CAPTURE": {
+     "fields": [
+      "CAPTUREDATE",
+      "CAPTURETIME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PO_DATE": {
+     "fields": [
+      "PODDATE",
+      "PODTIME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PO_EXPORT": {
+     "fields": [
+      "EXPORT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PO_IMPORTBATCH": {
+     "fields": [
+      "IMPORTBATCH"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PO_PODGROUP": {
+     "fields": [
+      "PODGROUP"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "PO_WEBEXPORT": {
+     "fields": [
+      "WEBEXPORT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RDB$PRIMARY26": {
+     "fields": [
+      "WAYBILL"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "PODIMAGE": {
+    "RDB$PRIMARY92": {
+     "fields": [
+      "WAYBILL"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "RECALLOC": {
+    "FK_RECALLOC_WAYBILL": {
+     "fields": [
+      "WAYBILL"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RA_WAYRECEIPT": {
+     "fields": [
+      "WAYBILL",
+      "RECEIPT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RDB$PRIMARY34": {
+     "fields": [
+      "RECEIPT",
+      "WAYBILL"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "REP": {
+    "RDB$PRIMARY56": {
+     "fields": [
+      "REP"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    },
+    "RE_COSTNAME": {
+     "fields": [
+      "COSTCNTR",
+      "NAME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RE_NAME": {
+     "fields": [
+      "NAME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "ROUTING": {
+    "RDB$PRIMARY51": {
+     "fields": [
+      "WAYBILL",
+      "LEG"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    },
+    "RO_AGENTWAYBILL": {
+     "fields": [
+      "AGENT",
+      "WAYBILL"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RO_AGNTAGNTDATE": {
+     "fields": [
+      "AGENT",
+      "AGENTDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RO_AGNTDATEAGENT": {
+     "fields": [
+      "AGENTDATE",
+      "AGENT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RO_AWB": {
+     "fields": [
+      "AWB"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RO_BOOKDATE": {
+     "fields": [
+      "BOOKDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RO_COSTSERV": {
+     "fields": [
+      "COSTSERV"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RO_EXPORT": {
+     "fields": [
+      "EXPORT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RO_MANIFEST": {
+     "fields": [
+      "MANIFEST"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "RO_PAYGROUP": {
+     "fields": [
+      "PAYGROUP"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "SCANRULE": {
+    "RDB$PRIMARY131": {
+     "fields": [
+      "EVENTTYPE"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "TRACK": {
+    "RDB$PRIMARY62": {
+     "fields": [
+      "WAYBILL",
+      "PARCELNO"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    },
+    "TR_AGTRACKNO": {
+     "fields": [
+      "AGTRACKNO"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "TR_EXPORT": {
+     "fields": [
+      "EXPORT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "TR_TRACKNO": {
+     "fields": [
+      "TRACKNO"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "TR_WEBEXPORT": {
+     "fields": [
+      "WEBEXPORT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "USERCODE": {
+    "RDB$PRIMARY65": {
+     "fields": [
+      "USERCODE"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    },
+    "UC_NAME": {
+     "fields": [
+      "NAME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "UC_USERAGENT": {
+     "fields": [
+      "USERAGENT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "VATTYPE": {
+    "RDB$PRIMARY66": {
+     "fields": [
+      "VATTYPE"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "WAYBILL": {
+    "RDB$PRIMARY13": {
+     "fields": [
+      "WAYBILL"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_ACCCAPTUREDT": {
+     "fields": [
+      "ACCNUM",
+      "CAPTUREDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_ACCDT": {
+     "fields": [
+      "ACCNUM",
+      "WAYDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_ACCIDATEWDATEWB": {
+     "fields": [
+      "ACCNUM",
+      "INVDATE",
+      "WAYDATE",
+      "WAYBILL"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_ACCNUM": {
+     "fields": [
+      "ACCNUM"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_COALWAYORIG": {
+     "fields": [],
+     "unique": false,
+     "inactive": false,
+     "expression": true
+    },
+    "WA_COLLECT": {
+     "fields": [
+      "COLLECT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_COLLWAY": {
+     "fields": [
+      "COLLWAY"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_DUEDATE": {
+     "fields": [
+      "DUEDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_EXPORT": {
+     "fields": [
+      "EXPORT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_IMPORTBTACH": {
+     "fields": [
+      "IMPORTBATCH"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_INVACC": {
+     "fields": [
+      "INVOICE",
+      "ACCNUM",
+      "WAYDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_INVDATE": {
+     "fields": [
+      "INVDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_ORDE": {
+     "fields": [
+      "ORIGHUB",
+      "DESTHUB"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_QUOTE": {
+     "fields": [
+      "QUOTE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_QUOTEDATE": {
+     "fields": [
+      "QUOTEDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_REFERENCE": {
+     "fields": [
+      "REFERENCE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_SEORDE": {
+     "fields": [
+      "SERVICE",
+      "ORIGHUB",
+      "DESTHUB"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_SERVICE": {
+     "fields": [
+      "SERVICE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_UPPERREFERENCE": {
+     "fields": [],
+     "unique": false,
+     "inactive": false,
+     "expression": true
+    },
+    "WA_WAYDATE": {
+     "fields": [
+      "WAYDATE",
+      "CUSTNAME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_WAYID": {
+     "fields": [
+      "WAYID"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_WAYORIG": {
+     "fields": [
+      "WAYBILLORIG"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WA_WEBEXPORT": {
+     "fields": [
+      "WEBEXPORT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "WAYEDIT": {
+    "RDB$PRIMARY68": {
+     "fields": [
+      "WAYBILL",
+      "EDITDATE",
+      "EDITTIME"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    },
+    "WE_DATEACTIONTIME": {
+     "fields": [
+      "EDITDATE",
+      "USERACTION",
+      "EDITTIME"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WE_EXPORT": {
+     "fields": [
+      "EXPORT"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WE_USERACTIONDATE": {
+     "fields": [
+      "USERCODE",
+      "USERACTION",
+      "EDITDATE"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    },
+    "WE_USERCODEACTION": {
+     "fields": [
+      "USERCODE",
+      "USERACTION"
+     ],
+     "unique": false,
+     "inactive": false,
+     "expression": false
+    }
+   },
+   "WAYEVENT": {
+    "RDB$PRIMARY133": {
+     "fields": [
+      "WAYBILL",
+      "EVENTDATE",
+      "EVENTTIME"
+     ],
+     "unique": true,
+     "inactive": false,
+     "expression": false
+    }
+   }
+  },
+  "views": {
+   "VIEW_EVENTSCANS": {
+    "contexts": {
+     "2": {
+      "relation": "EVENT",
+      "name": "EVENTS E",
+      "derived": true
+     },
+     "3": {
+      "relation": "TRACK",
+      "name": "EVENTS T",
+      "derived": true
+     },
+     "4": {
+      "relation": "WAYBILL",
+      "name": "EVENTS W",
+      "derived": true
+     },
+     "5": {
+      "relation": "EVENT",
+      "name": "EVENTS E",
+      "derived": true
+     },
+     "6": {
+      "relation": "WAYBILL",
+      "name": "EVENTS W",
+      "derived": true
+     },
+     "8": {
+      "relation": "WAYBILL",
+      "name": "W",
+      "derived": false
+     },
+     "9": {
+      "relation": "SCANRULE",
+      "name": "S",
+      "derived": false
+     },
+     "10": {
+      "relation": "USERCODE",
+      "name": "U",
+      "derived": false
+     },
+     "11": {
+      "relation": "BRANCH",
+      "name": "B",
+      "derived": false
+     },
+     "12": {
+      "relation": "AGENT",
+      "name": "AG",
+      "derived": false
+     },
+     "13": {
+      "relation": "POD",
+      "name": "POD",
+      "derived": false
+     },
+     "14": {
+      "relation": "ROUTING",
+      "name": "R",
+      "derived": false
+     },
+     "16": {
+      "relation": "FAILTYPE",
+      "name": "F",
+      "derived": false
+     }
+    },
+    "columns": {
+     "WAYBILL": null,
+     "TRACKNO": null,
+     "EVENTDATE": null,
+     "EVENTTIME": null,
+     "INPUTMETHOD": null,
+     "NAME": {
+      "relation": "SCANRULE",
+      "field": "NAME"
+     },
+     "EXPECTED": {
+      "relation": "SCANRULE",
+      "field": "INPUTMETHOD"
+     },
+     "HUB": null,
+     "MANIFEST": null,
+     "BRANCHNAME": {
+      "relation": "BRANCH",
+      "field": "NAME"
+     },
+     "USERNAME": {
+      "relation": "USERCODE",
+      "field": "NAME"
+     },
+     "ACCNUM": {
+      "relation": "WAYBILL",
+      "field": "ACCNUM"
+     },
+     "SERVICE": {
+      "relation": "WAYBILL",
+      "field": "SERVICE"
+     },
+     "ACTKG": {
+      "relation": "WAYBILL",
+      "field": "ACTKG"
+     },
+     "CHARGEUNITS": {
+      "relation": "WAYBILL",
+      "field": "CHARGEMASS"
+     },
+     "REFERENCE": {
+      "relation": "WAYBILL",
+      "field": "REFERENCE"
+     },
+     "CHARGEMASS": null,
+     "ORIGHUB": {
+      "relation": "WAYBILL",
+      "field": "ORIGHUB"
+     },
+     "DESTHUB": {
+      "relation": "WAYBILL",
+      "field": "DESTHUB"
+     },
+     "WAYDATE": {
+      "relation": "WAYBILL",
+      "field": "WAYDATE"
+     },
+     "BAY": null,
+     "SCANSPEED": null,
+     "FAILTYPE_DESC": {
+      "relation": "FAILTYPE",
+      "field": "DESCRIPTION"
+     },
+     "TRACKLEVEL": null,
+     "AGENTNAME": {
+      "relation": "AGENT",
+      "field": "NAME"
+     },
+     "PODDATE": {
+      "relation": "POD",
+      "field": "PODDATE"
+     },
+     "PODTIME": {
+      "relation": "POD",
+      "field": "PODTIME"
+     },
+     "RECIPIENT": null,
+     "AGTRACKNO": null
+    }
+   },
+   "VIEW_WBANALYSE": {
+    "contexts": {
+     "1": {
+      "relation": "WAYBILL",
+      "name": "WAYBILL",
+      "derived": false
+     },
+     "2": {
+      "relation": "POD",
+      "name": "POD",
+      "derived": false
+     },
+     "3": {
+      "relation": "COLLECT",
+      "name": "COLLECT",
+      "derived": false
+     },
+     "4": {
+      "relation": "PODIMAGE",
+      "name": "PODIMAGE",
+      "derived": false
+     },
+     "5": {
+      "relation": "INSTYPE",
+      "name": "INSTYPE",
+      "derived": false
+     },
+     "6": {
+      "relation": "VATTYPE",
+      "name": "VATTYPE",
+      "derived": false
+     },
+     "7": {
+      "relation": "COSTCENTRE",
+      "name": "COSTCENTRE",
+      "derived": false
+     },
+     "8": {
+      "relation": "BRANCH",
+      "name": "B2",
+      "derived": false
+     },
+     "9": {
+      "relation": "PLACE",
+      "name": "WB_DESTPLACE",
+      "derived": false
+     },
+     "10": {
+      "relation": "PLACE",
+      "name": "WB_ORIGPLACE",
+      "derived": false
+     },
+     "11": {
+      "relation": "CUSTOMER",
+      "name": "CUSTOMER",
+      "derived": false
+     },
+     "12": {
+      "relation": "BRANCH",
+      "name": "BRANCH",
+      "derived": false
+     },
+     "13": {
+      "relation": "COSTCNTR",
+      "name": "COSTCNTR",
+      "derived": false
+     },
+     "14": {
+      "relation": "COMPANY",
+      "name": "COMPANY",
+      "derived": false
+     },
+     "15": {
+      "relation": "REP",
+      "name": "REP",
+      "derived": false
+     },
+     "16": {
+      "relation": "USERCODE",
+      "name": "U1",
+      "derived": false
+     },
+     "17": {
+      "relation": "AREA",
+      "name": "WB_DESTAREA",
+      "derived": false
+     },
+     "18": {
+      "relation": "AREA",
+      "name": "WB_ORIGAREA",
+      "derived": false
+     },
+     "19": {
+      "relation": "RECALLOC",
+      "name": "RECALLOC RECALLOC",
+      "derived": true
+     },
+     "21": {
+      "relation": "ROUTING",
+      "name": "ROUTING",
+      "derived": false
+     },
+     "24": {
+      "relation": "AGENT",
+      "name": "AGENT",
+      "derived": false
+     },
+     "25": {
+      "relation": "FAILTYPE",
+      "name": "FAILTYPE",
+      "derived": false
+     },
+     "26": {
+      "relation": "MANIFEST",
+      "name": "MANIFEST",
+      "derived": false
+     },
+     "27": {
+      "relation": "AGENT",
+      "name": "DRIVER",
+      "derived": false
+     },
+     "28": {
+      "relation": "ROUTING",
+      "name": "ROUTING2",
+      "derived": false
+     },
+     "31": {
+      "relation": "FAILTYPE",
+      "name": "FAILTYPE2",
+      "derived": false
+     },
+     "32": {
+      "relation": "ROUTING",
+      "name": "RC2",
+      "derived": false
+     },
+     "33": {
+      "relation": "AGENT",
+      "name": "AC2",
+      "derived": false
+     },
+     "34": {
+      "relation": "ROUTING",
+      "name": "RC3",
+      "derived": false
+     },
+     "36": {
+      "relation": "FAILTYPE",
+      "name": "F2",
+      "derived": false
+     },
+     "37": {
+      "relation": "ROUTING",
+      "name": "RC4",
+      "derived": false
+     },
+     "39": {
+      "relation": "FAILTYPE",
+      "name": "F3",
+      "derived": false
+     },
+     "40": {
+      "relation": "EVENT",
+      "name": "WAYEVENT",
+      "derived": false
+     },
+     "42": {
+      "relation": "SCANRULE",
+      "name": "SCANRULE",
+      "derived": false
+     },
+     "43": {
+      "relation": "WAYEVENT",
+      "name": "FREETEXT",
+      "derived": false
+     },
+     "45": {
+      "relation": "WAYEDIT",
+      "name": "WE1",
+      "derived": false
+     },
+     "47": {
+      "relation": "USERCODE",
+      "name": "U2",
+      "derived": false
+     },
+     "48": {
+      "relation": "WAYEDIT",
+      "name": "WE2",
+      "derived": false
+     },
+     "50": {
+      "relation": "USERCODE",
+      "name": "U3",
+      "derived": false
+     }
+    },
+    "columns": {
+     "WAYBILL": {
+      "relation": "WAYBILL",
+      "field": "WAYBILL"
+     },
+     "WAYBILLORIG": {
+      "relation": "WAYBILL",
+      "field": "WAYBILLORIG"
+     },
+     "WAYDATE": {
+      "relation": "WAYBILL",
+      "field": "WAYDATE"
+     },
+     "QUOTEDATE": {
+      "relation": "WAYBILL",
+      "field": "QUOTEDATE"
+     },
+     "CAPTUREDATE": {
+      "relation": "WAYBILL",
+      "field": "CAPTUREDATE"
+     },
+     "ACCNUM": {
+      "relation": "WAYBILL",
+      "field": "ACCNUM"
+     },
+     "CUSTNAME": {
+      "relation": "WAYBILL",
+      "field": "CUSTNAME"
+     },
+     "CCNAME": {
+      "relation": "COSTCENTRE",
+      "field": "NAME"
+     },
+     "REP": {
+      "relation": "CUSTOMER",
+      "field": "REP"
+     },
+     "REPNAME": {
+      "relation": "REP",
+      "field": "NAME"
+     },
+     "CUSTCURRENCY": {
+      "relation": "CUSTOMER",
+      "field": "CURRENCY"
+     },
+     "CUSTGROUP": {
+      "relation": "CUSTOMER",
+      "field": "CUSTGROUP"
+     },
+     "REFERENCE": {
+      "relation": "WAYBILL",
+      "field": "REFERENCE"
+     },
+     "SERVICE": {
+      "relation": "WAYBILL",
+      "field": "SERVICE"
+     },
+     "BRANCHNAME": {
+      "relation": "BRANCH",
+      "field": "NAME"
+     },
+     "COSTCNTRNAME": {
+      "relation": "COSTCNTR",
+      "field": "NAME"
+     },
+     "COMPANY": {
+      "relation": "COMPANY",
+      "field": "NAME"
+     },
+     "INHOUSENAME": {
+      "relation": "BRANCH",
+      "field": "NAME"
+     },
+     "SPECINSTRUCTION": {
+      "relation": "WAYBILL",
+      "field": "SPECINSTRUCTION"
+     },
+     "INPUTMETHOD": {
+      "relation": "WAYBILL",
+      "field": "INPUTMETHOD"
+     },
+     "NOTEPRESENT": null,
+     "ORIGPERS": null,
+     "ORIGPERADD1": null,
+     "ORIGPERADD2": null,
+     "ORIGPERADD3": null,
+     "ORIGPERADD4": null,
+     "ORIGTOWN": {
+      "relation": "PLACE",
+      "field": "TOWN"
+     },
+     "ORIGPERPCODE": {
+      "relation": "WAYBILL",
+      "field": "ORIGPERPCODE"
+     },
+     "ORIGRING": {
+      "relation": "WAYBILL",
+      "field": "ORIGRING"
+     },
+     "ORIGPERCONTACT": null,
+     "ORIGPERPHONE": null,
+     "ORIGHUB": {
+      "relation": "WAYBILL",
+      "field": "ORIGHUB"
+     },
+     "ORIGOPSHUB": {
+      "relation": "WAYBILL",
+      "field": "ORIGOPSHUB"
+     },
+     "ORIGAREANAME": {
+      "relation": "AREA",
+      "field": "NAME"
+     },
+     "DESTPERS": null,
+     "DESTPERADD1": null,
+     "DESTPERADD2": null,
+     "DESTPERADD3": null,
+     "DESTPERADD4": null,
+     "DESTTOWN": {
+      "relation": "PLACE",
+      "field": "TOWN"
+     },
+     "DESTPERPCODE": {
+      "relation": "WAYBILL",
+      "field": "DESTPERPCODE"
+     },
+     "DESTRING": {
+      "relation": "WAYBILL",
+      "field": "DESTRING"
+     },
+     "DESTPERCONTACT": null,
+     "DESTPERPHONE": null,
+     "DESTHUB": {
+      "relation": "WAYBILL",
+      "field": "DESTHUB"
+     },
+     "DESTOPSHUB": {
+      "relation": "WAYBILL",
+      "field": "DESTOPSHUB"
+     },
+     "DESTAREANAME": {
+      "relation": "AREA",
+      "field": "NAME"
+     },
+     "SPECQUOTEFLAG": {
+      "relation": "WAYBILL",
+      "field": "SPECQUOTEFLAG"
+     },
+     "ACTKG": {
+      "relation": "WAYBILL",
+      "field": "ACTKG"
+     },
+     "CHARGEUNIT": {
+      "relation": "WAYBILL",
+      "field": "CHARGEMASS"
+     },
+     "CHARGEMASS": null,
+     "PIECES": {
+      "relation": "WAYBILL",
+      "field": "PIECES"
+     },
+     "VOLRATE": {
+      "relation": "WAYBILL",
+      "field": "VOLRATE"
+     },
+     "VOLCM": {
+      "relation": "WAYBILL",
+      "field": "VOLCM"
+     },
+     "SURCHARGE1": null,
+     "SURCHARGE2": null,
+     "SURCHARGE3": null,
+     "SURCHARGE4": null,
+     "SURCHARGE5": null,
+     "SURCHARGE6": null,
+     "SURCHARGE7": null,
+     "SURCHARGE8": null,
+     "SURCHARGE9": null,
+     "INSURANCEFLAG": {
+      "relation": "WAYBILL",
+      "field": "INSURANCEFLAG"
+     },
+     "INSURANCEDESCRIPTION": {
+      "relation": "INSTYPE",
+      "field": "DESCRIPTION"
+     },
+     "INSURANCE": null,
+     "NONDOCS": {
+      "relation": "WAYBILL",
+      "field": "NONDOCS"
+     },
+     "NONDOXFLAG": {
+      "relation": "WAYBILL",
+      "field": "NONDOXFLAG"
+     },
+     "DOCS": null,
+     "HANDLING": null,
+     "SPECIALSURCH": null,
+     "CARTAGE": null,
+     "OUTLY": null,
+     "SUBTOTAL": null,
+     "CURRENCYSUBTOTAL": null,
+     "VAT": null,
+     "TOTAL": null,
+     "DECLAREDVALUE": null,
+     "CUSTOMSVALUE": null,
+     "INVOICE": {
+      "relation": "WAYBILL",
+      "field": "INVOICE"
+     },
+     "INVDATE": {
+      "relation": "WAYBILL",
+      "field": "INVDATE"
+     },
+     "VATTYPE": {
+      "relation": "WAYBILL",
+      "field": "VATTYPE"
+     },
+     "VATDESCRIPTION": {
+      "relation": "VATTYPE",
+      "field": "DESCRIPTION"
+     },
+     "CUSTOMSDUTIES": null,
+     "CUSTOMSVAT": null,
+     "CURRATE": {
+      "relation": "WAYBILL",
+      "field": "CURRATE"
+     },
+     "CURRENCY": {
+      "relation": "WAYBILL",
+      "field": "CURRENCY"
+     },
+     "MINSHIPFLAG": {
+      "relation": "WAYBILL",
+      "field": "MINSHIPFLAG"
+     },
+     "DUALCOST": {
+      "relation": "WAYBILL",
+      "field": "DUALCOST"
+     },
+     "DUEDATE": {
+      "relation": "WAYBILL",
+      "field": "DUEDATE"
+     },
+     "DUETIME": {
+      "relation": "WAYBILL",
+      "field": "DUETIME"
+     },
+     "EARLYDELTIME": {
+      "relation": "WAYBILL",
+      "field": "EARLYDELTIME"
+     },
+     "PODDISCREPANCY": {
+      "relation": "POD",
+      "field": "DISCREP"
+     },
+     "PODDATE": {
+      "relation": "POD",
+      "field": "PODDATE"
+     },
+     "PODTIME": {
+      "relation": "POD",
+      "field": "PODTIME"
+     },
+     "PODRECIPIENT": null,
+     "PODBATCH": {
+      "relation": "POD",
+      "field": "BATCH"
+     },
+     "PODGROUP": {
+      "relation": "POD",
+      "field": "PODGROUP"
+     },
+     "PODDETAILS": {
+      "relation": "POD",
+      "field": "DETAILS"
+     },
+     "DELIVERYAGENT": {
+      "relation": "AGENT",
+      "field": "NAME"
+     },
+     "PODCAPTUREDATE": {
+      "relation": "POD",
+      "field": "CAPTUREDATE"
+     },
+     "PODCAPTURETIME": {
+      "relation": "POD",
+      "field": "CAPTURETIME"
+     },
+     "FAILTYPE_DESC": {
+      "relation": "FAILTYPE",
+      "field": "DESCRIPTION"
+     },
+     "ROUTING_FAILTYPE": {
+      "relation": "ROUTING",
+      "field": "FAILTYPE"
+     },
+     "FAILTYPE_CLASS": {
+      "relation": "FAILTYPE",
+      "field": "CLASS"
+     },
+     "AGENTWAYBILL": {
+      "relation": "ROUTING",
+      "field": "AWB"
+     },
+     "BOOKDATE": {
+      "relation": "ROUTING",
+      "field": "BOOKDATE"
+     },
+     "BOOKSTARTTIME": {
+      "relation": "ROUTING",
+      "field": "STARTTIME"
+     },
+     "BOOKENDTIME": {
+      "relation": "ROUTING",
+      "field": "ENDTIME"
+     },
+     "LASTDELDATE": {
+      "relation": "ROUTING",
+      "field": "AGENTDATE"
+     },
+     "LASTDELDRIVER": null,
+     "LAST_FAILTYPE": {
+      "relation": "FAILTYPE",
+      "field": "DESCRIPTION"
+     },
+     "PODPRESENT": null,
+     "EVENTNAME": {
+      "relation": "SCANRULE",
+      "field": "NAME"
+     },
+     "LASTEVENTHUB": {
+      "relation": "EVENT",
+      "field": "HUB"
+     },
+     "LASTEVENTDATE": {
+      "relation": "EVENT",
+      "field": "EVENTDATE"
+     },
+     "LASTEVENTTIME": {
+      "relation": "EVENT",
+      "field": "EVENTTIME"
+     },
+     "COLLECT": {
+      "relation": "COLLECT",
+      "field": "COLLECT"
+     },
+     "COLLECTIONDATE": {
+      "relation": "COLLECT",
+      "field": "COLLECTIONDATE"
+     },
+     "COLSTATUS": {
+      "relation": "COLLECT",
+      "field": "STATUS"
+     },
+     "COLLECTIONAGENT": {
+      "relation": "AGENT",
+      "field": "NAME"
+     },
+     "FIRST_TT_AGENT": null,
+     "CUSTOMSGROUP": null,
+     "MANIFESTFAIL": {
+      "relation": "FAILTYPE",
+      "field": "DESCRIPTION"
+     },
+     "PIF": null,
+     "RECEIPT": null,
+     "RECEIPTUSER": null,
+     "WAYREF_FIRST": null,
+     "WAYREF_COUNT": null,
+     "IMAGEBATCH1": null,
+     "PODIMGPRESENT": null,
+     "PAGEEVENTBATCH": null,
+     "COLLECTIONSTATUS": null,
+     "STATUS": null
+    }
+   }
+  }
  }
 }

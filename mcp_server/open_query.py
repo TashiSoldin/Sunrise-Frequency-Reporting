@@ -1170,12 +1170,16 @@ WINDOWED: dict[str, dict] = {
             "AGENT = or IN, or a WAYDATE range of at most 31 days on the view), and "
             "otherwise only alias.COL <op> literal, alias.COL IN (literals) or "
             "alias.COL IS [NOT] NULL — no OR, NOT, parentheses, function, CASE or "
-            "column-to-column comparison; MANIFEST only as such a key, in the ON, or "
-            "in the select list / GROUP BY / ORDER BY (write r.MANIFEST + 0 to order "
-            "or group by it without walking the whole index); BOOKDATE, AGENT, hub, "
-            "MTYPE and STATUS are filters only; a select list of qualified columns or "
-            "COUNT / SUM / MIN / MAX / AVG over one (QT-000007 line 4, measured 21 Oct "
-            "2026; one-block shape 23 Oct 2026)"
+            "column-to-column comparison; the window written once (one BETWEEN, or "
+            "one >= and <= pair); beside the window a filter on another indexed "
+            "column only as = / IN on AGENT or spelled r.COL + 0 (numeric, date) / "
+            "r.COL || '' (character) so no second index is read — the refusal names "
+            "the column and its spelling; MANIFEST only as such "
+            "a key, in the ON, or in the select list / GROUP BY / ORDER BY (write "
+            "r.MANIFEST + 0 to order or group by it without walking the whole index); "
+            "BOOKDATE, AGENT, hub, MTYPE and STATUS are filters only; a select list of "
+            "qualified columns or COUNT / SUM / MIN / MAX / AVG over one (QT-000007 "
+            "line 4, measured 21 Oct 2026; one-block shape 23 Oct 2026)"
         ),
     },
     "VIEW_EVENTSCANS": {
@@ -1207,7 +1211,12 @@ WINDOWED: dict[str, dict] = {
             "each join partner's own key (WAYBILL / MANIFEST = or IN, or a WAYDATE "
             "range of at most 31 days on VIEW_WBANALYSE), and otherwise only alias.COL "
             "<op> literal, alias.COL IN (literals) or alias.COL IS [NOT] NULL — no OR, "
-            "NOT, parentheses, function, CASE or column-to-column comparison; MANIFEST "
+            "NOT, parentheses, function, CASE or column-to-column comparison; the "
+            "window written once (one BETWEEN, or one >= and <= pair); beside the "
+            "window a filter on another indexed column (TRACKNO or WAYBILL as a range "
+            "or prefix among them) only spelled v.COL || '' (character) / v.COL + 0 "
+            "(numeric, date) so no second index is read — the refusal names the "
+            "column and its spelling; MANIFEST "
             "only as such a key, in the ON, or in the select list / GROUP BY / ORDER "
             "BY; WAYDATE, ACCNUM, NAME, HUB, USERNAME and AGENTNAME are filters only — "
             "the view is for waybill and manifest lookups; a scans-by-type-over-a-"
@@ -1373,7 +1382,18 @@ def _key_literal_problem(col, vals, ref):
 #      wins where the design brief was silent), and every other conjunct is
 #      alias.COL <op> literal, alias.COL IN (literals) or alias.COL IS [NOT]
 #      NULL — no OR, NOT, parentheses, functions, CASE, BETWEEN outside a
-#      window, or column-to-column comparison;
+#      window, or column-to-column comparison. Eighth review (23 Oct 2026):
+#      exactly ONE window form per date column (a second BETWEEN, or a
+#      BETWEEN beside a >= / <= pair, is refused — Firebird ranges on the
+#      first BETWEEN it meets and only filters by the rest; an exact repeat
+#      of the same BETWEEN is tolerated); and beside a window, on an alias
+#      that carries no key, a conjunct on any OTHER indexed column of that
+#      alias (the survey set, _indexed_columns) is refused unless it is = /
+#      IN on a key column of the signed rule (WAYBILL / TRACKNO / MANIFEST,
+#      AGENT on ROUTING — the compound RO_AGNTDATEAGENT takes it) or spelled
+#      col + 0 (numeric, date) / col || '' (character) so no index can take
+#      it; <> / != / IS NOT NULL / CONTAINING take no index and pass. Beside
+#      a key nothing changes: the optimizer stops at the key;
 #   4. MANIFEST only as such a key, in a sanctioned ON, or in the select
 #      list / GROUP BY / ORDER BY;
 #   5. a select list of qualified columns, COUNT / SUM / MIN / MAX / AVG over
@@ -1428,9 +1448,105 @@ _SHAPE_JOIN_FORMS = {
 _COMPARE_OPS = {"=", "<>", "!=", "~=", "^=", "<", "<=", ">", ">="}
 _COMPARE_WORDS = {"LIKE", "CONTAINING"}  # STARTING WITH arrives as one P token
 _AGGREGATES = {"COUNT", "SUM", "MIN", "MAX", "AVG"}
-# columns of ROUTING with their own index — ordering or grouping by one of
-# them makes Firebird navigate the whole index (seventh review V4)
-_ROUTING_INDEXED = {"WAYBILL", "MANIFEST", "AGENT", "BOOKDATE"}
+# --- indexed columns, from the index survey (eighth review E1–E4, 23 Oct 2026) --
+# Beside a RANGE-driven window Firebird ANDs a second bitmap built over the
+# WHOLE index of any other indexed column it can match (`PLAN (R INDEX
+# (RO_AGNTDATEAGENT, RO_EXPORT))`; the sixth review's S2 shape ran past the
+# 15 s cap), and ordering or grouping ROUTING by an indexed column walks that
+# whole index (seventh review V4, 7.3 s on a keyed read). Which columns are
+# indexed is READ from the "indices" section of schema_context.json — written
+# by research/db_query_interface/index_survey.py from RDB$INDICES live on
+# 23 Oct 2026 and asserted against the server by tests/test_index_survey.py,
+# so a new index fails the suite rather than opening a gap — never typed by
+# hand. A column is indexed when it is the FIRST segment of an index on its
+# relation; a view column through its base field; a UNION column inside a
+# view (no base field in the metadata) by name against the relations of the
+# view's derived-table contexts (EVENTS E / T / W).
+_NEUTRAL_NUM = "+ 0"  # numeric and date columns
+_NEUTRAL_CHAR = "|| ''"  # character columns
+_NUMERIC_TYPES = (
+    "SMALLINT",
+    "INTEGER",
+    "BIGINT",
+    "FLOAT",
+    "DOUBLE",
+    "NUMERIC",
+    "DECIMAL",
+    "DATE",
+    "TIMESTAMP",
+    "TIME",
+)
+
+
+def _index_survey() -> dict:
+    try:
+        return _schema_data().get("indices") or {}
+    except Exception:
+        return {}
+
+
+def _leading_indexes(relation: str) -> dict[str, list[str]]:
+    """field -> the active indexes on `relation` it is the first segment of
+    (an expression index has no segments and matches no column)."""
+    out: dict[str, list[str]] = {}
+    for name, idx in _index_survey().get("relations", {}).get(relation, {}).items():
+        fields = idx.get("fields") or []
+        if fields and not idx.get("inactive"):
+            out.setdefault(fields[0].upper(), []).append(name)
+    return out
+
+
+def _indexed_columns(table: str) -> dict[str, tuple[str, ...]]:
+    """column -> the indexes (RELATION.INDEX) that make it an indexed column
+    of `table`; empty when the survey carries nothing on the table."""
+    survey = _index_survey()
+    out: dict[str, list[str]] = {}
+    view = survey.get("views", {}).get(table)
+    if view is None:
+        for col, names in _leading_indexes(table).items():
+            out[col] = [f"{table}.{n}" for n in names]
+    else:
+        derived = sorted(
+            {c["relation"] for c in view["contexts"].values() if c.get("derived")}
+        )
+        for col, base in view["columns"].items():
+            col = col.upper()
+            if base:
+                rel = base["relation"]
+                names = _leading_indexes(rel).get(base["field"].upper(), [])
+                out[col] = [f"{rel}.{n}" for n in names]
+            else:
+                out[col] = [
+                    f"{rel}.{n}"
+                    for rel in derived
+                    for n in _leading_indexes(rel).get(col, [])
+                ]
+    return {c: tuple(v) for c, v in out.items() if v}
+
+
+def _column_type(table: str, col: str) -> str | None:
+    try:
+        info = _schema_data()["tables"].get(table, {})
+    except Exception:
+        return None
+    for c in info.get("columns", ()):
+        if c["name"].upper() == col:
+            return str(c.get("type") or "")
+    return None
+
+
+def _neutral_spelling(table: str, col: str) -> str | None:
+    """The spelling that lets no index take a comparison on the column —
+    `col + 0` for a numeric or date column, `col || ''` for a character one;
+    None when the survey does not know the column's type (or it is a BLOB)."""
+    t = (_column_type(table, col) or "").upper()
+    if t.startswith(("CHAR", "VARCHAR")):
+        return _NEUTRAL_CHAR
+    if t.startswith(_NUMERIC_TYPES):
+        return _NEUTRAL_NUM
+    return None
+
+
 _ONE_BLOCK_FORM = {
     "ROUTING": (
         "SELECT r.WAYBILL, r.LEG, r.MANIFEST FROM ROUTING r "
@@ -1455,7 +1571,10 @@ _SHAPE_RULES = {
         "a WHERE of plain AND-ed conjuncts — the key or window on the windowed alias, "
         "each join partner's own key, and otherwise alias.COL <op> literal, alias.COL IN "
         "(literals) or alias.COL IS [NOT] NULL; no OR, NOT, parentheses, function, CASE, "
-        "subquery, BETWEEN outside a window, or column-to-column comparison"
+        "subquery, BETWEEN outside a window, or column-to-column comparison; one window "
+        "form per date column; beside a window, a filter on another indexed column only "
+        "as = / IN on a key column or spelled col + 0 (numeric, date) / col || '' "
+        "(character) so no index can take it"
     ),
     4: (
         "MANIFEST only as a key (= a positive integer or IN up to the limit), in the "
@@ -1469,7 +1588,9 @@ _SHAPE_RULES = {
 }
 _CONJUNCT_FORM = (
     "alias.COL <op> literal, alias.COL IN (literals), alias.COL IS [NOT] NULL, or the "
-    "key / window form (= 'literal', IN (…), BETWEEN two literal dates, >= and <= literal dates)"
+    "key / window form (= 'literal', IN (…), BETWEEN two literal dates, >= and <= literal "
+    "dates); alias.COL + 0 (numeric, date) or alias.COL || '' (character) keeps an indexed "
+    "column off its index"
 )
 _CLAUSE_ORDER = ("WHERE", "GROUP", "HAVING", "ORDER", "ROWS")
 
@@ -1730,9 +1851,45 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
         text = " ".join(parts)
         return text if len(text) <= 80 else text[:77] + "…"
 
+    def neutral_at(c, j):
+        """`+ 0` or `|| ''` after a column -> (spelling, next offset); the
+        spelling that keeps the column off its index (E1–E4, V4)."""
+        if j + 1 < len(c):
+            if toks[c[j]] == ("+", "P") and toks[c[j + 1]] == ("0", "NUM"):
+                return _NEUTRAL_NUM, j + 2
+            if toks[c[j]] == ("||", "P") and toks[c[j + 1]] == ("", "LIT"):
+                return _NEUTRAL_CHAR, j + 2
+        return None, j
+
+    def check_neutral(alias, col, spelled, rule):
+        """The neutral spelling must match the column's type: `+ 0` on a
+        character column fails at execute, `|| ''` on a number compares
+        text. Refuses naming the right one."""
+        if spelled is None:
+            return
+        rel = aliases[alias]
+        ref = f"{label_for(alias)}{col}"
+        want = _neutral_spelling(rel, col)
+        if want is None:
+            raise _shape_refusal(
+                rule,
+                table,
+                f"{ref} {spelled} — the survey has no type for {col} on {rel}, so there "
+                "is no neutral spelling for it; write the plain column",
+            )
+        if want != spelled:
+            kind = "character" if want == _NEUTRAL_CHAR else "numeric or date"
+            raise _shape_refusal(
+                rule,
+                table,
+                f"{ref} {spelled} — {col} is {_column_type(rel, col)}, a {kind} column; "
+                f"its neutral spelling is {ref} {want}",
+            )
+
     def conjunct(c):
-        """-> (alias, col, kind, values) with kind in eq / cmp / match / lo /
-        hi / in / between / isnull, or a rule-3 refusal."""
+        """-> (alias, col, kind, values, neutral) with kind in eq / cmp /
+        match / lo / hi / in / between / isnull and neutral the `+ 0` /
+        `|| ''` spelling if the column carries one, or a rule-3 refusal."""
         ids = {toks[i][0].upper() for i in c if toks[i][1] == "ID"}
         if "OR" in ids or ("NOT" in ids and not _is_is_not_null(c)):
             raise _shape_refusal(3, table, f"'{describe(c)}' has an OR or a NOT")
@@ -1746,6 +1903,15 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
                 f"'{describe(c)}' does not start with alias.COL — write {_CONJUNCT_FORM}",
             )
         known(alias, col)
+        neutral, j = neutral_at(c, j)
+        if neutral and col == "MANIFEST":
+            raise _shape_refusal(
+                3,
+                table,
+                f"'{describe(c)}' — MANIFEST may not be spelled {label_for(alias)}MANIFEST "
+                f"{neutral}; MANIFEST is read only as a key (= a positive integer or IN)",
+            )
+        check_neutral(alias, col, neutral, 3)
         if j >= len(c):
             raise _shape_refusal(
                 3, table, f"'{describe(c)}' is a bare column, not a comparison"
@@ -1754,8 +1920,10 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
         u = t.upper()
         if k == "ID" and u == "IS":
             rest = [toks[i][0].upper() for i in c[j + 1 :]]
-            if rest in (["NULL"], ["NOT", "NULL"]):
-                return alias, col, "isnull", []
+            if rest == ["NULL"]:
+                return alias, col, "isnull", [("null",)], neutral
+            if rest == ["NOT", "NULL"]:
+                return alias, col, "isnull", [("notnull",)], neutral
             raise _shape_refusal(
                 3, table, f"'{describe(c)}' — only IS NULL / IS NOT NULL are accepted"
             )
@@ -1764,7 +1932,7 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
             if lt1 and j2 < len(c) and toks[c[j2]][0].upper() == "AND":
                 lt2, lv2, j3 = lit_at(c, j2 + 1)
                 if lt2 and j3 == len(c):
-                    return alias, col, "between", [(lt1, lv1), (lt2, lv2)]
+                    return alias, col, "between", [(lt1, lv1), (lt2, lv2)], neutral
             raise _shape_refusal(
                 3, table, f"'{describe(c)}' is not BETWEEN literal AND literal"
             )
@@ -1796,7 +1964,7 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
                             )
                         expect = True
                 if vals and not expect:
-                    return alias, col, "in", vals
+                    return alias, col, "in", vals, neutral
             raise _shape_refusal(
                 3, table, f"'{describe(c)}' is not alias.COL IN (literal, …)"
             )
@@ -1808,18 +1976,19 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
             lt, lv, j2 = lit_at(c, j + 1)
             if lt and j2 == len(c):
                 if k == "P" and u == "=":
-                    return alias, col, "eq", [(lt, lv)]
+                    return alias, col, "eq", [(lt, lv)], neutral
                 if k == "P" and u in _LO_OPS:
-                    return alias, col, "lo", [(lt, lv, u)]
+                    return alias, col, "lo", [(lt, lv, u)], neutral
                 if k == "P" and u in _HI_OPS:
-                    return alias, col, "hi", [(lt, lv, u)]
+                    return alias, col, "hi", [(lt, lv, u)], neutral
                 if k == "P" and u in _COMPARE_OPS:
-                    return alias, col, "cmp", [(lt, lv, u)]
+                    return alias, col, "cmp", [(lt, lv, u)], neutral
                 return (
                     alias,
                     col,
                     "match",
                     [(lt, lv, "STARTING WITH" if k == "P" else u)],
+                    neutral,
                 )
             if j + 1 < len(c) and toks[c[j + 1]][1] == "ID":
                 raise _shape_refusal(
@@ -1878,8 +2047,10 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
     plows: dict[str, list] = {a: [] for a in partners}
     phighs: dict[str, list] = {a: [] for a in partners}
 
-    def date_window(ref, col, kind, values, max_days, lows_, highs_):
-        """-> a qualifying description, or None after appending a reason."""
+    def date_window(ref, col, kind, values, max_days, lows_, highs_, forms_):
+        """-> a qualifying description, or None after appending a reason.
+        Every BETWEEN / = form with readable dates is recorded in `forms_`
+        (whatever its width) for the one-window-form rule (E5)."""
         if kind in ("eq", "between"):
             dates = [
                 _parse_date(v[1]) if v[0] in ("str", "date") else None for v in values
@@ -1890,6 +2061,7 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
                 )
                 return None
             lo_d, hi_d = dates[0], dates[-1]
+            forms_.append((lo_d, hi_d))
             width = (hi_d - lo_d).days + 1
             if width <= 0:
                 reasons.append(f"the {ref} bounds are reversed ({lo_d}..{hi_d})")
@@ -1943,8 +2115,15 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
             return f"{col} window {lo_d}..{hi_d} ({_days(width)})"
         return None
 
+    w_shown = alias_text(refs[0])
+
     def label_for(alias):
-        return f"{alias}." if alias != aliases[alias] else ""
+        """`alias.` in the user's own spelling (for messages and the neutral
+        spelling the hint shows); nothing when the table is written bare."""
+        if alias == aliases[alias]:
+            return ""
+        text = w_shown if alias == w_alias else shown.get(alias)
+        return f"{text or alias}."
 
     def opdesc(kind, values):
         """The operator of a conjunct, for a 'not a key' reason."""
@@ -1956,6 +2135,11 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
         if kind in fixed:
             return fixed[kind]
         return f"{values[0][2]} …" if values and len(values[0]) == 3 else "…"
+
+    # every conjunct by alias, for the second-index rule (E1–E3)
+    seen: dict[str, list] = {a: [] for a in aliases}
+    # BETWEEN / = window forms per alias, for the one-window-form rule (E5)
+    wforms: dict[str, list] = {a: [] for a in aliases}
 
     where = region("WHERE")
     if where is not None:
@@ -1969,9 +2153,32 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
                     "parentheses in the WHERE — write plain AND-ed conjuncts (a group, a function or a subquery is not accepted)",
                 )
         for c in split_and(where):
-            alias, col, kind, values = conjunct(c)
+            alias, col, kind, values, neutral = conjunct(c)
             rel = aliases[alias]
             ref = f"{label_for(alias)}{col}"
+            seen[alias].append((c, col, kind, values, neutral))
+            if neutral:
+                # the spelling takes the column off its index: never a key,
+                # never a window — a plain filter, whatever the column
+                keys_here = spec["keys"] if rel == table else _PARTNERS[rel]["keys"]
+                date_here = spec["date"] if rel == table else _PARTNERS[rel]["date"]
+                if col in keys_here:
+                    reasons.append(
+                        f"{ref} {neutral} is not a key — no index can take it; write "
+                        f"{ref} = 'literal' or IN (…) for a keyed read"
+                    )
+                    continue
+                if date_here and col == date_here:
+                    if kind == "between":
+                        raise _shape_refusal(
+                            3,
+                            table,
+                            f"BETWEEN on {ref} {neutral} — BETWEEN is accepted only on the window column itself",
+                        )
+                    reasons.append(
+                        f"{ref} {neutral} is not a window — write {ref} BETWEEN two literal dates"
+                    )
+                    continue
             if rel == table:
                 if col in spec["pins"]:
                     pins_seen.add(col)
@@ -2002,7 +2209,14 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
                         qualifying.append(f"keyed by {col} (1 literal)")
                 elif spec["date"] and col == spec["date"]:
                     q = date_window(
-                        ref, col, kind, values, spec["max_days"], lows, highs
+                        ref,
+                        col,
+                        kind,
+                        values,
+                        spec["max_days"],
+                        lows,
+                        highs,
+                        wforms[alias],
                     )
                     if q:
                         qualifying.append(q)
@@ -2065,6 +2279,7 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
                         pspec["max_days"],
                         plows[alias],
                         phighs[alias],
+                        wforms[alias],
                     )
                     if q:
                         pkeyed[alias].append(q)
@@ -2100,6 +2315,93 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
             if q:
                 pkeyed[a].append(q)
 
+    # --- E5: exactly one window form per date column ------------------------------
+    def one_window_form(ref, forms_, lows_, highs_):
+        if len(set(forms_)) > 1:
+            raise _shape_refusal(
+                3,
+                table,
+                f"{ref} carries two BETWEEN windows — Firebird ranges the index on the first "
+                "one it meets and only filters by the second (a wide first window ran past "
+                "the 15 s cap on 23 Oct 2026); write the window once",
+            )
+        if forms_ and lows_ and highs_:
+            raise _shape_refusal(
+                3,
+                table,
+                f"{ref} carries a BETWEEN window and a >= / <= pair — write the window once, "
+                "as BETWEEN two literal dates or as >= and <= literal dates",
+            )
+
+    if spec["date"]:
+        one_window_form(
+            f"{label_for(w_alias)}{spec['date']}", wforms[w_alias], lows, highs
+        )
+    for a, rel in partners.items():
+        if _PARTNERS[rel]["date"]:
+            one_window_form(
+                f"{label_for(a)}{_PARTNERS[rel]['date']}",
+                wforms[a],
+                plows[a],
+                phighs[a],
+            )
+
+    # --- E1–E3: no second index beside a window -----------------------------------
+    def index_can_take(kind, values):
+        """Whether Firebird can match the conjunct to an index: = / IN,
+        ranges, BETWEEN, LIKE / STARTING WITH and IS NULL can be; <> / != /
+        IS NOT NULL / CONTAINING never are (plans read 23 Oct 2026)."""
+        if kind in ("eq", "in", "lo", "hi", "between"):
+            return True
+        if kind == "match":
+            return values[0][2] != "CONTAINING"
+        if kind == "isnull":
+            return values[0][0] == "null"
+        return False  # cmp = the not-equal operators
+
+    def no_second_index(alias, rel, keys_here, window_col):
+        """On an alias bounded by its window and carrying no key, refuse a
+        conjunct on any other indexed column unless = / IN on a signed key
+        column or spelled so no index can take it."""
+        indexed = _indexed_columns(rel)
+        eq_ok = set(keys_here)
+        if rel == table:
+            cols_here = _columns_of(table)
+            eq_ok |= {p["join"] for p in _PARTNERS.values() if p["join"] in cols_here}
+        for c, col, kind, values, neutral in seen[alias]:
+            if col == window_col or neutral or col not in indexed:
+                continue
+            if kind in ("eq", "in") and col in eq_ok:
+                continue
+            if not index_can_take(kind, values):
+                continue
+            ref = f"{label_for(alias)}{col}"
+            want = _neutral_spelling(rel, col) or _NEUTRAL_NUM
+            k = 3 if len(c) > 1 and toks[c[1]] == (".", "P") else 1
+            raise _shape_refusal(
+                3,
+                table,
+                f"'{describe(c)}' beside the {window_col} window — {col} is an indexed "
+                f"column of {rel} ({', '.join(indexed[col])}), and beside a range-driven "
+                "window Firebird ANDs a second bitmap built over that whole index (the "
+                "shape that ran past the 15 s cap on 22 Oct 2026); write it as "
+                f"{ref} {want} {describe(c[k:])} so no index can take it, or key the "
+                f"read ({' / '.join(sorted(keys_here))} = or IN)",
+            )
+
+    keyed_w = any(q.startswith("keyed by") for q in qualifying)
+    window_w = spec["date"] if any(" window " in q for q in qualifying) else None
+    if window_w and not keyed_w:
+        no_second_index(w_alias, table, spec["keys"], window_w)
+    for a, rel in partners.items():
+        pspec = _PARTNERS[rel]
+        if (
+            pspec["date"]
+            and any(" window " in q for q in pkeyed[a])
+            and not any(q.startswith("keyed by") for q in pkeyed[a])
+        ):
+            no_second_index(a, rel, pspec["keys"], pspec["date"])
+
     # --- rule 5: the select list, GROUP BY, HAVING, ORDER BY, ROWS ------------------
     def expect_ref(c, j, where_):
         alias, col, j2 = ref_at(c, j, rule=5)
@@ -2110,33 +2412,36 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
         known(alias, col, rule=5)
         return alias, col, j2
 
-    def plus_zero(c, j):
-        """`+ 0` after a column (the index-navigation workaround) -> next offset."""
-        if (
-            j + 1 < len(c)
-            and toks[c[j]] == ("+", "P")
-            and toks[c[j + 1]] == ("0", "NUM")
-        ):
-            return j + 2
-        return j
-
     nav_note: list[str] = []
+    # the index-walk note (seventh review V4, eighth review E4): a base table
+    # only — the view sorts — for every indexed column of the survey set
+    # except the window column beside its own window (that navigates the
+    # range only)
+    indexed_w = _indexed_columns(table) if _schema_kind(table) == "table" else {}
+    sel_items: list[tuple | None] = []  # (alias, col, neutral) per select item
+
+    def note_if_indexed(item):
+        if item is None:
+            return
+        alias, col, neutral = item
+        if neutral or aliases[alias] != table or col not in indexed_w:
+            return
+        if col == window_w:
+            return
+        nav_note.append(col)
 
     def by_item(c, where_, allow_dir):
         j = 0
         if toks[c[0]][1] == "NUM":
             j = 1
+            pos = int(toks[c[0]][0]) if toks[c[0]][0].isdigit() else 0
+            if 1 <= pos <= len(sel_items):
+                note_if_indexed(sel_items[pos - 1])  # the position resolved
         else:
             alias, col, j = expect_ref(c, 0, where_)
-            j2 = plus_zero(c, j)
-            if (
-                table == "ROUTING"
-                and aliases[alias] == table
-                and col in _ROUTING_INDEXED
-                and j2 == j
-            ):
-                nav_note.append(col)
-            j = j2
+            neutral, j = neutral_at(c, j)
+            check_neutral(alias, col, neutral, 5)
+            note_if_indexed((alias, col, neutral))
         if allow_dir and j < len(c) and word(c[j]) in ("ASC", "DESC"):
             j += 1
         if j != len(c):
@@ -2207,6 +2512,7 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
         if len(c) == 1 and (
             toks[c[0]][1] in ("NUM", "LIT") or toks[c[0]] == ("*", "P")
         ):
+            sel_items.append(None)
             continue
         if (
             len(c) == 3
@@ -2218,6 +2524,7 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
                 raise _shape_refusal(
                     5, table, f"{toks[c[0]][0]}.* names no alias in the FROM list"
                 )
+            sel_items.append(None)
             continue
         w0 = word(c[0])
         if (
@@ -2230,10 +2537,12 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
             if inner and word(inner[0]) == "DISTINCT":
                 inner = inner[1:]
             if len(inner) == 1 and toks[inner[0]] == ("*", "P") and w0 == "COUNT":
+                sel_items.append(None)
                 continue
             if inner:
                 _a, _col, j2 = expect_ref(inner, 0, "select list")
                 if j2 == len(inner):
+                    sel_items.append(None)
                     continue
             raise _shape_refusal(
                 5,
@@ -2241,13 +2550,15 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
                 f"'{describe(c)}' — an aggregate takes one qualified column or *",
             )
         alias, col, j2 = expect_ref(c, 0, "select list")
-        j2 = plus_zero(c, j2)
+        neutral, j2 = neutral_at(c, j2)
+        check_neutral(alias, col, neutral, 5)
         if j2 != len(c):
             raise _shape_refusal(
                 5,
                 table,
                 f"'{describe(c)}' in the select list is not a qualified column, an aggregate over one, or *",
             )
+        sel_items.append((alias, col, neutral))
 
     gb = region("GROUP")
     if gb is not None:
@@ -2311,7 +2622,6 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
             raise _shape_refusal(5, table, "ROWS takes a number or `n TO m`")
 
     # --- the verdict ----------------------------------------------------------------
-    w_shown = alias_text(refs[0])
     label = f"{table} (alias {w_shown})" if w_shown else table
     if not qualifying:
         detail = f" — found: {'; '.join(reasons)}" if reasons else ""
@@ -2337,12 +2647,25 @@ def _check_shape(sql: str, table: str, windows: list[str], items) -> None:
             )
         windows.append(f"{rel} ({shown[a]}): " + "; ".join(pkeyed[a]))
     if nav_note:
-        cols = ", ".join(sorted(set(nav_note)))
-        windows.append(
-            f"note: grouping or ordering ROUTING by {cols} makes Firebird walk that whole index "
-            f"(a keyed read grouped by MANIFEST took 7.3 s on 23 Oct 2026) — write the column as "
-            f"{w_shown or 'ROUTING'}.{min(set(nav_note))} + 0 in the GROUP BY / ORDER BY to sort instead"
+        cols = sorted(set(nav_note))
+        spelt = ", ".join(
+            f"{w_shown or table}.{c} {_neutral_spelling(table, c) or _NEUTRAL_NUM}"
+            for c in cols
         )
+        windows.append(
+            f"note: grouping or ordering {table} by {', '.join(cols)} makes Firebird walk "
+            "that whole index (a keyed read grouped by MANIFEST took 7.3 s on 23 Oct 2026) "
+            f"— write {spelt} in the GROUP BY / ORDER BY to sort instead (col + 0 for a "
+            "numeric or date column, col || '' for a character one)"
+        )
+
+
+def _schema_kind(table: str) -> str | None:
+    """'table' or 'view' from the survey; None when unknown."""
+    try:
+        return _schema_data()["tables"].get(table, {}).get("kind")
+    except Exception:
+        return None
 
 
 def check_open_query(sql: str, windows: list[str] | None = None) -> list[str]:
