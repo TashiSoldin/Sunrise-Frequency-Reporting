@@ -57,7 +57,12 @@ def connect(
     clean ConnectionError within connect_timeout. The Firebird handshake
     runs under the same connect_timeout (seventh review V6, 23 Oct 2026: the
     open path gives the whole connect 5 s of its cap); the per-read timeout
-    takes over once the attachment exists."""
+    takes over once the attachment exists — in BOTH places the driver keeps
+    one: Connection.timeout, which _recv_channel select()s on before every
+    read, and the socket's own timeout. Hot-fix 29 Oct 2026: 9eeb6400 reset
+    only the socket, so the connect budget silently became the per-read
+    limit (10 s reports, 5 s open path) and revenue_summary failed with
+    "Can not recv() packets" on every call from 23 Oct."""
     load_dotenv()
     probe = socket.create_connection(
         (os.getenv("DB_HOST"), int(os.getenv("DB_PORT", "3050"))),
@@ -75,6 +80,11 @@ def connect(
         isolation_level=firebirdsql.ISOLATION_LEVEL_READ_COMMITED_RO,
         timeout=connect_timeout,
     )
+    # firebirdsql 1.3 stores the connect-call timeout as Connection.timeout
+    # (fbcore.py Connection.__init__) and _recv_channel checks THAT before
+    # every read; the socket timeout below is the other half of the same
+    # hand-over. tests/test_db_read_timeout.py pins both.
+    conn.timeout = float(timeout) if timeout is not None else None
     raw = getattr(getattr(conn, "sock", None), "_sock", None)
     if raw is not None:
         raw.settimeout(timeout)
