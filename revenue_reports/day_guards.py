@@ -170,7 +170,8 @@ def frontier_from_day_counts(
     frontier rather than nothing.
 
     presence_fallback=False refuses that fallback and raises NoCompletedDays
-    instead. For a caller judging a TRAILING WINDOW of the counts rather than
+    instead (NoInvoicedDays still comes first when nothing is invoiced at all,
+    so the caller can tell the two apart). For a caller judging a TRAILING WINDOW of the counts rather than
     the whole year (mcp_server.revenue.revenue_summary, 2 Nov 2026): a window
     that holds a completed day gives the same frontier as the full year —
     the newest completed day is the newest completed day — but a window that
@@ -191,15 +192,15 @@ def frontier_from_day_counts(
     ]
     if done:
         return max(done) + timedelta(days=1)
-    if not presence_fallback:
-        raise NoCompletedDays(
-            "No day clears the invoiced-share bar — the presence fallback "
-            "was declined, so no frontier from these counts."
-        )
 
     any_inv = [d for d, (inv, _) in counted.items() if inv]
     if not any_inv:
         raise NoInvoicedDays(
             "No invoiced waybills found — cannot derive billing frontier."
+        )
+    if not presence_fallback:
+        raise NoCompletedDays(
+            "No day clears the invoiced-share bar — the presence fallback "
+            "was declined, so no frontier from these counts."
         )
     return max(any_inv) + timedelta(days=1)

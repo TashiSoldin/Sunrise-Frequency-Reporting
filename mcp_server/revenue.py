@@ -336,45 +336,53 @@ def _window_start(today: date) -> date:
     return max(fy_start(today), today - timedelta(days=DAY_COUNTS_WINDOW_DAYS))
 
 
-def _frontier_qualifies(counts, today: date) -> bool:
-    """Does the window hold a day the frontier rule counts as COMPLETED? Asked
-    of the guard itself (presence_fallback=False): if it does, the newest
-    completed day in the window is the newest in the year, and the window's
-    frontier is the full year's. If it does not, the window could only
-    answer from presence where the year might still find a completed day."""
+def _frontier_trigger(counts, today: date) -> str | None:
+    """Why the window cannot answer the frontier, or None when it can. Asked
+    of the guard itself (presence_fallback=False): if a day in the window is
+    COMPLETED, the newest completed day in the window is the newest in the
+    year, and the window's frontier is the full year's. If none is, the window
+    could only answer from presence where the year might still find one."""
     try:
         frontier_from_day_counts(
             _frontier_pairs(counts), today, presence_fallback=False
         )
-    except (NoCompletedDays, NoInvoicedDays):
-        return False
-    return True
+    except NoInvoicedDays:
+        return "no invoiced day"
+    except NoCompletedDays:
+        return "no day with invoicing complete"
+    return None
 
 
-def _trading_day_qualifies(counts, today: date) -> bool:
-    """Does the window hold a day the trading guard counts as TRADED? The
-    guard's floor is a 28-day trailing median, inside any window this module
-    reads, so a traded day in the window is the year's newest traded day; a
-    window whose pick is only the newest day present (the guard's own
+def _trading_day_trigger(counts, today: date) -> str | None:
+    """Why the window cannot answer the last trading day, or None when it
+    can. The guard's floor is a 28-day trailing median, inside any window this
+    module reads, so a traded day in the window is the year's newest traded
+    day; a window whose pick is only the newest day present (the guard's own
     fallback, which is_completed_trading_day rejects) must be widened."""
     pairs = _traded_pairs(counts)
-    return is_completed_trading_day(pairs, last_trading_day(pairs, today), today)
+    if is_completed_trading_day(pairs, last_trading_day(pairs, today), today):
+        return None
+    return "no completed trading day"
 
 
-def _windowed_counts(basis: str, run, today: date, qualifies) -> tuple[dict, bool]:
+def _windowed_counts(basis: str, run, today: date, triggers) -> tuple[dict, list[str]]:
     """Day counts over the trailing window, re-read over the full FY when
-    `qualifies(counts)` says the window cannot answer. (counts, widened)."""
+    `triggers(counts)` names a reason the window cannot answer. Returns
+    (counts, triggers) — triggers empty when the window answered."""
     start = _window_start(today)
     counts = day_counts(basis, run, start=start)
-    if start > fy_start(today) and not qualifies(counts):
-        return day_counts(basis, run), True
-    return counts, False
+    if start > fy_start(today):
+        why = triggers(counts)
+        if why:
+            return day_counts(basis, run), why
+    return counts, []
 
 
 _GUARD_LABEL = {
     "wb": "billing frontier and shipped last trading day",
     "inv": "billed last trading day",
 }
+_GUARD_VERB = {"wb": "were", "inv": "was"}
 _BASIS_LABEL = {"wb": "waybill-date", "inv": "invoice-date"}
 
 
@@ -382,30 +390,39 @@ def _compute_day_guards(basis: str, run, today: date) -> tuple[tuple, list[str]]
     """The dates revenue_summary takes from one basis's day counts — "wb":
     (billing frontier, shipped last trading day); "inv": (billed last trading
     day,) — read over the trailing window, widened to the full FY when the
-    guards find no qualifying day in it, with the note that says so."""
+    guards find no qualifying day in it, with a note naming which guard said
+    so."""
     if basis == "wb":
 
-        def ok(counts):
-            return _frontier_qualifies(counts, today) and _trading_day_qualifies(
-                counts, today
-            )
+        def triggers(counts):
+            return [
+                t
+                for t in (
+                    _frontier_trigger(counts, today),
+                    _trading_day_trigger(counts, today),
+                )
+                if t
+            ]
 
-        counts, widened = _windowed_counts("wb", run, today, ok)
+        counts, why = _windowed_counts("wb", run, today, triggers)
         values = (
             frontier_from_day_counts(_frontier_pairs(counts), today),
             last_trading_day(_traded_pairs(counts), today),
         )
     else:
-        counts, widened = _windowed_counts(
-            "inv", run, today, lambda c: _trading_day_qualifies(c, today)
+        counts, why = _windowed_counts(
+            "inv",
+            run,
+            today,
+            lambda c: [t for t in [_trading_day_trigger(c, today)] if t],
         )
         values = (last_trading_day(_traded_pairs(counts), today),)
     notes = []
-    if widened:
+    if why:
         notes.append(
-            f"the trailing {DAY_COUNTS_WINDOW_DAYS}-day window of "
-            f"{_BASIS_LABEL[basis]} day counts held no completed trading day, "
-            f"so the {_GUARD_LABEL[basis]} were judged over the full "
+            f"the {_BASIS_LABEL[basis]} day counts for the last "
+            f"{DAY_COUNTS_WINDOW_DAYS} days held {' and '.join(why)}, so the "
+            f"{_GUARD_LABEL[basis]} {_GUARD_VERB[basis]} judged over the full "
             "financial year"
         )
     return values, notes

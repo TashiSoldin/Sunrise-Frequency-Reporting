@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from day_guards import (
     NoCompletedDays,
+    NoInvoicedDays,
     frontier_from_day_counts,
     last_trading_day,
 )
@@ -195,10 +196,13 @@ class TestFallbackToTheFullYear:
             "the window first, then the whole FY"
         )
         assert any(
-            "waybill-date day counts held no completed trading day" in n
+            n.startswith(
+                "the waybill-date day counts for the last 60 days held no invoiced day"
+            )
+            and "billing frontier" in n
             and "full financial year" in n
             for n in r["notes"]
-        )
+        ), r["notes"]
 
     def test_no_traded_day_in_the_window_widens_the_billed_read(self):
         # No invoice run for two months: the invoice-date window is EMPTY, so
@@ -213,9 +217,13 @@ class TestFallbackToTheFullYear:
         assert [p[0] for _, p in count_calls(db, "inv")] == [WINDOW_START, FY0]
         assert len(count_calls(db, "wb")) == 1, "the waybill window answered"
         assert any(
-            "invoice-date day counts" in n and "billed last trading day" in n
+            n.startswith(
+                "the invoice-date day counts for the last 60 days held "
+                "no completed trading day"
+            )
+            and "billed last trading day" in n
             for n in r["notes"]
-        )
+        ), r["notes"]
 
     def test_a_window_that_is_the_whole_fy_is_never_re_read(self, monkeypatch):
         young = date(2026, 3, 20)
@@ -249,6 +257,13 @@ class TestFallbackToTheFullYear:
         full_wb_day = last_trading_day([(d, s) for d, _, s, _ in wb], TODAY)
         assert r["billing_frontier"] == full_frontier.isoformat()
         assert r["shipped"]["day"] == full_wb_day.isoformat() == D(1).isoformat()
+        # the note names the guard that triggered — the frontier, not trading
+        (note,) = [n for n in r["notes"] if n.startswith("the waybill-date")]
+        assert note.startswith(
+            "the waybill-date day counts for the last 60 days held "
+            "no day with invoicing complete, so"
+        ), note
+        assert "trading day" not in note.split(", so")[0]
 
 
 class TestGuardOptOut:
@@ -265,6 +280,16 @@ class TestGuardOptOut:
         per_day = {D(5): (3, 10), D(4): (0, 12)}  # too small to judge
         assert frontier_from_day_counts(per_day, TODAY) == D(4), "the old rule"
         with pytest.raises(NoCompletedDays):
+            frontier_from_day_counts(per_day, TODAY, presence_fallback=False)
+
+    def test_nothing_invoiced_raises_no_invoiced_days_either_way(self):
+        # the two refusals stay distinct, so the widening note can name the
+        # trigger: nothing invoiced at all is NoInvoicedDays, declined
+        # fallback or not; NoCompletedDays is for invoiced-but-not-complete
+        per_day = {D(5): (0, 700), D(4): (0, 700)}
+        with pytest.raises(NoInvoicedDays):
+            frontier_from_day_counts(per_day, TODAY)
+        with pytest.raises(NoInvoicedDays):
             frontier_from_day_counts(per_day, TODAY, presence_fallback=False)
 
 
