@@ -31,6 +31,8 @@ Guards (non-negotiable — the briefing page's date-column failure mode):
 import os
 import re
 import sys
+import threading
+import time
 import unicodedata
 from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
@@ -45,7 +47,10 @@ sys.path.insert(0, str(REPO / "revenue_reports"))
 
 import build_credit_notes
 import build_unbilled
+from data import col
 from day_guards import (
+    NoCompletedDays,
+    NoInvoicedDays,
     frontier_from_day_counts,
     is_completed_trading_day,
     last_trading_day,
@@ -59,11 +64,11 @@ from extract_revenue import (
     fy_start,
 )
 
-from data import col
 from mcp_server.db import run_select
 
 __all__ = [
     "InputError",
+    "clear_guard_cache",
     "credit_notes",
     "daily_report",
     "match_customer",
@@ -149,6 +154,18 @@ EXTRACT_CAP = 500_000  # full-FY extract runs ~85k lines; headroom, not a limit
 CREDITS_CAP = 100_000  # 3 FYs of credits is ~7k rows
 CUSTOMER_CAP = 50_000
 DAY_COUNTS_CAP = 400  # at most 366 day rows in one FY
+
+# --- the day guards' trailing window (maintenance, approved 30 Oct 2026) ------
+# revenue_summary reads the day counts only to place the billing frontier and
+# the last trading day — both judged on the NEWEST qualifying day — yet it
+# aggregated the whole FY on both bases on every call: two silent ~60 s GROUP
+# BYs, 143 s in all on 29 Oct against the client's 180 s limit. The counts are
+# now read over a trailing window and widened to the full FY only when the
+# window holds no qualifying day (the guards decide that, not this module —
+# see _day_guards), and the derived dates are kept in process for a quarter
+# of an hour. The other tools keep their full-FY reads: out of scope.
+DAY_COUNTS_WINDOW_DAYS = 60
+GUARD_CACHE_TTL_S = 15 * 60
 
 
 def _capped(rows: list, cap: int, what: str) -> list:
@@ -273,10 +290,22 @@ def filtered_extract(
     return export_shaped(cols, _capped(rows, EXTRACT_CAP, f"{basis} extract"))
 
 
-def day_counts(basis: str, run=run_select) -> dict[date, tuple[int, float, int]]:
+def day_counts(
+    basis: str, run=run_select, start: date | None = None
+) -> dict[date, tuple[int, float, int]]:
     """day -> (waybills, subtotal sum, invoiced count), FY-to-date, same
-    exclusions as the extract (the SQL is shared, see day_counts_sql)."""
-    sql, params = day_counts_sql(basis, fy_start(_today()))
+    exclusions as the extract (the SQL is shared, see day_counts_sql).
+
+    `start` narrows the aggregate to the days from `start` on: the statement
+    is day_counts_sql's unchanged, only its lower-bound parameter moves and
+    the FY ceiling stays, so a window can narrow the year but never widen it
+    (a start before the FY is a programming error, refused)."""
+    fy0 = fy_start(_today())
+    sql, params = day_counts_sql(basis, fy0)
+    if start is not None:
+        if start < fy0:
+            raise ValueError(f"day counts start {start} is before the FY start {fy0}")
+        params = [start, *params[1:]]
     _, rows = run(sql, tuple(params), DAY_COUNTS_CAP)
     out: dict[date, tuple[int, float, int]] = {}
     for d, n, sub, inv in _capped(rows, DAY_COUNTS_CAP, "day counts"):
@@ -297,6 +326,128 @@ def _traded_pairs(counts: dict[date, tuple[int, float, int]]):
     return [(d, s) for d, (_, s, _) in counts.items()]
 
 
+def _frontier_pairs(counts: dict[date, tuple[int, float, int]]):
+    return {d: (inv, n) for d, (n, _, inv) in counts.items()}
+
+
+def _window_start(today: date) -> date:
+    """First day of the trailing window: DAY_COUNTS_WINDOW_DAYS back, but
+    never before the FY start — the counts never cross a financial year."""
+    return max(fy_start(today), today - timedelta(days=DAY_COUNTS_WINDOW_DAYS))
+
+
+def _frontier_qualifies(counts, today: date) -> bool:
+    """Does the window hold a day the frontier rule counts as COMPLETED? Asked
+    of the guard itself (presence_fallback=False): if it does, the newest
+    completed day in the window is the newest in the year, and the window's
+    frontier is the full year's. If it does not, the window could only
+    answer from presence where the year might still find a completed day."""
+    try:
+        frontier_from_day_counts(
+            _frontier_pairs(counts), today, presence_fallback=False
+        )
+    except (NoCompletedDays, NoInvoicedDays):
+        return False
+    return True
+
+
+def _trading_day_qualifies(counts, today: date) -> bool:
+    """Does the window hold a day the trading guard counts as TRADED? The
+    guard's floor is a 28-day trailing median, inside any window this module
+    reads, so a traded day in the window is the year's newest traded day; a
+    window whose pick is only the newest day present (the guard's own
+    fallback, which is_completed_trading_day rejects) must be widened."""
+    pairs = _traded_pairs(counts)
+    return is_completed_trading_day(pairs, last_trading_day(pairs, today), today)
+
+
+def _windowed_counts(basis: str, run, today: date, qualifies) -> tuple[dict, bool]:
+    """Day counts over the trailing window, re-read over the full FY when
+    `qualifies(counts)` says the window cannot answer. (counts, widened)."""
+    start = _window_start(today)
+    counts = day_counts(basis, run, start=start)
+    if start > fy_start(today) and not qualifies(counts):
+        return day_counts(basis, run), True
+    return counts, False
+
+
+_GUARD_LABEL = {
+    "wb": "billing frontier and shipped last trading day",
+    "inv": "billed last trading day",
+}
+_BASIS_LABEL = {"wb": "waybill-date", "inv": "invoice-date"}
+
+
+def _compute_day_guards(basis: str, run, today: date) -> tuple[tuple, list[str]]:
+    """The dates revenue_summary takes from one basis's day counts — "wb":
+    (billing frontier, shipped last trading day); "inv": (billed last trading
+    day,) — read over the trailing window, widened to the full FY when the
+    guards find no qualifying day in it, with the note that says so."""
+    if basis == "wb":
+
+        def ok(counts):
+            return _frontier_qualifies(counts, today) and _trading_day_qualifies(
+                counts, today
+            )
+
+        counts, widened = _windowed_counts("wb", run, today, ok)
+        values = (
+            frontier_from_day_counts(_frontier_pairs(counts), today),
+            last_trading_day(_traded_pairs(counts), today),
+        )
+    else:
+        counts, widened = _windowed_counts(
+            "inv", run, today, lambda c: _trading_day_qualifies(c, today)
+        )
+        values = (last_trading_day(_traded_pairs(counts), today),)
+    notes = []
+    if widened:
+        notes.append(
+            f"the trailing {DAY_COUNTS_WINDOW_DAYS}-day window of "
+            f"{_BASIS_LABEL[basis]} day counts held no completed trading day, "
+            f"so the {_GUARD_LABEL[basis]} were judged over the full "
+            "financial year"
+        )
+    return values, notes
+
+
+# key (basis, today, run) -> (expires_at, computed_at, values, notes), on the
+# monotonic clock. Keyed on the data source too, so a different `run` (the
+# tests' fakes) never reads another's dates.
+_GUARD_CACHE: dict[tuple, tuple[float, float, tuple, list[str]]] = {}
+_GUARD_LOCK = threading.Lock()
+_clock = time.monotonic  # seam: tests advance it to expire the cache
+
+
+def clear_guard_cache() -> None:
+    with _GUARD_LOCK:
+        _GUARD_CACHE.clear()
+
+
+def _day_guards(basis: str, run, today: date) -> tuple[tuple, list[str]]:
+    """_compute_day_guards, kept in process for GUARD_CACHE_TTL_S: a second
+    question inside the quarter-hour re-uses the dates and says so in a note
+    (a frontier a few minutes old is the same frontier; an invoice run that
+    finishes inside the window shows up at the next refresh)."""
+    key = (basis, today, run)
+    now = _clock()
+    with _GUARD_LOCK:
+        hit = _GUARD_CACHE.get(key)
+    if hit is not None and hit[0] > now:
+        _, computed_at, values, notes = hit
+        age_min = int((now - computed_at) // 60)
+        age = "under a minute" if age_min < 1 else f"{age_min} min"
+        cache_note = (
+            f"{_GUARD_LABEL[basis]} re-used from a read {age} ago (the day "
+            f"counts are refreshed every {GUARD_CACHE_TTL_S // 60} minutes)"
+        )
+        return values, [*notes, cache_note]
+    values, notes = _compute_day_guards(basis, run, today)
+    with _GUARD_LOCK:
+        _GUARD_CACHE[key] = (now + GUARD_CACHE_TTL_S, now, values, list(notes))
+    return values, notes
+
+
 def credits_pool(run=run_select) -> tuple[list[str], list[list]]:
     """All credits, 3 FYs, in credits-export shape — the verified RECEIPT
     query with its date bound as a parameter instead of an f-string."""
@@ -304,6 +455,40 @@ def credits_pool(run=run_select) -> tuple[list[str], list[list]]:
     sql = CREDITS_SQL.replace("DATE '{start}'", "?")
     cols, rows = run(sql, (start,), CREDITS_CAP)
     return credits_shaped(cols, _capped(rows, CREDITS_CAP, "credits extract"))
+
+
+def _derive_credits_window_sql(src: str) -> str:
+    """CREDITS_SQL without its two LIST() link subqueries (RECALLOC waybills
+    and invoices per note — columns revenue_summary never shows, and the
+    cost of the pool read) and with BOTH date bounds as parameters. Derived
+    from the verified RECEIPT query rather than retyped, so the columns and
+    joins stay one home; the landmarks are asserted so a change to
+    CREDITS_SQL that moves them fails here at import, loudly, instead of
+    silently shipping a different read."""
+    head, sep, tail = src.partition("(SELECT LIST(ra.WAYBILL")
+    assert sep, "CREDITS_SQL: the WAYBILLS subquery landmark has moved"
+    from_i = tail.find("FROM RECEIPT r")
+    assert from_i >= 0, "CREDITS_SQL: FROM RECEIPT r not found after the subqueries"
+    body = head.rstrip().rstrip(",") + "\n" + tail[from_i:]
+    old_where = "WHERE r.RECDATE >= DATE '{start}'"
+    assert body.count(old_where) == 1, "CREDITS_SQL: the RECDATE floor has moved"
+    return body.replace(old_where, "WHERE r.RECDATE >= ? AND r.RECDATE < ?")
+
+
+CREDITS_WINDOW_SQL = _derive_credits_window_sql(CREDITS_SQL)
+
+
+def credit_notes_direct(a: date, b: date, run=run_select) -> list[dict]:
+    """Credit notes (types Credit Note + Journal Credit ONLY — the same
+    build_credit_notes.load_credits filter the pool route applies) dated a..b
+    inclusive, read for that window alone: CREDITS_WINDOW_SQL with the bounds
+    as parameters, through the same credits_shaped -> load_credits chain as
+    the pool, so one note comes out identical by either route. revenue_summary
+    uses this for its one day; the month and FY readers keep the pool."""
+    cols, rows = run(CREDITS_WINDOW_SQL, (a, b + timedelta(days=1)), CREDITS_CAP)
+    shaped = credits_shaped(cols, _capped(rows, CREDITS_CAP, "credits extract"))
+    notes = build_credit_notes.load_credits(None, shaped)
+    return [n for n in notes if a <= _norm_date(n["date"]) <= b]
 
 
 def _credit_notes_between(
@@ -694,17 +879,19 @@ def sales_report(
 def revenue_summary(day: str | None = None, run=run_select) -> dict:
     """One day's revenue on both bases — shipped (waybill date) and billed
     (invoice date) — defaulting to the last completed trading day per basis,
-    never the max of the date column."""
+    never the max of the date column.
+
+    Reads (maintenance, 2 Nov 2026): the day guards come from the waybill-date
+    counts over a trailing window (_day_guards: widened to the FY only when
+    the window cannot answer, cached for a quarter-hour); the invoice-date
+    counts are read only when no day is given, since they only pick the
+    default billed day; the day's credit notes are read for that day alone
+    (credit_notes_direct), not from the three-year pool."""
     today = _today()
     warnings: list[str] = []
     notes = [_TWO_DATES_NOTE]
 
-    wb_counts = day_counts("wb", run)
-    inv_counts = day_counts("inv", run)
-    frontier = frontier_from_day_counts(
-        {d: (inv, n) for d, (n, _, inv) in wb_counts.items()}
-    )
-
+    d = None
     if day is not None:
         d = _parse_day(day, "day")
         if d > today:
@@ -714,6 +901,11 @@ def revenue_summary(day: str | None = None, run=run_select) -> dict:
             )
         if d < fy_start(today):
             return _pre_window_refusal("financial year extract", d, fy_start(today))
+
+    (frontier, wb_ltd), wb_notes = _day_guards("wb", run, today)
+    notes += wb_notes
+
+    if d is not None:
         wb_day = inv_day = d
         if d == today:
             warnings.append(
@@ -727,8 +919,9 @@ def revenue_summary(day: str | None = None, run=run_select) -> dict:
                 "are partial and will still grow"
             )
     else:
-        wb_day = last_trading_day(_traded_pairs(wb_counts), today)
-        inv_day = last_trading_day(_traded_pairs(inv_counts), today)
+        (inv_ltd,), inv_notes = _day_guards("inv", run, today)
+        notes += inv_notes
+        wb_day, inv_day = wb_ltd, inv_ltd
         notes.append(
             "dates default to the last completed trading day per basis — one "
             "day in arrears, like the scheduled reports"
@@ -748,7 +941,7 @@ def revenue_summary(day: str | None = None, run=run_select) -> dict:
         by_branch[b][0] += 1
         by_branch[b][1] += float(r[wb_ix["Subtotal"]] or 0)
 
-    credits = _credit_notes_between(inv_day, inv_day, run=run)
+    credits = credit_notes_direct(inv_day, inv_day, run=run)
     credit_total = sum(n["value"] for n in credits)
     billed = _totals(inv_rows, inv_ix)
 

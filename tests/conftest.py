@@ -64,3 +64,19 @@ def _never_touch_the_live_audit_log(monkeypatch):
         f"({[h.baseFilename for h in leaked]}) — tests must never write to "
         "logs/mcp_server/"
     )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_guard_cache():
+    """revenue_summary keeps its billing frontier / last trading day in
+    process for a quarter-hour (mcp_server.revenue._GUARD_CACHE, keyed on the
+    data source too). Every test starts and ends with it empty, so no test
+    can answer from another's fixture dates."""
+    try:
+        from mcp_server import revenue
+    except ImportError:
+        yield
+        return
+    revenue.clear_guard_cache()
+    yield
+    revenue.clear_guard_cache()

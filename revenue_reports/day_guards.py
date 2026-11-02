@@ -144,8 +144,17 @@ class NoInvoicedDays(ValueError):
     """No invoiced waybills at all — a billing frontier cannot be derived."""
 
 
+class NoCompletedDays(ValueError):
+    """No day clears the share-invoiced bar — only the presence fallback
+    could answer, and the caller asked not to take it (presence_fallback=
+    False). Raised INSTEAD of the fallback, never after it."""
+
+
 def frontier_from_day_counts(
-    per_day: dict[date, tuple[int, int] | list[int]], today: date | None = None
+    per_day: dict[date, tuple[int, int] | list[int]],
+    today: date | None = None,
+    *,
+    presence_fallback: bool = True,
 ) -> date:
     """First day NOT yet invoiced, judged by the SHARE invoiced per day.
 
@@ -159,6 +168,15 @@ def frontier_from_day_counts(
     course); days too small to judge are skipped; and when nothing clears the
     bar the old presence rule is the fallback so a sparse file still yields a
     frontier rather than nothing.
+
+    presence_fallback=False refuses that fallback and raises NoCompletedDays
+    instead. For a caller judging a TRAILING WINDOW of the counts rather than
+    the whole year (mcp_server.revenue.revenue_summary, 2 Nov 2026): a window
+    that holds a completed day gives the same frontier as the full year —
+    the newest completed day is the newest completed day — but a window that
+    holds none would answer from presence alone where the full year could
+    still find a completed day, so that caller must widen rather than guess.
+    The rule itself is unchanged; this only makes the fallback opt-out.
     """
     today = today or date.today()
     counted = {
@@ -173,6 +191,11 @@ def frontier_from_day_counts(
     ]
     if done:
         return max(done) + timedelta(days=1)
+    if not presence_fallback:
+        raise NoCompletedDays(
+            "No day clears the invoiced-share bar — the presence fallback "
+            "was declined, so no frontier from these counts."
+        )
 
     any_inv = [d for d, (inv, _) in counted.items() if inv]
     if not any_inv:
